@@ -42,6 +42,31 @@ Tambahkan di bawah item terkait, dengan indentasi dan format yang konsisten:
 
 ---
 
+## Aturan Wajib: Update Versi Aplikasi
+
+Setiap kali ada dokumen perencanaan baru (misalnya `plan-xxx.md`) yang mendefinisikan **target versi rilis baru**, kamu **WAJIB** mengupdate versi di **3 file berikut secara bersamaan**:
+
+| File | Lokasi field |
+|---|---|
+| `src-tauri/tauri.conf.json` | `"version": "x.y.z"` |
+| `src-tauri/Cargo.toml` | `version = "x.y.z"` |
+| `package.json` | `"version": "x.y.z"` |
+
+### Aturan Versi
+
+- Format SemVer: `MAJOR.MINOR.PATCH`
+- Setiap Phase besar = increment **MINOR** (e.g. Phase 15 → v1.7.0, Phase 16 → v1.8.0)
+- Bugfix/hotfix = increment **PATCH** (e.g. v1.7.0 → v1.7.1)
+- Versi di halaman About (`src/routes/about/index.tsx`) dibaca otomatis dari Tauri (`getVersion()`) — **tidak perlu diubah manual**
+
+### Kapan Update
+
+- Saat mulai mengimplementasikan phase baru yang punya target versi di dokumen plan-nya
+- Saat user secara eksplisit menyebut versi baru
+- **Jangan** update versi hanya karena bug fix kecil atau style tweak
+
+---
+
 ## Database Access — MCP SQLite Server
 
 Ketika membutuhkan akses langsung ke database untuk exploration, debugging, atau query kompleks, gunakan **MCP SQLite Server**:

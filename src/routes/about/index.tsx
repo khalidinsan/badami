@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
+import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import logoImg from "/logo.png";
 
 export const Route = createFileRoute("/about/")({
@@ -7,6 +9,12 @@ export const Route = createFileRoute("/about/")({
 });
 
 function AboutPage() {
+  const [version, setVersion] = useState<string>("");
+
+  useEffect(() => {
+    getVersion().then(setVersion).catch(() => {});
+  }, []);
+
   return (
     <div className="flex h-full flex-col items-center justify-center px-8">
       <div className="w-full max-w-sm space-y-8">
@@ -17,7 +25,9 @@ function AboutPage() {
             alt="Badami"
             className="mx-auto mb-4 h-14 w-auto"
           />
-          <p className="mt-1 text-sm font-medium text-muted-foreground">Version 1.5.0</p>
+          {version && (
+            <p className="mt-1 text-sm font-medium text-muted-foreground">Version {version}</p>
+          )}
         </div>
 
         {/* Description */}
