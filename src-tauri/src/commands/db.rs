@@ -401,7 +401,17 @@ pub async fn db_init(
                             }
                         },
                         Err(e) => {
-                            eprintln!("[db_init] replica open failed: {e}");
+                            let e_str = e.to_string().to_lowercase();
+                            if e_str.contains("locked") || e_str.contains("database is locked") {
+                                // Stale WAL lock from a previous crashed session.
+                                // Remove shm/wal lock files so the replica can open on next launch.
+                                // The replica db itself is kept — Turso is source of truth for data.
+                                eprintln!("[db_init] replica locked — clearing stale WAL lock and falling back to local DB");
+                                let _ = std::fs::remove_file(app_dir.join("badami_sync.db-shm"));
+                                let _ = std::fs::remove_file(app_dir.join("badami_sync.db-wal"));
+                            } else {
+                                eprintln!("[db_init] replica open failed: {e}");
+                            }
                             // Emit warning so frontend knows we're falling back to local
                             let _ = app.emit(
                                 "sync-status-changed",
