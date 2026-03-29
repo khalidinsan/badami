@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="900" viewBox="0 0 280 900" fill="none">
+  <!-- Large circle top-right -->
+  <circle cx="260" cy="60" r="120" stroke="rgba(255,255,255,0.06)" stroke-width="1.5" fill="none"/>
+  <!-- Smaller concentric ring -->
+  <circle cx="260" cy="60" r="80" stroke="rgba(255,255,255,0.04)" stroke-width="1" fill="none"/>
+  
+  <!-- Floating blob mid-left -->
+  <ellipse cx="-10" cy="350" rx="90" ry="70" fill="rgba(255,255,255,0.03)"/>
+  
+  <!-- Large ring bottom -->
+  <circle cx="60" cy="780" r="140" stroke="rgba(255,255,255,0.05)" stroke-width="1.5" fill="none"/>
+  <circle cx="60" cy="780" r="100" stroke="rgba(255,255,255,0.03)" stroke-width="1" fill="none"/>
+  
+  <!-- Diagonal line accent -->
+  <line x1="200" y1="250" x2="280" y2="180" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <line x1="210" y1="260" x2="280" y2="195" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+  
+  <!-- Small dots cluster -->
+  <circle cx="40" cy="200" r="3" fill="rgba(255,255,255,0.08)"/>
+  <circle cx="55" cy="190" r="2" fill="rgba(255,255,255,0.06)"/>
+  <circle cx="30" cy="215" r="2.5" fill="rgba(255,255,255,0.05)"/>
+  <circle cx="50" cy="210" r="1.5" fill="rgba(255,255,255,0.07)"/>
+  
+  <!-- Abstract arc top-left -->
+  <path d="M0 120 Q 60 80 40 0" stroke="rgba(255,255,255,0.05)" stroke-width="1.5" fill="none"/>
+  
+  <!-- Soft diamond shape mid-right -->
+  <path d="M250 500 L270 530 L250 560 L230 530 Z" stroke="rgba(255,255,255,0.06)" stroke-width="1" fill="rgba(255,255,255,0.02)"/>
+  
+  <!-- Small cross accent -->
+  <line x1="220" y1="690" x2="240" y2="690" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <line x1="230" y1="680" x2="230" y2="700" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  
+  <!-- Curved wave bottom -->
+  <path d="M0 850 Q 70 830 140 850 Q 210 870 280 850" stroke="rgba(255,255,255,0.04)" stroke-width="1" fill="none"/>
+  <path d="M0 870 Q 70 850 140 870 Q 210 890 280 870" stroke="rgba(255,255,255,0.03)" stroke-width="1" fill="none"/>
+</svg>

@@ -1,0 +1,72 @@
+[package]
+name = "badami"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "badami_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-window-state = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# SSH & SFTP
+ssh2 = "0.9"
+
+# FTP & FTPS
+suppaftp = { version = "6", features = ["native-tls", "deprecated"] }
+
+# OS Keychain (macOS Keychain + Windows Credential Manager)
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+
+# Encryption for PEM key storage
+aes-gcm = "0.10"
+rand = "0.8"
+
+# Format & utility
+bytesize = "1"
+base64 = "0.22"
+chrono = "0.4"
+
+# File watching (for SFTP/FTP open-in-editor auto-upload)
+notify = "6"
+
+# Async (Tauri already brings tokio, ensure full features)
+tokio = { version = "1", features = ["full"] }
+
+# Machine-specific identity
+hostname = "0.4"
+
+# MCP Bridge (debug only)
+tauri-plugin-mcp-bridge = "0.10"
+
+# Credential Manager — Phase 10
+argon2 = "0.5"
+arboard = "3"
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
+
+# REST API Tool — Phase 11
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "cookies", "multipart"] }
+
+# Cross-Device Sync — Phase 14 (Turso embedded replica)
+libsql = "0.9"
+

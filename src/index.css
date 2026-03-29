@@ -1,0 +1,314 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+@custom-variant hover (&:hover);
+
+@theme {
+  /* macOS Tahoe Blue palette */
+  --color-background: #f5f5f7;
+  --color-foreground: #1d1d1f;
+  --color-card: rgba(255, 255, 255, 0.72);
+  --color-card-foreground: #1d1d1f;
+  --color-popover: rgba(255, 255, 255, 0.85);
+  --color-popover-foreground: #1d1d1f;
+  --color-primary: #007aff;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: rgba(120, 120, 128, 0.12);
+  --color-secondary-foreground: #1d1d1f;
+  --color-muted: rgba(120, 120, 128, 0.08);
+  --color-muted-foreground: #86868b;
+  --color-accent: rgba(0, 122, 255, 0.08);
+  --color-accent-foreground: #007aff;
+  --color-destructive: #ff3b30;
+  --color-destructive-foreground: #ffffff;
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-input: rgba(120, 120, 128, 0.12);
+  --color-ring: #007aff;
+  --color-sidebar-background: rgba(255, 255, 255, 0.6);
+  --color-sidebar-foreground: #86868b;
+  --color-sidebar-primary: #007aff;
+  --color-sidebar-primary-foreground: #ffffff;
+  --color-sidebar-accent: rgba(0, 122, 255, 0.08);
+  --color-sidebar-accent-foreground: #007aff;
+  --color-sidebar-border: rgba(0, 0, 0, 0.06);
+  --color-sidebar-ring: #007aff;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Dark mode overrides */
+.dark {
+  --color-background: #000000;
+  --color-foreground: #f5f5f7;
+  --color-card: rgba(28, 28, 30, 0.72);
+  --color-card-foreground: #f5f5f7;
+  --color-popover: rgba(28, 28, 30, 0.85);
+  --color-popover-foreground: #f5f5f7;
+  --color-primary: #0a84ff;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: rgba(120, 120, 128, 0.24);
+  --color-secondary-foreground: #f5f5f7;
+  --color-muted: rgba(120, 120, 128, 0.18);
+  --color-muted-foreground: #98989d;
+  --color-accent: rgba(10, 132, 255, 0.12);
+  --color-accent-foreground: #0a84ff;
+  --color-destructive: #ff453a;
+  --color-destructive-foreground: #ffffff;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-input: rgba(120, 120, 128, 0.24);
+  --color-ring: #0a84ff;
+  --color-sidebar-background: rgba(28, 28, 30, 0.6);
+  --color-sidebar-foreground: #98989d;
+  --color-sidebar-primary: #0a84ff;
+  --color-sidebar-primary-foreground: #ffffff;
+  --color-sidebar-accent: rgba(10, 132, 255, 0.12);
+  --color-sidebar-accent-foreground: #0a84ff;
+  --color-sidebar-border: rgba(255, 255, 255, 0.06);
+  --color-sidebar-ring: #0a84ff;
+}
+
+/* Glassmorphism utility classes */
+@layer utilities {
+  .glass {
+    @apply border border-white/20 bg-white/60 backdrop-blur-xl;
+  }
+  .dark .glass {
+    @apply border-white/10 bg-white/5;
+  }
+  .glass-card {
+    @apply rounded-xl border border-white/20 bg-white/72 shadow-sm backdrop-blur-xl;
+  }
+  .dark .glass-card {
+    @apply border-white/10 bg-white/5;
+  }
+  /* Main navigation sidebar — cooler gray, more solid */
+  .glass-sidebar {
+    @apply border-r border-black/[0.06] backdrop-blur-2xl;
+    background-color: rgba(242, 242, 247, 0.92);
+  }
+  .dark .glass-sidebar {
+    @apply border-white/[0.06];
+    background-color: rgba(28, 28, 30, 0.92);
+  }
+  /* Project page sidebar — brighter white, more transparent */
+  .glass-page-sidebar {
+    @apply border-r border-black/[0.04] backdrop-blur-xl;
+    background-color: rgba(255, 255, 255, 0.72);
+  }
+  .dark .glass-page-sidebar {
+    @apply border-white/[0.04];
+    background-color: rgba(28, 28, 30, 0.72);
+  }
+}
+
+/* Thin hover-only scrollbar for sidebars */
+.sidebar-scroll {
+  overflow-y: auto;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.2s;
+}
+.sidebar-scroll:hover {
+  scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
+}
+.dark .sidebar-scroll:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+.sidebar-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+}
+.dark .sidebar-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* BlockNote editor — full-width, use container padding instead of internal inset */
+.bn-editor {
+  /* Extra left padding to give room for the side menu (drag handle + add button ~44px) */
+  padding-inline-start: 3.5rem !important;
+  padding-inline-end: 2rem !important;
+}
+.bn-container,
+.bn-editor .ProseMirror {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+/* Match app font */
+.bn-editor,
+.bn-editor * {
+  font-family: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, sans-serif !important;
+}
+/* Remove blocknote card shadow / background */
+.bn-editor {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Mini BlockNote for sticky note expand — compact, no side menus */
+.sticky-mini-editor .bn-editor {
+  padding-inline-start: 0.5rem !important;
+  padding-inline-end: 0.5rem !important;
+  padding-block: 0.25rem !important;
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+}
+.sticky-mini-editor .bn-editor .bn-block-group > .bn-block-outer {
+  margin-block: 0 !important;
+}
+.sticky-mini-editor .bn-editor .bn-block-content {
+  padding: 1px 0 !important;
+}
+.sticky-mini-editor .bn-editor .bn-inline-content {
+  font-size: 11px !important;
+}
+.sticky-mini-editor .bn-editor [class*="blockContent"] {
+  font-size: 11px !important;
+}
+.sticky-mini-editor .bn-container {
+  min-height: 0 !important;
+}
+/* Slash menu & suggestion popups — must overlay the whole sticky window */
+.bn-suggestion-menu,
+[class*="suggestionMenu"],
+[data-mantine-component="Menu"],
+.mantine-1k0kse5,
+.bn-slash-menu {
+  z-index: 9999 !important;
+}
+/* Mantine dropdown used by BlockNote suggestion menu */
+[data-floating-ui-portal],
+[data-tippy-box] {
+  z-index: 9999 !important;
+}
+
+/* FullCalendar — planning page overrides */
+.planning-calendar .fc {
+  --fc-border-color: rgba(0, 0, 0, 0.08);
+  --fc-today-bg-color: transparent;
+  --fc-page-bg-color: transparent;
+  --fc-event-bg-color: var(--color-primary);
+  --fc-event-border-color: transparent;
+  font-family: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, sans-serif;
+  font-size: 0.85rem;
+}
+/* Toolbar buttons */
+.planning-calendar .fc .fc-button {
+  background: rgba(120, 120, 128, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: var(--color-foreground);
+  font-size: 0.75rem;
+  padding: 0.2em 0.6em;
+  border-radius: 0.5rem;
+  box-shadow: none;
+  font-family: inherit;
+}
+.planning-calendar .fc .fc-button:hover {
+  background: rgba(0, 122, 255, 0.08);
+  border-color: rgba(0, 122, 255, 0.2);
+}
+.planning-calendar .fc .fc-button-primary:not(:disabled).fc-button-active,
+.planning-calendar .fc .fc-button-primary:not(:disabled):active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+  box-shadow: none;
+}
+/* Title */
+.planning-calendar .fc .fc-toolbar-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--color-foreground);
+}
+.planning-calendar .fc .fc-toolbar.fc-header-toolbar {
+  margin-bottom: 0.5em;
+}
+/* Day header row */
+.planning-calendar .fc .fc-col-header-cell-cushion {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted-foreground);
+  padding: 4px 2px;
+  text-decoration: none;
+}
+/* Day cells — clickable */
+.planning-calendar .fc .fc-daygrid-day {
+  cursor: pointer;
+}
+.planning-calendar .fc .fc-daygrid-day:hover {
+  background: rgba(0, 122, 255, 0.04);
+}
+/* Date numbers */
+.planning-calendar .fc .fc-daygrid-day-number {
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-foreground);
+  text-decoration: none;
+}
+/* Faded out-of-month dates */
+.planning-calendar .fc .fc-day-other .fc-daygrid-day-number {
+  color: var(--color-muted-foreground);
+  opacity: 0.4;
+}
+/* TODAY — solid blue circle */
+.planning-calendar .fc .fc-day-today {
+  background: transparent !important;
+}
+.planning-calendar .fc .fc-day-today .fc-daygrid-day-number {
+  background: var(--color-primary);
+  color: #ffffff !important;
+  border-radius: 9999px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 4px;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+/* Events */
+.planning-calendar .fc .fc-event {
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 1px 4px;
+  cursor: pointer;
+}
+.planning-calendar .fc .fc-event-done .fc-event-title {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+/* Hide title for the selected-bg pseudo-event */
+.planning-calendar .fc .fc-event-selected-bg {
+  pointer-events: none;
+  height: 100%;
+  border-radius: 0;
+}

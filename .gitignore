@@ -1,0 +1,69 @@
+# ─── Node / npm ───────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.local
+
+# ─── Vite build output ────────────────────────────────────────
+dist/
+dist-ssr/
+
+# ─── Tauri ────────────────────────────────────────────────────
+src-tauri/target/
+src-tauri/gen/
+!src-tauri/gen/schemas/
+
+# ─── Rust ─────────────────────────────────────────────────────
+**/*.rs.bk
+Cargo.lock
+
+# ─── macOS ────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+
+# ─── Windows ──────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ─── Linux ────────────────────────────────────────────────────
+*~
+.fuse_hidden*
+.Trash-*
+
+# ─── Editor ───────────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ─── TanStack Router ─────────────────────────────────────────
+# routeTree.gen.ts is auto-generated but should be committed
+# (required for builds without running the dev server first)
+
+# ─── Environment / secrets ────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Logs ─────────────────────────────────────────────────────
+logs/
+*.log
+
+# ─── Project planning / internal docs ──────────────────────
+plan-*.md
+CHECKLIST.md
+overview.md
+
+# ─── Misc ─────────────────────────────────────────────────────
+*.local
+.tanstack/
