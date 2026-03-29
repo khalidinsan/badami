@@ -10,6 +10,8 @@ import {
   Filter,
   FolderKanban,
   Inbox,
+  AArrowDown,
+  AArrowUp,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -37,6 +39,18 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { usePomodoroStore } from "@/stores/pomodoroStore";
 
 const emitTaskChanged = () => emit("task-changed").catch(() => {});
+
+const FONT_SIZE_LEVELS = ["sm", "md", "lg"] as const;
+type FontSizeLevel = (typeof FONT_SIZE_LEVELS)[number];
+
+// Root font-size per level (in px). Since the today window is an isolated webview,
+// changing document.documentElement.style.fontSize scales ALL rem-based Tailwind
+// classes (text-xs, padding, icon sizes etc.) proportionally.
+const FONT_SIZE_ROOT: Record<FontSizeLevel, string> = {
+  sm: "15px",
+  md: "17px",
+  lg: "19px",
+};
 
 const STICKY_COLORS: {
   label: string;
@@ -107,10 +121,30 @@ export function StickyNote() {
   const stickyColor = getSetting("sticky_note_color", "default");
   const colorConfig =
     STICKY_COLORS.find((c) => c.value === stickyColor) ?? STICKY_COLORS[0];
+  const stickyFontSize = getSetting("sticky_font_size", "md") as FontSizeLevel;
 
   useEffect(() => {
     if (!loaded) loadSettings();
   }, [loaded]);
+
+  // Apply root font-size for proportional scaling across all rem-based Tailwind classes
+  useEffect(() => {
+    const px = FONT_SIZE_ROOT[stickyFontSize] ?? "17px";
+    document.documentElement.style.fontSize = px;
+    return () => {
+      document.documentElement.style.removeProperty("font-size");
+    };
+  }, [stickyFontSize]);
+
+  const handleFontDecrease = () => {
+    const idx = FONT_SIZE_LEVELS.indexOf(stickyFontSize);
+    if (idx > 0) setSetting("sticky_font_size", FONT_SIZE_LEVELS[idx - 1]);
+  };
+
+  const handleFontIncrease = () => {
+    const idx = FONT_SIZE_LEVELS.indexOf(stickyFontSize);
+    if (idx < FONT_SIZE_LEVELS.length - 1) setSetting("sticky_font_size", FONT_SIZE_LEVELS[idx + 1]);
+  };
 
   // Save window position/size on move/resize
   useEffect(() => {
@@ -453,7 +487,7 @@ export function StickyNote() {
       >
         <div className="flex items-center justify-between px-3 py-2" data-tauri-drag-region>
           {/* Left: title + counter — draggable */}
-          <span className="text-[11px] font-semibold text-white/90" data-tauri-drag-region>
+          <span className="text-[0.6875rem] font-semibold text-white/90" data-tauri-drag-region>
             Today
             {totalCount > 0 && (
               <span className="ml-1.5 font-normal text-white/60">
@@ -464,13 +498,31 @@ export function StickyNote() {
 
           {/* Focus badge */}
           {focusedTaskId && (
-            <span className="ml-2 max-w-[100px] truncate rounded-full bg-white/20 px-2 py-0.5 text-[9px] font-medium text-white/90" data-tauri-drag-region>
+            <span className="ml-2 max-w-[100px] truncate rounded-full bg-white/20 px-2 py-0.5 text-[0.5625rem] font-medium text-white/90" data-tauri-drag-region>
               Focusing
             </span>
           )}
 
-          {/* Right: Palette, Pin, Close — NOT draggable */}
+          {/* Right: Palette, Font size, Pin, Close — NOT draggable */}
           <div className="flex items-center gap-0.5" data-tauri-no-drag>
+          {/* Font size decrease */}
+          <button
+            onClick={handleFontDecrease}
+            disabled={stickyFontSize === "sm"}
+            className="flex h-5 w-5 items-center justify-center rounded text-white/60 transition-colors hover:bg-white/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+            title="Decrease font size"
+          >
+            <AArrowDown className="h-3 w-3" />
+          </button>
+          {/* Font size increase */}
+          <button
+            onClick={handleFontIncrease}
+            disabled={stickyFontSize === "lg"}
+            className="flex h-5 w-5 items-center justify-center rounded text-white/60 transition-colors hover:bg-white/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+            title="Increase font size"
+          >
+            <AArrowUp className="h-3 w-3" />
+          </button>
           {/* Color picker */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -611,7 +663,7 @@ export function StickyNote() {
               {/* Overdue section */}
               {filteredOverdue.length > 0 && (
                 <div className="mb-1">
-                  <p className="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-red-500">
+                  <p className="px-2 pb-1 pt-1.5 text-[0.625rem] font-semibold uppercase tracking-wider text-red-500">
                     Overdue
                   </p>
                   <AnimatePresence initial={false}>
@@ -643,7 +695,7 @@ export function StickyNote() {
               {filteredToday.length > 0 && (
                 <div>
                   {filteredOverdue.length > 0 && (
-                    <p className="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <p className="px-2 pb-1 pt-1.5 text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">
                       Today
                     </p>
                   )}
@@ -734,18 +786,18 @@ export function StickyNote() {
             className="shrink-0 overflow-hidden border-t border-black/10"
           >
             <div className="flex items-center gap-2 px-3 py-2">
-              <span className="flex-1 text-[11px] text-muted-foreground">
+              <span className="flex-1 text-[0.6875rem] text-muted-foreground">
                 Focus session done!
               </span>
               <button
                 onClick={handleFocusDone}
-                className="rounded-md bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary transition-colors hover:bg-primary/25"
+                className="rounded-md bg-primary/15 px-2 py-0.5 text-[0.625rem] font-medium text-primary transition-colors hover:bg-primary/25"
               >
                 Mark Done
               </button>
               <button
                 onClick={handleFocusContinue}
-                className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted/80"
+                className="rounded-md bg-muted px-2 py-0.5 text-[0.625rem] font-medium text-muted-foreground transition-colors hover:bg-muted/80"
               >
                 Keep Going
               </button>
