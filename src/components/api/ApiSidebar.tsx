@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from "react";
-import { Plus, Search, FolderOpen, X, Upload, FileJson } from "lucide-react";
+import { Plus, Search, FolderOpen, X, Upload, FileJson, FolderSymlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { cn } from "@/lib/utils";
 
 import {
   Dialog,
@@ -45,6 +46,12 @@ export function ApiSidebar({
   // Collection variables editor state
   const [colVarsEditId, setColVarsEditId] = useState<string | null>(null);
   const colVarsCollection = collections.find((c) => c.id === colVarsEditId);
+
+  // Assign-to-project dialog state
+  const [assignProjectId, setAssignProjectId] = useState<string | null>(null);
+  const assignProjectCollection = assignProjectId
+    ? collections.find((c) => c.id === assignProjectId) ?? null
+    : null;
 
   // Generic name-input dialog state
   const [dialog, setDialog] = useState<{
@@ -318,6 +325,15 @@ export function ApiSidebar({
     [requests, store],
   );
 
+  const handleAssignProject = useCallback(
+    async (newProjectId: string | null) => {
+      if (!assignProjectId) return;
+      await store.assignCollectionToProject(assignProjectId, newProjectId);
+      setAssignProjectId(null);
+    },
+    [assignProjectId, store],
+  );
+
   // Render helper for a single CollectionItem with all wired-up handlers
   const renderCollectionItem = useCallback(
     (col: ApiCollectionRow) => (
@@ -340,6 +356,7 @@ export function ApiSidebar({
         onDuplicateRequest={(id) => handleDuplicateRequest(id)}
         onExportCollection={() => handleExportPostman(col.id)}
         onEditCollectionVariables={() => setColVarsEditId(col.id)}
+        onAssignProject={!projectId ? () => setAssignProjectId(col.id) : undefined}
         onMoveRequest={handleMoveRequest}
       />
     ),
@@ -509,6 +526,17 @@ export function ApiSidebar({
       />
     )}
 
+    {/* Assign to project dialog */}
+    {assignProjectCollection && (
+      <AssignProjectDialog
+        open={!!assignProjectId}
+        projects={projects}
+        currentProjectId={assignProjectCollection.project_id ?? null}
+        onAssign={handleAssignProject}
+        onClose={() => setAssignProjectId(null)}
+      />
+    )}
+
     {/* Name input dialog */}
     <Dialog
       open={dialog.open}
@@ -620,5 +648,65 @@ function CollectionGroupedList({
         </div>
       )}
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Assign-to-project dialog
+// ---------------------------------------------------------------------------
+
+function AssignProjectDialog({
+  open,
+  projects,
+  currentProjectId,
+  onAssign,
+  onClose,
+}: {
+  open: boolean;
+  projects: ProjectRow[];
+  currentProjectId: string | null;
+  onAssign: (projectId: string | null) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-xs">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-sm">
+            <FolderSymlink className="h-4 w-4 text-[#007AFF]" />
+            Assign to Project
+          </DialogTitle>
+        </DialogHeader>
+        <div className="max-h-64 overflow-auto space-y-0.5">
+          <button
+            onClick={() => onAssign(null)}
+            className={cn(
+              "flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors hover:bg-accent",
+              !currentProjectId ? "bg-[#007AFF]/10 text-[#007AFF]" : "text-muted-foreground",
+            )}
+          >
+            <span className="font-medium">No project (global)</span>
+          </button>
+          {projects.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => onAssign(p.id)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors hover:bg-accent",
+                currentProjectId === p.id ? "bg-[#007AFF]/10 text-[#007AFF]" : "text-muted-foreground",
+              )}
+            >
+              {p.icon && <span>{p.icon}</span>}
+              <span className="font-medium">{p.name}</span>
+            </button>
+          ))}
+          {projects.length === 0 && (
+            <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+              No projects yet
+            </p>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

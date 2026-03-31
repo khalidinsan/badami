@@ -14,6 +14,8 @@ interface ServerState {
   createServer: (data: Parameters<typeof serverQueries.createServer>[0]) => Promise<ServerCredentialRow>;
   updateServer: (id: string, data: Parameters<typeof serverQueries.updateServer>[1]) => Promise<void>;
   deleteServer: (id: string) => Promise<void>;
+  /** Update last_connected_at optimistically (no full reload). */
+  touchServerConnected: (id: string) => Promise<void>;
 
   loadPemKeys: () => Promise<void>;
   deletePemKey: (id: string) => Promise<void>;
@@ -102,6 +104,20 @@ export const useServerStore = create<ServerState>((set, get) => ({
       set({ servers: prevServers });
       console.error(err);
       toast.error("Failed to delete server");
+    }
+  },
+
+  touchServerConnected: async (id) => {
+    // Optimistic update — no full reload to avoid duplicates
+    set((state) => ({
+      servers: state.servers.map((s) =>
+        s.id === id ? { ...s, last_connected_at: nowISO(), updated_at: nowISO() } as ServerCredentialRow : s,
+      ),
+    }));
+    try {
+      await serverQueries.touchServerConnected(id);
+    } catch (err) {
+      console.error("Failed to update last_connected_at", err);
     }
   },
 

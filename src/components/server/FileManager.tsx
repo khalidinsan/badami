@@ -33,6 +33,7 @@ import {
 import { FileEntryRow } from "./FileEntryRow";
 import { TransferQueue } from "./TransferQueue";
 import { TransferHistory } from "./TransferHistory";
+import { RemoteCodeEditor } from "./RemoteCodeEditor";
 import { useFileManager } from "@/hooks/useFileManager";
 import { openInCodeEditor } from "@/lib/osOpen";
 import type { ServerCredentialRow } from "@/types/db";
@@ -66,6 +67,11 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
   const [isDragging, setIsDragging] = useState(false);
   const [pendingDropPaths, setPendingDropPaths] = useState<string[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [editingFile, setEditingFile] = useState<{
+    path: string;
+    content: string;
+    readOnly: boolean;
+  } | null>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const connectedRef = useRef(false);
   // Tracks files opened in editor: watchId -> { remotePath, localPath }
@@ -181,6 +187,33 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
       }
     },
     [fm],
+  );
+
+  // Open file in built-in Monaco editor (read via SFTP)
+  const handleEditFile = useCallback(
+    async (entry: FileEntry) => {
+      if (entry.size > 5 * 1024 * 1024) {
+        toast.error("File too large for built-in editor (max 5MB)");
+        return;
+      }
+      try {
+        const content = await fm.readFile(entry.path);
+        setEditingFile({ path: entry.path, content, readOnly: false });
+      } catch (err) {
+        toast.error(`Failed to open file: ${err}`);
+      }
+    },
+    [fm],
+  );
+
+  // Save edited file back to server via SFTP
+  const handleSaveEditedFile = useCallback(
+    async (content: string) => {
+      if (!editingFile) return;
+      await fm.writeFile(editingFile.path, content);
+      toast.success(`Saved ${editingFile.path.split("/").pop()}`);
+    },
+    [fm, editingFile],
   );
 
   // Confirm and execute drop upload
@@ -323,7 +356,7 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
   const StatusIcon = fm.status === "connected" ? Wifi : fm.status === "connecting" ? Loader2 : WifiOff;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border/40 bg-card/50 px-3 py-1.5">
         <div className="flex items-center gap-2">
@@ -562,6 +595,7 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
                 onDownload={handleDownload}
                 onPreview={server.protocol === "ssh" ? handlePreview : undefined}
                 onOpenInEditor={handleOpenInEditor}
+                onEditFile={server.protocol === "ssh" ? handleEditFile : undefined}
               />
             ))}
           </div>
@@ -694,6 +728,19 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Built-in code editor overlay */}
+      {editingFile && (
+        <div className="absolute inset-0 z-20 bg-background">
+          <RemoteCodeEditor
+            remotePath={editingFile.path}
+            initialContent={editingFile.content}
+            readOnly={editingFile.readOnly}
+            onSave={handleSaveEditedFile}
+            onClose={() => setEditingFile(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }

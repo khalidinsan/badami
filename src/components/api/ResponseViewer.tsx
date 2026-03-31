@@ -26,8 +26,8 @@ export function ResponseViewer({ body, className = "" }: ResponseViewerProps) {
       value={formatted}
       readOnly
       language={language}
-      className={className}
-      minHeight="200px"
+      className={`h-full ${className}`}
+      height="100%"
     />
   );
 }

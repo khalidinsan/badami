@@ -26,6 +26,7 @@ export interface Database {
   api_history: ApiHistoryTable;
   api_collection_variables: ApiCollectionVariableTable;
   reminders: ReminderTable;
+  saved_commands: SavedCommandTable;
 }
 
 export interface ProjectTable {
@@ -140,6 +141,7 @@ export interface ServerCredentialTable {
   auth_type: string;
   pem_key_id: ColumnType<string | null, string | null, string | null>;
   pem_file_path: ColumnType<string | null, string | null, string | null>;
+  credential_id: ColumnType<string | null, string | null, string | null>;
   initial_directory: ColumnType<string, string | undefined, string>;
   notes_content: ColumnType<string | null, string | null, string | null>;
   last_connected_at: ColumnType<string | null, string | null, string | null>;
@@ -369,3 +371,20 @@ export interface ReminderTable {
 }
 
 export type ReminderRow = Selectable<ReminderTable>;
+
+// ─── Saved Commands (Phase 16) ──────────────────────────────────────
+
+export interface SavedCommandTable {
+  id: string;
+  server_id: ColumnType<string | null, string | null, string | null>;
+  project_id: ColumnType<string | null, string | null, string | null>;
+  name: string;
+  command: string;
+  description: ColumnType<string | null, string | null, string | null>;
+  tags: ColumnType<string | null, string | null, string | null>;
+  sort_order: ColumnType<number, number | undefined, number>;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SavedCommandRow = Selectable<SavedCommandTable>;

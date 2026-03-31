@@ -3,7 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { v4 as uuidv4 } from "uuid";
 
-export type SshConnectionStatus = "idle" | "connecting" | "connected" | "disconnected";
+export type SshConnectionStatus = "idle" | "connecting" | "connected" | "disconnected" | "reconnecting";
+
+const BACKOFF_DELAYS = [2000, 5000, 10000, 30000, 30000]; // ms
 
 interface UseSshSessionOptions {
   host: string;
@@ -12,6 +14,10 @@ interface UseSshSessionOptions {
   authType: string;
   onOutput: (data: string) => void;
   onStatusChange?: (status: SshConnectionStatus) => void;
+  /** Enable auto-reconnect on unexpected disconnect. Default: true */
+  autoReconnect?: boolean;
+  /** Max reconnect attempts. Default: 5 */
+  maxReconnectAttempts?: number;
 }
 
 export function useSshSession({
@@ -21,6 +27,8 @@ export function useSshSession({
   authType,
   onOutput,
   onStatusChange,
+  autoReconnect = true,
+  maxReconnectAttempts = 5,
 }: UseSshSessionOptions) {
   const [status, setStatus] = useState<SshConnectionStatus>("idle");
   const [sessionId] = useState(() => uuidv4());
@@ -35,10 +43,22 @@ export function useSshSession({
   const onStatusChangeRef = useRef(onStatusChange);
   onStatusChangeRef.current = onStatusChange;
 
+  // Auto-reconnect state
+  const manualDisconnectRef = useRef(false);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const updateStatus = useCallback((s: SshConnectionStatus) => {
     statusRef.current = s;
     setStatus(s);
     onStatusChangeRef.current?.(s);
+  }, []);
+
+  const cancelReconnect = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
   }, []);
 
   // Register Tauri event listeners once per sessionId — NOT inside connect().
@@ -57,29 +77,79 @@ export function useSshSession({
         if (event.payload === "connected") {
           updateStatus("connected");
           setConnectedAt(Date.now());
+          // Reset reconnect counter on successful connection
+          reconnectAttemptRef.current = 0;
         } else if (event.payload === "disconnected") {
           // Ignore the spurious "disconnected" emitted by our own
           // ssh_disconnect during cleanup if we never actually connected.
-          if (statusRef.current !== "idle") {
-            updateStatus("disconnected");
-          }
+          if (statusRef.current === "idle") return;
+
+          const wasConnected = statusRef.current === "connected";
+          updateStatus("disconnected");
           setConnectedAt(null);
+
+          // Auto-reconnect if appropriate
+          if (
+            wasConnected &&
+            autoReconnect &&
+            !manualDisconnectRef.current &&
+            reconnectAttemptRef.current < maxReconnectAttempts
+          ) {
+            const attempt = reconnectAttemptRef.current;
+            const delay = BACKOFF_DELAYS[Math.min(attempt, BACKOFF_DELAYS.length - 1)];
+            reconnectAttemptRef.current = attempt + 1;
+
+            // Show countdown in terminal
+            const delaySec = Math.round(delay / 1000);
+            onOutputRef.current(
+              `\r\n\x1b[33mReconnecting in ${delaySec}s... (attempt ${attempt + 1}/${maxReconnectAttempts})\x1b[0m\r\n`,
+            );
+            updateStatus("reconnecting");
+
+            reconnectTimerRef.current = setTimeout(async () => {
+              if (!active || manualDisconnectRef.current) return;
+              try {
+                await invoke("ssh_connect", {
+                  sessionId,
+                  host,
+                  port,
+                  username,
+                  authType,
+                  password: null,
+                  pemContent: null,
+                  passphrase: null,
+                  cols: 80,
+                  rows: 24,
+                });
+              } catch {
+                // Connection will emit "disconnected" event again, which
+                // will trigger the next backoff attempt automatically.
+                if (active && !manualDisconnectRef.current) {
+                  updateStatus("disconnected");
+                }
+              }
+            }, delay);
+          }
         }
       });
     })();
 
     return () => {
       active = false;
+      cancelReconnect();
       unlistenOutput?.();
       unlistenStatus?.();
       invoke("ssh_disconnect", { sessionId }).catch(() => {});
     };
-  }, [sessionId, updateStatus]);
+  }, [sessionId, updateStatus, autoReconnect, maxReconnectAttempts, host, port, username, authType, cancelReconnect]);
 
   const connect = useCallback(
     async (password?: string, pemContent?: string, passphrase?: string) => {
       // Guard: prevent double-connect (e.g. React StrictMode double-effect)
       if (statusRef.current === "connecting" || statusRef.current === "connected") return;
+      manualDisconnectRef.current = false;
+      cancelReconnect();
+      reconnectAttemptRef.current = 0;
       updateStatus("connecting");
       try {
         await invoke("ssh_connect", {
@@ -99,7 +169,7 @@ export function useSshSession({
         throw err;
       }
     },
-    [sessionId, host, port, username, authType, updateStatus],
+    [sessionId, host, port, username, authType, updateStatus, cancelReconnect],
   );
 
   // Stable write — depends only on sessionId; reads status via statusRef so
@@ -127,6 +197,8 @@ export function useSshSession({
   );
 
   const disconnect = useCallback(async () => {
+    manualDisconnectRef.current = true;
+    cancelReconnect();
     try {
       await invoke("ssh_disconnect", { sessionId });
     } catch {
@@ -134,7 +206,7 @@ export function useSshSession({
     }
     updateStatus("disconnected");
     setConnectedAt(null);
-  }, [sessionId, updateStatus]);
+  }, [sessionId, updateStatus, cancelReconnect]);
 
   return {
     sessionId,

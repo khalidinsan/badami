@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useCallback, useRef, useState } from "react";
-import { Globe, History, Send } from "lucide-react";
+import { Globe, History, Send, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ApiSidebar } from "@/components/api/ApiSidebar";
 import { RequestBuilder } from "@/components/api/RequestBuilder";
@@ -114,6 +114,7 @@ function ApiPage() {
 
   const MIN_W = 224; // w-56
   const MAX_W = 480;
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(MIN_W);
   const dragging = useRef(false);
   const startX = useRef(0);
@@ -137,7 +138,7 @@ function ApiPage() {
   return (
     <div className="flex h-full">
       {/* Collection sidebar */}
-      <div className="glass-page-sidebar relative shrink-0" style={{ width: sidebarWidth }}>
+      <div className="glass-page-sidebar relative shrink-0 overflow-hidden transition-[width] duration-200" style={{ width: sidebarOpen ? sidebarWidth : 0 }}>
         <ApiSidebar
           collections={collections}
           folders={folders}
@@ -160,6 +161,13 @@ function ApiPage() {
         {/* Header — sits above content only */}
         <div className="flex shrink-0 items-center justify-between border-b border-border/50 bg-background/80 px-6 py-3 backdrop-blur-sm">
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSidebarOpen((o) => !o)}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            >
+              <PanelLeft className="h-4 w-4" />
+            </button>
             <Globe className="h-5 w-5 text-[#007AFF]" />
             <h1 className="text-xl font-bold tracking-tight">API</h1>
           </div>

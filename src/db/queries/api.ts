@@ -67,7 +67,7 @@ export async function createCollection(data: {
 
 export async function updateCollection(
   id: string,
-  data: { name?: string; description?: string | null; sort_order?: number },
+  data: { name?: string; description?: string | null; sort_order?: number; project_id?: string | null },
 ): Promise<void> {
   await db
     .updateTable("api_collections")

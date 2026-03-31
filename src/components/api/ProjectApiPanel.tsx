@@ -90,6 +90,29 @@ export function ProjectApiPanel({ projectId }: ProjectApiPanelProps) {
   const [importing, setImporting] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
 
+  // Resizable sidebar — must be declared before any early returns
+  const PROJ_MIN_W = 208;
+  const PROJ_MAX_W = 480;
+  const [sidebarWidth, setSidebarWidth] = useState(PROJ_MIN_W);
+  const dragging = useRef(false);
+  const startX = useRef(0);
+  const startW = useRef(0);
+
+  const onDragStart = useCallback((e: React.PointerEvent) => {
+    dragging.current = true;
+    startX.current = e.clientX;
+    startW.current = sidebarWidth;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, [sidebarWidth]);
+
+  const onDragMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    const next = Math.min(PROJ_MAX_W, Math.max(PROJ_MIN_W, startW.current + e.clientX - startX.current));
+    setSidebarWidth(next);
+  }, []);
+
+  const onDragEnd = useCallback(() => { dragging.current = false; }, []);
+
   const doImport = useCallback(
     async (file: File) => {
       if (!file.name.endsWith(".json")) {
@@ -201,28 +224,6 @@ export function ProjectApiPanel({ projectId }: ProjectApiPanelProps) {
       </>
     );
   }
-
-  const PROJ_MIN_W = 208; // w-52
-  const PROJ_MAX_W = 480;
-  const [sidebarWidth, setSidebarWidth] = useState(PROJ_MIN_W);
-  const dragging = useRef(false);
-  const startX = useRef(0);
-  const startW = useRef(0);
-
-  const onDragStart = useCallback((e: React.PointerEvent) => {
-    dragging.current = true;
-    startX.current = e.clientX;
-    startW.current = sidebarWidth;
-    e.currentTarget.setPointerCapture(e.pointerId);
-  }, [sidebarWidth]);
-
-  const onDragMove = useCallback((e: React.PointerEvent) => {
-    if (!dragging.current) return;
-    const next = Math.min(PROJ_MAX_W, Math.max(PROJ_MIN_W, startW.current + e.clientX - startX.current));
-    setSidebarWidth(next);
-  }, []);
-
-  const onDragEnd = useCallback(() => { dragging.current = false; }, []);
 
   return (
     <>

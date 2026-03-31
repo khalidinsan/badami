@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "badami",
-  "version": "1.7.0",
+  "version": "1.8.1",
   "identifier": "com.khalid.badami",
   "build": {
     "beforeDevCommand": "npm run dev",

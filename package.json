@@ -1,7 +1,7 @@
 {
   "name": "badami",
   "private": true,
-  "version": "1.7.0",
+  "version": "1.8.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,6 +31,7 @@
     "@fullcalendar/react": "^6.1.20",
     "@fullcalendar/timegrid": "^6.1.20",
     "@mantine/core": "^8.3.18",
+    "@monaco-editor/react": "^4.7.0",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-router": "^1.168.3",
     "@tanstack/router-plugin": "^1.167.4",

@@ -303,6 +303,50 @@ function SettingsPage() {
               }
             />
           </div>
+          {getSetting("ssh_auto_reconnect", "false") === "true" && (
+            <>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="ssh-max-attempts" className="text-sm">
+                    Max reconnect attempts
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Stop trying after this many failures
+                  </p>
+                </div>
+                <Input
+                  id="ssh-max-attempts"
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={getSetting("ssh_auto_reconnect_max_attempts", "5")}
+                  onChange={(e) => setSetting("ssh_auto_reconnect_max_attempts", e.target.value)}
+                  className="w-20 text-center"
+                />
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="ssh-keepalive" className="text-sm">
+                    Keepalive interval (seconds)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Send keepalive packet to prevent idle timeout
+                  </p>
+                </div>
+                <Input
+                  id="ssh-keepalive"
+                  type="number"
+                  min={5}
+                  max={300}
+                  value={getSetting("ssh_keepalive_interval", "30")}
+                  onChange={(e) => setSetting("ssh_keepalive_interval", e.target.value)}
+                  className="w-20 text-center"
+                />
+              </div>
+            </>
+          )}
         </div>
       </section>
 

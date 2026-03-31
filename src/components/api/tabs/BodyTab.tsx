@@ -68,8 +68,7 @@ export function BodyTab({
           value={bodyContent}
           onChange={onContentChange}
           language="json"
-          placeholder='{\n  "key": "value"\n}'
-          minHeight="160px"
+          height="160px"
         />
       )}
 
@@ -78,8 +77,7 @@ export function BodyTab({
           value={bodyContent}
           onChange={onContentChange}
           language="text"
-          placeholder="Enter raw body..."
-          minHeight="160px"
+          height="160px"
         />
       )}
 

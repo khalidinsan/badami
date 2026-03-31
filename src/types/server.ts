@@ -1,6 +1,6 @@
 export type ServerProtocol = "ssh" | "ftp" | "ftps";
 export type ServerEnvironment = "production" | "staging" | "development" | "other";
-export type AuthType = "password" | "pem_file" | "pem_saved" | "pem_passphrase";
+export type AuthType = "password" | "pem_file" | "pem_saved" | "pem_passphrase" | "credential";
 
 export interface ServerCredential {
   id: string;
@@ -15,6 +15,7 @@ export interface ServerCredential {
   auth_type: AuthType;
   pem_key_id: string | null;
   pem_file_path: string | null;
+  credential_id: string | null;
   initial_directory: string;
   notes_content: string | null;
   last_connected_at: string | null;
@@ -85,3 +86,16 @@ export const DEFAULT_PORTS: Record<ServerProtocol, number> = {
   ftp: 21,
   ftps: 21,
 };
+
+export interface SavedCommand {
+  id: string;
+  server_id: string | null;
+  project_id: string | null;
+  name: string;
+  command: string;
+  description: string | null;
+  tags: string[];
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}

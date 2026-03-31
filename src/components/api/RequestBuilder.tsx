@@ -31,6 +31,7 @@ export function RequestBuilder({ request }: RequestBuilderProps) {
     responseTab,
     setResponseTab,
     updateRequest,
+    setResponse,
   } = useApiStore();
   const { response, sending, sendRequest, cancel } = useApiRequest();
   const { environments, activeEnvironment, setActive, reload: reloadEnvs, getVariables } =
@@ -59,8 +60,9 @@ export function RequestBuilder({ request }: RequestBuilderProps) {
     request.auth_config ? JSON.parse(request.auth_config) : null,
   );
 
-  // Sync local state when request changes
+  // Sync local state when request changes — also clear stale response
   useEffect(() => {
+    setResponse(null);
     setMethod(request.method as HttpMethod);
     setUrl(request.url);
     setHeaders(
@@ -365,7 +367,7 @@ export function RequestBuilder({ request }: RequestBuilderProps) {
       </div>
 
       {/* Response section */}
-      <div className="min-h-0 flex-1 overflow-auto border-t border-white/10">
+      <div className="min-h-0 flex-1 overflow-hidden flex flex-col border-t border-white/10">
         <ResponsePanel
           response={response}
           sending={sending}

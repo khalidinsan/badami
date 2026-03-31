@@ -8,6 +8,7 @@ import {
   Download,
   Eye,
   Code,
+  FileCode2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +26,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
+import { isTextFile } from "@/lib/editorLanguage";
 import type { FileEntry } from "@/types/server";
 
 interface FileEntryRowProps {
@@ -37,6 +39,7 @@ interface FileEntryRowProps {
   onDownload: (entry: FileEntry) => void;
   onPreview?: (entry: FileEntry) => void;
   onOpenInEditor?: (entry: FileEntry) => void;
+  onEditFile?: (entry: FileEntry) => void;
 }
 
 const FILE_ICON_COLORS: Record<string, string> = {
@@ -76,6 +79,7 @@ export function FileEntryRow({
   onDownload,
   onPreview,
   onOpenInEditor,
+  onEditFile,
 }: FileEntryRowProps) {
   const isDir = entry.kind === "directory";
   const isSymlink = entry.kind === "symlink";
@@ -95,13 +99,19 @@ export function FileEntryRow({
           Download
         </ContextMenuItem>
       )}
+      {!isDir && onEditFile && isTextFile(entry.name) && (
+        <ContextMenuItem onClick={() => onEditFile(entry)}>
+          <FileCode2 className="mr-2 h-3.5 w-3.5" />
+          Edit
+        </ContextMenuItem>
+      )}
       {!isDir && onOpenInEditor && (
         <ContextMenuItem onClick={() => onOpenInEditor(entry)}>
           <Code className="mr-2 h-3.5 w-3.5" />
           Open in Code Editor
         </ContextMenuItem>
       )}
-      {(!isDir && (onPreview || onOpenInEditor)) && <ContextMenuSeparator />}
+      {(!isDir && (onPreview || onOpenInEditor || onEditFile)) && <ContextMenuSeparator />}
       <ContextMenuItem onClick={() => onRename(entry)}>
         <Pencil className="mr-2 h-3.5 w-3.5" />
         Rename
@@ -193,6 +203,12 @@ export function FileEntryRow({
                 <DropdownMenuItem onClick={() => onOpenInEditor(entry)}>
                   <Code className="mr-2 h-3.5 w-3.5" />
                   Open in Code Editor
+                </DropdownMenuItem>
+              )}
+              {!isDir && onEditFile && isTextFile(entry.name) && (
+                <DropdownMenuItem onClick={() => onEditFile(entry)}>
+                  <FileCode2 className="mr-2 h-3.5 w-3.5" />
+                  Edit
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => onRename(entry)}>

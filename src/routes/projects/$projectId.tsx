@@ -26,6 +26,7 @@ import {
   AlertCircle,
   Minus,
   CheckSquare2,
+  PanelLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -307,6 +308,8 @@ function ProjectLayout() {
     );
   }, [pages, searchQuery]);
 
+  const [pageSidebarOpen, setPageSidebarOpen] = useState(true);
+
   // Resizable page sidebar — hooks must be before any early returns
   const PAGE_SIDEBAR_MIN = 224; // w-56
   const PAGE_SIDEBAR_MAX = 480;
@@ -362,8 +365,8 @@ function ProjectLayout() {
     <div className="flex">
       {/* Page Sidebar */}
       <div
-        className="glass-page-sidebar relative sticky top-0 flex h-screen shrink-0 flex-col"
-        style={{ width: pageSidebarWidth }}
+        className="glass-page-sidebar relative sticky top-0 flex h-screen shrink-0 flex-col overflow-hidden transition-[width] duration-200"
+        style={{ width: pageSidebarOpen ? pageSidebarWidth : 0 }}
       >
         <div className="p-3">
           <Button
@@ -527,8 +530,17 @@ function ProjectLayout() {
       {/* Main Content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Persistent header: project title + Content/Tasks tab switcher */}
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border/50 bg-background/80 px-8 py-3 backdrop-blur-sm">
-          <h1 className="text-xl font-bold tracking-tight">{project.name}</h1>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border/50 bg-background/80 px-4 py-3 backdrop-blur-sm">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPageSidebarOpen((o) => !o)}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title={pageSidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            >
+              <PanelLeft className="h-4 w-4" />
+            </button>
+            <h1 className="text-xl font-bold tracking-tight">{project.name}</h1>
+          </div>
           <div className="flex items-center gap-0.5 rounded-lg border border-border/60 bg-muted/40 p-0.5">
             <button
               onClick={() => setActiveTab("content")}

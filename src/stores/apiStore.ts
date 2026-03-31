@@ -55,6 +55,7 @@ interface ApiState {
   ) => Promise<void>;
   deleteCollection: (id: string) => Promise<void>;
   duplicateCollection: (id: string) => Promise<ApiCollectionRow>;
+  assignCollectionToProject: (id: string, projectId: string | null) => Promise<void>;
 
   createFolder: (data: {
     collection_id: string;
@@ -241,6 +242,21 @@ export const useApiStore = create<ApiState>((set, get) => ({
       console.error(err);
       toast.error("Failed to duplicate collection");
       throw err;
+    }
+  },
+
+  assignCollectionToProject: async (id, projectId) => {
+    try {
+      await apiQueries.updateCollection(id, { project_id: projectId });
+      set((state) => ({
+        collections: state.collections.map((c) =>
+          c.id === id ? { ...c, project_id: projectId } : c,
+        ),
+      }));
+      toast.success(projectId ? "Assigned to project" : "Removed from project");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to assign collection");
     }
   },
 

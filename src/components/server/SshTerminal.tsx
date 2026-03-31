@@ -12,6 +12,7 @@ import {
   Search,
   X,
   FolderOpen,
+  BookMarked,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,11 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import type { ServerCredentialRow } from "@/types/db";
 import * as serverQueries from "@/db/queries/servers";
+import * as credentialQueries from "@/db/queries/credentials";
+import { toByteArray } from "@/hooks/useCredentials";
 import { classifyConnectionError } from "@/lib/serverErrors";
+import { useServerStore } from "@/stores/serverStore";
+import { SavedCommandsPanel } from "./SavedCommandsPanel";
 
 interface SshTerminalProps {
   server: ServerCredentialRow;
@@ -43,6 +48,8 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [elapsedStr, setElapsedStr] = useState("");
+  const [commandsPanelOpen, setCommandsPanelOpen] = useState(false);
+  const { touchServerConnected } = useServerStore();
 
   // Tracks which server.id we have already initiated a connection for.
   // React StrictMode in dev fires effects twice for the same props; the ref
@@ -72,6 +79,8 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
     authType: server.auth_type,
     onOutput: handleOutput,
     onStatusChange,
+    autoReconnect: getSetting("ssh_auto_reconnect", "false") === "true",
+    maxReconnectAttempts: Number(getSetting("ssh_auto_reconnect_max_attempts", "5")) || 5,
   });
 
   // Initialize xterm
@@ -87,6 +96,7 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
       theme,
       scrollback: 10000,
       allowProposedApi: true,
+      convertEol: true,
     });
 
     const fitAddon = new FitAddon();
@@ -104,9 +114,10 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
 
-    // Forward user input to SSH
+    // Forward user input to SSH (normalize line endings for multiline paste)
     const inputDisposable = term.onData((data) => {
-      write(data);
+      const normalized = data.replace(/(?<!\r)\n/g, "\r");
+      write(normalized);
     });
 
     // Handle resize
@@ -130,6 +141,83 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
     };
   }, [fontSize, fontFamily, themeName]);
 
+  // Reusable connect logic — extracted so reconnect button can call it.
+  const doConnect = useCallback(async () => {
+    try {
+      let password: string | undefined;
+      let pemContent: string | undefined;
+      let passphrase: string | undefined;
+
+      if (server.auth_type === "password") {
+        try {
+          password = await invoke<string>("get_server_password", {
+            serverId: server.id,
+          });
+        } catch {
+          xtermRef.current?.write(
+            "\r\n\x1b[31mNo password found in keychain. Please edit the server and save a password.\x1b[0m\r\n",
+          );
+          return;
+        }
+      } else if (server.auth_type === "pem_file" && server.pem_file_path) {
+        const { readTextFile } = await import("@tauri-apps/plugin-fs");
+        pemContent = await readTextFile(server.pem_file_path);
+      } else if (server.auth_type === "pem_saved" && server.pem_key_id) {
+        const pemKey = await serverQueries.getPemKeyById(server.pem_key_id);
+        if (pemKey) {
+          pemContent = await invoke<string>("decrypt_pem_key", {
+            encryptedData: pemKey.encrypted_data,
+            iv: pemKey.iv,
+          });
+        }
+      } else if (server.auth_type === "pem_passphrase" && server.pem_file_path) {
+        const { readTextFile } = await import("@tauri-apps/plugin-fs");
+        pemContent = await readTextFile(server.pem_file_path);
+        try {
+          passphrase = await invoke<string>("get_server_passphrase", {
+            serverId: server.id,
+          });
+        } catch {
+          // passphrase might not be saved
+        }
+      } else if (server.auth_type === "credential" && server.credential_id) {
+        const fields = await credentialQueries.getFieldsByCredential(server.credential_id);
+        const passwordField = fields.find((f) => f.field_key === "password");
+        if (passwordField?.encrypted_value && passwordField?.iv) {
+          password = await invoke<string>("credential_decrypt_field", {
+            encryptedValue: toByteArray(passwordField.encrypted_value),
+            iv: toByteArray(passwordField.iv),
+          });
+        } else {
+          xtermRef.current?.write(
+            "\r\n\x1b[31mNo password field found in the linked credential.\x1b[0m\r\n",
+          );
+          return;
+        }
+      }
+
+      xtermRef.current?.write(
+        `\x1b[33mConnecting to ${server.host}:${server.port}...\x1b[0m\r\n`,
+      );
+      await connect(password, pemContent, passphrase);
+
+      // Auto-cd if initialCdPath was requested
+      if (initialCdPath) {
+        setTimeout(() => {
+          write(`cd ${initialCdPath}\n`);
+        }, 300);
+      }
+
+      // Update last_connected_at (optimistic, no full reload)
+      touchServerConnected(server.id);
+    } catch (err) {
+      const { title, detail } = classifyConnectionError(err);
+      xtermRef.current?.write(
+        `\r\n\x1b[31m${title}: ${detail}\x1b[0m\r\n`,
+      );
+    }
+  }, [server, connect, write, initialCdPath, touchServerConnected]);
+
   // Auto-connect on mount
   useEffect(() => {
     // Skip if we already initiated a connection for this server.
@@ -139,68 +227,6 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
 
     // Clear terminal output when switching to a different server.
     xtermRef.current?.clear();
-
-    const doConnect = async () => {
-      try {
-        let password: string | undefined;
-        let pemContent: string | undefined;
-        let passphrase: string | undefined;
-
-        if (server.auth_type === "password") {
-          try {
-            password = await invoke<string>("get_server_password", {
-              serverId: server.id,
-            });
-          } catch {
-            xtermRef.current?.write(
-              "\r\n\x1b[31mNo password found in keychain. Please edit the server and save a password.\x1b[0m\r\n",
-            );
-            return;
-          }
-        } else if (server.auth_type === "pem_file" && server.pem_file_path) {
-          const { readTextFile } = await import("@tauri-apps/plugin-fs");
-          pemContent = await readTextFile(server.pem_file_path);
-        } else if (server.auth_type === "pem_saved" && server.pem_key_id) {
-          const pemKey = await serverQueries.getPemKeyById(server.pem_key_id);
-          if (pemKey) {
-            pemContent = await invoke<string>("decrypt_pem_key", {
-              encryptedData: pemKey.encrypted_data,
-              iv: pemKey.iv,
-            });
-          }
-        } else if (server.auth_type === "pem_passphrase" && server.pem_file_path) {
-          const { readTextFile } = await import("@tauri-apps/plugin-fs");
-          pemContent = await readTextFile(server.pem_file_path);
-          try {
-            passphrase = await invoke<string>("get_server_passphrase", {
-              serverId: server.id,
-            });
-          } catch {
-            // passphrase might not be saved
-          }
-        }
-
-        xtermRef.current?.write(
-          `\x1b[33mConnecting to ${server.host}:${server.port}...\x1b[0m\r\n`,
-        );
-        await connect(password, pemContent, passphrase);
-
-        // Auto-cd if initialCdPath was requested
-        if (initialCdPath) {
-          setTimeout(() => {
-            write(`cd ${initialCdPath}\n`);
-          }, 300);
-        }
-
-        // Update last_connected_at
-        serverQueries.touchServerConnected(server.id);
-      } catch (err) {
-        const { title, detail } = classifyConnectionError(err);
-        xtermRef.current?.write(
-          `\r\n\x1b[31m${title}: ${detail}\x1b[0m\r\n`,
-        );
-      }
-    };
     doConnect();
 
     return () => {
@@ -251,13 +277,13 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
               "flex items-center gap-1.5 text-[11px] font-medium",
               status === "connected"
                 ? "text-green-500"
-                : status === "connecting"
+                : status === "connecting" || status === "reconnecting"
                   ? "text-yellow-500"
                   : "text-muted-foreground/50",
             )}
           >
             {status === "connected" && <Wifi className="h-3 w-3" />}
-            {status === "connecting" && <Loader2 className="h-3 w-3 animate-spin" />}
+            {(status === "connecting" || status === "reconnecting") && <Loader2 className="h-3 w-3 animate-spin" />}
             {(status === "disconnected" || status === "idle") && (
               <WifiOff className="h-3 w-3" />
             )}
@@ -289,6 +315,15 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
             variant="ghost"
             size="icon"
             className="h-6 w-6"
+            onClick={() => setCommandsPanelOpen(!commandsPanelOpen)}
+            title="Saved Commands"
+          >
+            <BookMarked className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
             onClick={() => setSearchOpen(!searchOpen)}
           >
             <Search className="h-3 w-3" />
@@ -299,9 +334,8 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
               size="sm"
               className="h-6 gap-1 px-2 text-[11px]"
               onClick={() => {
-                xtermRef.current?.clear();
-                // Re-trigger connect by remounting — simplest approach
-                window.location.reload();
+                connectedForRef.current = "";
+                doConnect();
               }}
             >
               Reconnect
@@ -344,8 +378,18 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
         </div>
       )}
 
-      {/* Terminal */}
-      <div ref={termRef} className="flex-1 overflow-hidden" />
+      {/* Terminal + Commands panel */}
+      <div className="flex flex-1 overflow-hidden">
+        <div ref={termRef} className="flex-1 overflow-hidden" />
+        {commandsPanelOpen && (
+          <SavedCommandsPanel
+            serverId={server.id}
+            projectId={server.project_id}
+            onRunCommand={(cmd) => write(cmd)}
+            onClose={() => setCommandsPanelOpen(false)}
+          />
+        )}
+      </div>
     </div>
   );
 }

@@ -2,6 +2,8 @@ import { ResponseViewer } from "../ResponseViewer";
 import type { SendRequestResponse } from "@/types/api";
 import { getStatusColor, formatBytes } from "@/types/api";
 import { cn } from "@/lib/utils";
+import { Copy, Download } from "lucide-react";
+import { toast } from "sonner";
 
 interface ResponsePanelProps {
   response: SendRequestResponse | null;
@@ -18,7 +20,7 @@ export function ResponsePanel({
 }: ResponsePanelProps) {
   if (sending) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
+      <div className="flex h-full flex-col items-center justify-center">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#007AFF] border-t-transparent" />
         <p className="mt-3 text-sm text-muted-foreground">Sending request...</p>
       </div>
@@ -27,7 +29,7 @@ export function ResponsePanel({
 
   if (!response) {
     return (
-      <div className="py-12 text-center text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         Hit Send to get a response
       </div>
     );
@@ -37,10 +39,46 @@ export function ResponsePanel({
   const statusColor = isError ? "#ef4444" : getStatusColor(response.status);
   const tabs = ["body", "headers", "cookies"] as const;
 
+  // Compute formatted body for copy/save actions
+  const getFormattedBody = () => {
+    try {
+      return JSON.stringify(JSON.parse(response.body), null, 2);
+    } catch {
+      return response.body;
+    }
+  };
+
+  const getFileInfo = () => {
+    try {
+      JSON.parse(response.body);
+      return { ext: "json", mime: "application/json" };
+    } catch {
+      if (response.body.trim().startsWith("<"))
+        return { ext: "xml", mime: "application/xml" };
+    }
+    return { ext: "txt", mime: "text/plain" };
+  };
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(getFormattedBody());
+    toast.success("Copied to clipboard");
+  };
+
+  const handleSave = () => {
+    const { ext, mime } = getFileInfo();
+    const blob = new Blob([getFormattedBody()], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `response.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div className="flex flex-col">
+    <div className="flex h-full flex-col">
       {/* Status bar */}
-      <div className="flex items-center gap-3 border-b border-white/10 px-3 py-2">
+      <div className="flex shrink-0 items-center gap-3 border-b border-white/10 px-3 py-2">
         <span
           className="rounded px-2 py-0.5 text-xs font-bold text-white"
           style={{ backgroundColor: statusColor }}
@@ -61,8 +99,23 @@ export function ResponsePanel({
           </>
         )}
 
-        {/* Tabs */}
-        <div className="ml-auto flex gap-1">
+        {/* Action buttons + Tabs */}
+        <div className="ml-auto flex items-center gap-0.5">
+          <button
+            onClick={handleCopy}
+            title="Copy response body"
+            className="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Copy className="h-3 w-3" />
+          </button>
+          <button
+            onClick={handleSave}
+            title="Save response as file"
+            className="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Download className="h-3 w-3" />
+          </button>
+          <div className="mx-1 h-3 w-px bg-white/10" />
           {tabs.map((tab) => (
             <button
               key={tab}
@@ -81,11 +134,9 @@ export function ResponsePanel({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 min-h-0 overflow-auto">
         {activeTab === "body" && (
-          <div className="p-2">
-            <ResponseViewer body={response.body} />
-          </div>
+          <ResponseViewer body={response.body} />
         )}
 
         {activeTab === "headers" && (

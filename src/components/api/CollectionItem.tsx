@@ -19,7 +19,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Pencil, Copy, Trash2, Variable } from "lucide-react";
+import { Pencil, Copy, Trash2, Variable, FolderSymlink } from "lucide-react";
 
 interface CollectionItemProps {
   collection: ApiCollectionRow;
@@ -39,6 +39,7 @@ interface CollectionItemProps {
   onDuplicateRequest: (id: string) => void;
   onExportCollection: () => void;
   onEditCollectionVariables: () => void;
+  onAssignProject?: () => void;
   onMoveRequest?: (requestId: string, folderId: string | null) => void;
 }
 
@@ -60,6 +61,7 @@ export function CollectionItem({
   onDuplicateRequest,
   onExportCollection,
   onEditCollectionVariables,
+  onAssignProject,
   onMoveRequest,
 }: CollectionItemProps) {
   const [expanded, setExpanded] = useState(true);
@@ -140,6 +142,14 @@ export function CollectionItem({
           >
             <Variable className="h-3 w-3" /> Collection Variables
           </ContextMenuItem>
+          {onAssignProject && (
+            <ContextMenuItem
+              onClick={onAssignProject}
+              className="gap-2 text-xs"
+            >
+              <FolderSymlink className="h-3 w-3" /> Assign to Project
+            </ContextMenuItem>
+          )}
           <ContextMenuSeparator />
           <ContextMenuItem
             onClick={onDeleteCollection}

@@ -48,6 +48,7 @@ export async function createServer(data: {
   auth_type: string;
   pem_key_id?: string | null;
   pem_file_path?: string | null;
+  credential_id?: string | null;
   initial_directory?: string;
   notes_content?: string | null;
 }): Promise<ServerCredentialRow> {
@@ -86,6 +87,7 @@ export async function createServer(data: {
       auth_type: data.auth_type,
       pem_key_id: data.pem_key_id ?? null,
       pem_file_path: data.pem_file_path ?? null,
+      credential_id: data.credential_id ?? null,
       initial_directory: data.initial_directory ?? "/",
       notes_content: data.notes_content ?? null,
       sort_order: sortOrder,
@@ -111,6 +113,7 @@ export async function updateServer(
     auth_type?: string;
     pem_key_id?: string | null;
     pem_file_path?: string | null;
+    credential_id?: string | null;
     initial_directory?: string;
     notes_content?: string | null;
     last_connected_at?: string | null;

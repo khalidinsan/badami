@@ -25,8 +25,21 @@ CREATE TABLE IF NOT EXISTS server_credentials_new (
   FOREIGN KEY (pem_key_id) REFERENCES pem_keys(id) ON DELETE SET NULL
 );
 
--- Step 2: Copy existing data
-INSERT INTO server_credentials_new SELECT * FROM server_credentials;
+-- Step 2: Copy existing data using explicit column list.
+-- SELECT * is intentionally avoided: after migration 016 added credential_id,
+-- SELECT * would produce 21 values for a 20-column table, failing silently
+-- and leaving server_credentials_new empty — then DROP TABLE below would wipe
+-- all data.  With an explicit list, extra columns in the source are ignored.
+INSERT OR IGNORE INTO server_credentials_new (
+  id, project_id, name, environment, color, protocol, host, port, username,
+  auth_type, pem_key_id, pem_file_path, initial_directory, notes_content,
+  last_connected_at, sort_order, created_at, updated_at
+)
+SELECT
+  id, project_id, name, environment, color, protocol, host, port, username,
+  auth_type, pem_key_id, pem_file_path, initial_directory, notes_content,
+  last_connected_at, sort_order, created_at, updated_at
+FROM server_credentials;
 
 -- Step 3: Drop old table
 DROP TABLE server_credentials;

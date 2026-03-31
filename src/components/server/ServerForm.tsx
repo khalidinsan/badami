@@ -32,7 +32,8 @@ import {
 } from "@/types/server";
 import { useServerStore } from "@/stores/serverStore";
 import * as projectQueries from "@/db/queries/projects";
-import type { ProjectRow } from "@/types/db";
+import * as credentialQueries from "@/db/queries/credentials";
+import type { ProjectRow, CredentialRow } from "@/types/db";
 
 const COLORS = [
   "#ef4444", "#f97316", "#f59e0b", "#22c55e",
@@ -70,6 +71,8 @@ export function ServerForm({
   const [saving, setSaving] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(projectId ?? null);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [credentialId, setCredentialId] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState<CredentialRow[]>([]);
 
   // For test connection with PEM content
   const [pemContentForTest, setPemContentForTest] = useState("");
@@ -94,6 +97,7 @@ export function ServerForm({
         setPemFilePath(server.pem_file_path ?? "");
         setInitialDirectory(server.initial_directory ?? "/");
         setSelectedProjectId(server.project_id ?? null);
+        setCredentialId(server.credential_id ?? null);
         setPassword("");
         setPassphrase("");
         setPemContentForTest("");
@@ -112,10 +116,20 @@ export function ServerForm({
         setPassphrase("");
         setInitialDirectory("/");
         setSelectedProjectId(projectId ?? null);
+        setCredentialId(null);
         setPemContentForTest("");
       }
     }
   }, [isOpen, server]);
+
+  // Load credentials when auth type = credential
+  useEffect(() => {
+    if (isOpen && authType === "credential") {
+      credentialQueries.getAllCredentials().then((all) => {
+        setCredentials(all.filter((c) => c.type === "server_access"));
+      }).catch(() => {});
+    }
+  }, [isOpen, authType]);
 
   const handleProtocolChange = (p: ServerProtocol) => {
     setProtocol(p);
@@ -160,6 +174,7 @@ export function ServerForm({
           auth_type: authType,
           pem_key_id: authType === "pem_saved" ? pemKeyId : null,
           pem_file_path: authType === "pem_file" || authType === "pem_passphrase" ? pemFilePath : null,
+          credential_id: authType === "credential" ? credentialId : null,
           initial_directory: initialDirectory.trim() || "/",
         });
         // Update password/passphrase in keychain if provided
@@ -184,6 +199,7 @@ export function ServerForm({
           auth_type: authType,
           pem_key_id: authType === "pem_saved" ? pemKeyId : null,
           pem_file_path: authType === "pem_file" || authType === "pem_passphrase" ? pemFilePath : null,
+          credential_id: authType === "credential" ? credentialId : null,
           initial_directory: initialDirectory.trim() || "/",
         });
         // Save password to keychain
@@ -340,6 +356,7 @@ export function ServerForm({
                     <SelectItem value="pem_file">PEM Key File</SelectItem>
                     <SelectItem value="pem_saved">Saved PEM Key</SelectItem>
                     <SelectItem value="pem_passphrase">PEM Key + Passphrase</SelectItem>
+                    <SelectItem value="credential">From Credential Manager</SelectItem>
                   </>
                 )}
               </SelectContent>
@@ -412,6 +429,33 @@ export function ServerForm({
                 onChange={(e) => setPassphrase(e.target.value)}
                 placeholder="Enter passphrase for the PEM key"
               />
+            </div>
+          )}
+
+          {authType === "credential" && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Credential (Server Access)</Label>
+              <Select
+                value={credentialId ?? "__none__"}
+                onValueChange={(v) => setCredentialId(v === "__none__" ? null : v)}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Select credential..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Select credential...</SelectItem>
+                  {credentials.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}{c.service_name ? ` — ${c.service_name}` : ""}
+                    </SelectItem>
+                  ))}
+                  {credentials.length === 0 && (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                      No server_access credentials found. Create one in Credential Manager first.
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           )}
 

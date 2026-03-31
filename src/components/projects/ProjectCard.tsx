@@ -1,6 +1,5 @@
 import type { ProjectRow, ProjectCategoryRow } from "@/types/db";
 import { cn } from "@/lib/utils";
-import { formatDate } from "@/lib/dateUtils";
 import { Link } from "@tanstack/react-router";
 import {
   Folder,
@@ -109,9 +108,6 @@ export function ProjectCard({ project, categories }: ProjectCardProps) {
                   <span className="text-[10px] text-muted-foreground/30">·</span>
                 </>
               )}
-              <span className="text-[10px] text-muted-foreground/50">
-                {formatDate(project.created_at)}
-              </span>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5 pt-0.5">

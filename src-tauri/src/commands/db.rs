@@ -184,6 +184,66 @@ async fn migrate_tables(src: &Connection, dst: &Connection) {
     }
 }
 
+// ── Migration tracking ─────────────────────────────────────────────
+//
+// Runs only the migrations that haven't been applied yet, tracked via a
+// lightweight `__migrations` table.  This prevents destructive patterns
+// (DROP TABLE + recreate in migration 007) from wiping user data on every
+// app launch — a bug that manifested after migration 016 added a new column
+// to `server_credentials`, causing the SELECT * in migration 007's INSERT to
+// fail silently (column-count mismatch) while the subsequent DROP TABLE still
+// executed, wiping all server records.
+async fn run_pending_migrations(conn: &Connection, migrations: &[String]) {
+    // Ensure tracking table exists
+    let _ = conn
+        .execute(
+            "CREATE TABLE IF NOT EXISTS __migrations \
+             (idx INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)",
+            (),
+        )
+        .await;
+
+    // Collect already-applied migration indices
+    let mut applied = std::collections::HashSet::<usize>::new();
+    if let Ok(mut rows) = conn.query("SELECT idx FROM __migrations", ()).await {
+        while let Ok(Some(row)) = rows.next().await {
+            if let Ok(i) = row.get::<i64>(0) {
+                applied.insert(i as usize);
+            }
+        }
+    }
+
+    for (idx, sql) in migrations.iter().enumerate() {
+        if applied.contains(&idx) {
+            continue;
+        }
+        if idx == 0 {
+            // First migration: full schema batch (CREATE TABLE IF NOT EXISTS everywhere)
+            if conn.execute_batch(sql).await.is_ok() {
+                let _ = conn
+                    .execute(
+                        "INSERT OR IGNORE INTO __migrations (idx, applied_at) \
+                         VALUES (0, datetime('now'))",
+                        (),
+                    )
+                    .await;
+            }
+        } else {
+            // Subsequent migrations: split on ';' and execute each statement individually
+            for stmt in sql.split(';').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                let _ = conn.execute(stmt, ()).await;
+            }
+            let _ = conn
+                .execute(
+                    "INSERT OR IGNORE INTO __migrations (idx, applied_at) \
+                     VALUES (?, datetime('now'))",
+                    vec![Value::Integer(idx as i64)],
+                )
+                .await;
+        }
+    }
+}
+
 // ── Commands ───────────────────────────────────────────────────────
 
 /// Initialize the database.
@@ -298,17 +358,8 @@ pub async fn db_init(
                             Ok(replica_conn) => {
                                 let _ = replica_conn.execute("PRAGMA foreign_keys=ON", ()).await;
 
-                                // Apply any pending migrations to the replica
-                                if let Some(first) = migrations.first() {
-                                    let _ = replica_conn.execute_batch(first).await;
-                                }
-                                for sql in migrations.iter().skip(1) {
-                                    for stmt in
-                                        sql.split(';').map(|s| s.trim()).filter(|s| !s.is_empty())
-                                    {
-                                        let _ = replica_conn.execute(stmt, ()).await;
-                                    }
-                                }
+                                // Apply any pending migrations (only unapplied ones)
+                                run_pending_migrations(&replica_conn, &migrations).await;
 
                                 let replica_db = Arc::new(replica_db);
 
@@ -343,20 +394,7 @@ pub async fn db_init(
                                             // Migrations + second sync while holding lock briefly
                                             let inner = state_clone.lock().await;
                                             if let Some(ref db_inner) = *inner {
-                                                if let Some(first) = migrations_clone.first() {
-                                                    let _ =
-                                                        db_inner.conn.execute_batch(first).await;
-                                                }
-                                                for sql in migrations_clone.iter().skip(1) {
-                                                    for stmt in sql
-                                                        .split(';')
-                                                        .map(|s| s.trim())
-                                                        .filter(|s| !s.is_empty())
-                                                    {
-                                                        let _ =
-                                                            db_inner.conn.execute(stmt, ()).await;
-                                                    }
-                                                }
+                                                run_pending_migrations(&db_inner.conn, &migrations_clone).await;
                                             }
                                             drop(inner);
                                             // Second sync to push any local changes
@@ -463,18 +501,8 @@ pub async fn db_init(
         .await
         .map_err(|e| format!("PRAGMA FK error: {e}"))?;
 
-    // Run migrations (first one is the full schema — must succeed)
-    if let Some(first) = migrations.first() {
-        local_conn
-            .execute_batch(first)
-            .await
-            .map_err(|e| format!("Migration 001 failed: {e}"))?;
-    }
-    for sql in migrations.iter().skip(1) {
-        for stmt in sql.split(';').map(|s| s.trim()).filter(|s| !s.is_empty()) {
-            let _ = local_conn.execute(stmt, ()).await;
-        }
-    }
+    // Run migrations — only unapplied ones (tracked in __migrations table)
+    run_pending_migrations(&local_conn, &migrations).await;
 
     // Set inner to local DB — app is ready now
     {
@@ -529,18 +557,7 @@ pub async fn db_init(
                                 match replica_db.sync().await {
                                     Ok(_) => {
                                         // Ensure schema parity on fresh replica
-                                        if let Some(first) = migrations_clone.first() {
-                                            let _ = replica_conn.execute_batch(first).await;
-                                        }
-                                        for sql in migrations_clone.iter().skip(1) {
-                                            for stmt in sql
-                                                .split(';')
-                                                .map(|s| s.trim())
-                                                .filter(|s| !s.is_empty())
-                                            {
-                                                let _ = replica_conn.execute(stmt, ()).await;
-                                            }
-                                        }
+                                        run_pending_migrations(&replica_conn, &migrations_clone).await;
                                         let _ = replica_db.sync().await;
 
                                         // Upgrade inner to replica

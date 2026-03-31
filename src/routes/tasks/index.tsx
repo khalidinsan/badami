@@ -12,6 +12,7 @@ import {
   ArrowUpDown,
   EyeOff,
   Eye,
+  PanelLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -128,6 +129,7 @@ function TasksPage() {
   }, [setSelectedTaskId, navigate]);
 
   const [newTitle, setNewTitle] = useState("");
+  const [taskSidebarOpen, setTaskSidebarOpen] = useState(true);
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#6b7280");
@@ -271,30 +273,41 @@ function TasksPage() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* Task sidebar */}
-      <TaskSidebar
-        labels={labels}
-        activeFilter={{
-          smart_list: filters.smart_list,
-          project_id: filters.project_id,
-          label_id: filters.label_id,
-        }}
-        onSelectSmartList={handleSidebarSmartList}
-        onSelectProject={handleSidebarProject}
-        onSelectLabel={handleSidebarLabel}
-        isDraggingTask={isDraggingTask}
-        dragHoverProjectId={dragHoverTargetId}
-      />
+      <div className={cn("overflow-hidden transition-[width] duration-200", taskSidebarOpen ? "w-52" : "w-0")}>
+        <TaskSidebar
+          labels={labels}
+          activeFilter={{
+            smart_list: filters.smart_list,
+            project_id: filters.project_id,
+            label_id: filters.label_id,
+          }}
+          onSelectSmartList={handleSidebarSmartList}
+          onSelectProject={handleSidebarProject}
+          onSelectLabel={handleSidebarLabel}
+          isDraggingTask={isDraggingTask}
+          dragHoverProjectId={dragHoverTargetId}
+        />
+      </div>
 
       {/* Main area */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex-1 overflow-auto p-6">
           {/* Header */}
           <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">{activeTitle}</h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {activeCount} active task{activeCount !== 1 ? "s" : ""}
-              </p>
+            <div className="flex items-start gap-3">
+              <button
+                onClick={() => setTaskSidebarOpen((o) => !o)}
+                className="mt-1 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title={taskSidebarOpen ? "Hide sidebar" : "Show sidebar"}
+              >
+                <PanelLeft className="h-4 w-4" />
+              </button>
+              <div>
+                <h1 className="text-2xl font-bold">{activeTitle}</h1>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {activeCount} active task{activeCount !== 1 ? "s" : ""}
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               {/* View toggle */}
