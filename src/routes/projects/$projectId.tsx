@@ -76,6 +76,7 @@ import { PROJECT_ICONS } from "@/components/projects/ProjectCard";
 import { ServerList } from "@/components/server/ServerList";
 import { CredentialList } from "@/components/credentials/CredentialList";
 import { ProjectApiPanel } from "@/components/api/ProjectApiPanel";
+import { ProjectDatabasePanel } from "@/components/database/ProjectDatabasePanel";
 import * as projectQueries from "@/db/queries/projects";
 import * as pageQueries from "@/db/queries/pages";
 import * as taskQueries from "@/db/queries/tasks";
@@ -126,7 +127,7 @@ const PRIORITY_CONFIG: Record<
   none:   { icon: Minus, color: "text-muted-foreground/30" },
 };
 
-type ActiveTab = "content" | "tasks" | "servers" | "credentials" | "api";
+type ActiveTab = "content" | "tasks" | "servers" | "credentials" | "api" | "database";
 type TaskView = "list" | "board" | "calendar";
 
 function ProjectLayout() {
@@ -602,6 +603,17 @@ function ProjectLayout() {
             >
               API
             </button>
+            <button
+              onClick={() => setActiveTab("database")}
+              className={cn(
+                "h-7 rounded-md px-3 text-xs font-medium transition-all",
+                activeTab === "database"
+                  ? "bg-background shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Database
+            </button>
           </div>
         </div>
 
@@ -626,6 +638,12 @@ function ProjectLayout() {
         {activeTab === "api" && (
           <div className="flex flex-1 flex-col overflow-hidden">
             <ProjectApiPanel projectId={projectId} />
+          </div>
+        )}
+
+        {activeTab === "database" && (
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <ProjectDatabasePanel projectId={projectId} />
           </div>
         )}
 

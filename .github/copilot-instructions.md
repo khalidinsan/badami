@@ -4,13 +4,19 @@ applyTo: '**'
 
 # Badami — Copilot Agent Instructions
 
-## Aturan Wajib: Update CHECKLIST.md
+## Aturan Wajib: Update Checklist
 
-Setiap kali kamu selesai mengimplementasikan sebuah fitur, komponen, query, atau task apapun dalam project ini, kamu **WAJIB** mengupdate file `CHECKLIST.md` di root project sebagai bagian dari penyelesaian task tersebut.
+Setiap kali kamu selesai mengimplementasikan sebuah fitur, komponen, query, atau task apapun dalam project ini, kamu **WAJIB** mengupdate file checklist di root project sebagai bagian dari penyelesaian task tersebut.
+
+**File checklist yang digunakan:**
+- `CHECKLIST.md` — Phase 1 sampai Phase 16
+- `CHECKLIST-2.md` — Phase 17 ke atas
+
+Gunakan file yang sesuai dengan phase yang sedang dikerjakan.
 
 ### Kapan Update Checklist
 
-Update `CHECKLIST.md` segera setelah:
+Update checklist segera setelah:
 - Selesai membuat file baru yang merupakan bagian dari sebuah checklist item
 - Selesai mengimplementasikan sebuah fitur end-to-end
 - Selesai memperbaiki bug yang terkait dengan item di checklist
@@ -24,7 +30,7 @@ Update `CHECKLIST.md` segera setelah:
 
 ### Jika Menemukan Sub-task Baru
 
-Jika selama implementasi kamu menemukan sub-task atau item yang belum ada di checklist tapi perlu dikerjakan, **tambahkan item baru** ke phase yang relevan di `CHECKLIST.md` sebelum (atau sesaat setelah) mengerjakannya.
+Jika selama implementasi kamu menemukan sub-task atau item yang belum ada di checklist tapi perlu dikerjakan, **tambahkan item baru** ke phase yang relevan di file checklist yang sesuai sebelum (atau sesaat setelah) mengerjakannya.
 
 ### Format Penambahan Item Baru
 
@@ -144,6 +150,7 @@ src/
 - `plan-server.md` — Spesifikasi lengkap modul Server Management (Phase 9): SSH terminal, SFTP/FTP file manager, PEM key manager, arsitektur Rust backend, skema database baru, dan struktur folder. **Baca file ini sebelum mengimplementasikan fitur apapun di Phase 9.**
 - `plan-credential.md` — Spesifikasi lengkap modul Credential Manager (Phase 10): 9 tipe credential, arsitektur enkripsi AES-256-GCM + Argon2id, vault & master password, TOTP, password generator, skema database, dan struktur folder. **Baca file ini sebelum mengimplementasikan fitur apapun di Phase 10.**
 - `plan-api.md` — Spesifikasi lengkap modul REST API Tool (Phase 11): request builder, collections & folder organizer, environment variables, auth helpers (Bearer/Basic/API Key/OAuth2), integrasi Credential Manager, request history, import/export Postman, arsitektur reqwest Rust backend, skema database baru, dan struktur folder. **Baca file ini sebelum mengimplementasikan fitur apapun di Phase 11.**
+- `plan-db-client.md` — Spesifikasi lengkap modul Database Client (Phase 17): connection manager MySQL/PostgreSQL/SQLite, table viewer, SQL query editor multi-tab, schema manager, ER diagram, export/import, SSH tunnel & SSL/TLS, arsitektur sqlx Rust backend, skema database baru, dan struktur folder. **Baca file ini sebelum mengimplementasikan fitur apapun di Phase 17.**
 
 ### Panduan Implementasi
 - Selalu gunakan TypeScript strict mode

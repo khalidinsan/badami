@@ -96,6 +96,9 @@ pub fn run() {
             commands::credential::save_server_passphrase,
             commands::credential::get_server_passphrase,
             commands::credential::delete_server_passphrase,
+            commands::credential::save_db_password,
+            commands::credential::get_db_password,
+            commands::credential::delete_db_password,
             commands::credential::encrypt_pem_key,
             commands::credential::decrypt_pem_key,
             commands::session_manager::test_server_connection,
@@ -161,13 +164,38 @@ pub fn run() {
             commands::db::turso_list_regions,
             commands::db::turso_create_database,
             commands::db::turso_create_token,
+            // Database Client (Phase 17)
+            commands::db_connection::dbc_connect,
+            commands::db_connection::dbc_disconnect,
+            commands::db_connection::dbc_test_connection,
+            commands::db_connection::dbc_is_connected,
+            commands::db_schema::dbc_list_databases,
+            commands::db_schema::dbc_list_tables,
+            commands::db_schema::dbc_get_table_structure,
+            commands::db_schema::dbc_get_create_statement,
+            commands::db_schema::dbc_execute_ddl,
+            commands::db_schema::dbc_drop_table,
+            commands::db_schema::dbc_get_er_schema,
+            commands::db_data::dbc_query,
+            commands::db_data::dbc_execute,
+            commands::db_data::dbc_update_cell,
+            commands::db_data::dbc_insert_row,
+            commands::db_data::dbc_delete_rows,
+            // Database Client — Transfer (Phase 17.6)
+            commands::db_transfer::dbc_export_csv,
+            commands::db_transfer::dbc_export_json,
+            commands::db_transfer::dbc_export_sql,
+            commands::db_transfer::dbc_import_csv,
+            commands::db_transfer::dbc_import_sql,
+            commands::db_transfer::dbc_preview_csv,
         ])
         .manage(commands::ssh::SshState::new())
         .manage(commands::sftp::SftpState::new())
         .manage(commands::ftp::FtpState::new())
         .manage(commands::vault::VaultState::new())
         .manage(commands::db::DbState::new())
-        .manage(commands::file_watch::FileWatchState::new());
+        .manage(commands::file_watch::FileWatchState::new())
+        .manage(commands::db_connection::DbClientState::new());
 
     #[cfg(debug_assertions)]
     {

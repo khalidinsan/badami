@@ -361,6 +361,40 @@ pub async fn db_init(
                                 // Apply any pending migrations (only unapplied ones)
                                 run_pending_migrations(&replica_conn, &migrations).await;
 
+                                // ── Schema-mismatch guard ──────────────────────────────────
+                                // libsql embedded replica: if a migration's DDL (CREATE TABLE)
+                                // was already in Turso BEFORE this replica file was created,
+                                // the remote-replica no-ops the DDL (table already exists) and
+                                // generates NO new WAL frame.  The local file therefore never
+                                // receives those schema frames.
+                                // Detection: query the max applied __migrations index and verify
+                                // it matches the expected count.  If it doesn't, the replica is
+                                // stale — delete it and fall through to the slow rebuild path.
+                                let expected_max = (migrations.len() - 1) as i64;
+                                let schema_ok = async {
+                                    let mut rows = replica_conn
+                                        .query("SELECT MAX(idx) FROM __migrations", ())
+                                        .await
+                                        .ok()?;
+                                    let row = rows.next().await.ok()??;
+                                    row.get::<i64>(0).ok().filter(|&m| m >= expected_max)
+                                }
+                                .await;
+
+                                if schema_ok.is_none() {
+                                    eprintln!(
+                                        "[db_init] replica schema mismatch (max migration < {}): \
+                                         deleting stale replica for full rebuild",
+                                        expected_max
+                                    );
+                                    drop(replica_conn);
+                                    drop(replica_db);
+                                    let _ = std::fs::remove_file(&sync_db_path);
+                                    let _ = std::fs::remove_file(app_dir.join("badami_sync.db-shm"));
+                                    let _ = std::fs::remove_file(app_dir.join("badami_sync.db-wal"));
+                                    // Fall through to slow-path below
+                                } else {
+
                                 let replica_db = Arc::new(replica_db);
 
                                 // Set inner to replica IMMEDIATELY — app serves from local WAL
@@ -426,6 +460,7 @@ pub async fn db_init(
                                     success: true,
                                     sync_enabled: true,
                                 });
+                                } // end else (schema_ok)
                             }
                             Err(e) => {
                                 eprintln!("[db_init] replica connect failed: {e}");

@@ -18,6 +18,7 @@ import { Route as SettingsIndexRouteImport } from "./routes/settings/index"
 import { Route as ServersIndexRouteImport } from "./routes/servers/index"
 import { Route as ProjectsIndexRouteImport } from "./routes/projects/index"
 import { Route as PlanningIndexRouteImport } from "./routes/planning/index"
+import { Route as DatabaseIndexRouteImport } from "./routes/database/index"
 import { Route as CredentialsIndexRouteImport } from "./routes/credentials/index"
 import { Route as ApiIndexRouteImport } from "./routes/api/index"
 import { Route as AboutIndexRouteImport } from "./routes/about/index"
@@ -70,6 +71,11 @@ const PlanningIndexRoute = PlanningIndexRouteImport.update({
   path: "/planning/",
   getParentRoute: () => rootRouteImport,
 } as any)
+const DatabaseIndexRoute = DatabaseIndexRouteImport.update({
+  id: "/database/",
+  path: "/database/",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CredentialsIndexRoute = CredentialsIndexRouteImport.update({
   id: "/credentials/",
   path: "/credentials/",
@@ -110,6 +116,7 @@ export interface FileRoutesByFullPath {
   "/about/": typeof AboutIndexRoute
   "/api/": typeof ApiIndexRoute
   "/credentials/": typeof CredentialsIndexRoute
+  "/database/": typeof DatabaseIndexRoute
   "/planning/": typeof PlanningIndexRoute
   "/projects/": typeof ProjectsIndexRoute
   "/servers/": typeof ServersIndexRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByTo {
   "/about": typeof AboutIndexRoute
   "/api": typeof ApiIndexRoute
   "/credentials": typeof CredentialsIndexRoute
+  "/database": typeof DatabaseIndexRoute
   "/planning": typeof PlanningIndexRoute
   "/projects": typeof ProjectsIndexRoute
   "/servers": typeof ServersIndexRoute
@@ -144,6 +152,7 @@ export interface FileRoutesById {
   "/about/": typeof AboutIndexRoute
   "/api/": typeof ApiIndexRoute
   "/credentials/": typeof CredentialsIndexRoute
+  "/database/": typeof DatabaseIndexRoute
   "/planning/": typeof PlanningIndexRoute
   "/projects/": typeof ProjectsIndexRoute
   "/servers/": typeof ServersIndexRoute
@@ -163,6 +172,7 @@ export interface FileRouteTypes {
     | "/about/"
     | "/api/"
     | "/credentials/"
+    | "/database/"
     | "/planning/"
     | "/projects/"
     | "/servers/"
@@ -179,6 +189,7 @@ export interface FileRouteTypes {
     | "/about"
     | "/api"
     | "/credentials"
+    | "/database"
     | "/planning"
     | "/projects"
     | "/servers"
@@ -196,6 +207,7 @@ export interface FileRouteTypes {
     | "/about/"
     | "/api/"
     | "/credentials/"
+    | "/database/"
     | "/planning/"
     | "/projects/"
     | "/servers/"
@@ -214,6 +226,7 @@ export interface RootRouteChildren {
   AboutIndexRoute: typeof AboutIndexRoute
   ApiIndexRoute: typeof ApiIndexRoute
   CredentialsIndexRoute: typeof CredentialsIndexRoute
+  DatabaseIndexRoute: typeof DatabaseIndexRoute
   PlanningIndexRoute: typeof PlanningIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
   ServersIndexRoute: typeof ServersIndexRoute
@@ -287,6 +300,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof PlanningIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/database/": {
+      id: "/database/"
+      path: "/database"
+      fullPath: "/database/"
+      preLoaderRoute: typeof DatabaseIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/credentials/": {
       id: "/credentials/"
       path: "/credentials"
@@ -353,6 +373,7 @@ const rootRouteChildren: RootRouteChildren = {
   AboutIndexRoute: AboutIndexRoute,
   ApiIndexRoute: ApiIndexRoute,
   CredentialsIndexRoute: CredentialsIndexRoute,
+  DatabaseIndexRoute: DatabaseIndexRoute,
   PlanningIndexRoute: PlanningIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
   ServersIndexRoute: ServersIndexRoute,

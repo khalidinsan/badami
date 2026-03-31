@@ -27,6 +27,11 @@ export interface Database {
   api_collection_variables: ApiCollectionVariableTable;
   reminders: ReminderTable;
   saved_commands: SavedCommandTable;
+  db_connections: DbConnectionTable;
+  db_saved_queries: DbSavedQueryTable;
+  db_saved_query_folders: DbSavedQueryFolderTable;
+  db_query_history: DbQueryHistoryTable;
+  db_er_layouts: DbErLayoutTable;
 }
 
 export interface ProjectTable {
@@ -388,3 +393,85 @@ export interface SavedCommandTable {
 }
 
 export type SavedCommandRow = Selectable<SavedCommandTable>;
+
+// ─── Database Client (Phase 17) ─────────────────────────────────────
+
+export interface DbConnectionTable {
+  id: string;
+  project_id: ColumnType<string | null, string | null, string | null>;
+  name: string;
+  engine: string;
+  host: ColumnType<string | null, string | null, string | null>;
+  port: ColumnType<number | null, number | null, number | null>;
+  database_name: ColumnType<string | null, string | null, string | null>;
+  username: ColumnType<string | null, string | null, string | null>;
+  credential_id: ColumnType<string | null, string | null, string | null>;
+  credential_field: ColumnType<string | null, string | null, string | null>;
+  use_ssh_tunnel: ColumnType<number, number | undefined, number>;
+  ssh_server_id: ColumnType<string | null, string | null, string | null>;
+  ssh_local_port: ColumnType<number | null, number | null, number | null>;
+  use_ssl: ColumnType<number, number | undefined, number>;
+  ssl_mode: ColumnType<string, string | undefined, string>;
+  ssl_ca_path: ColumnType<string | null, string | null, string | null>;
+  ssl_cert_path: ColumnType<string | null, string | null, string | null>;
+  ssl_key_path: ColumnType<string | null, string | null, string | null>;
+  sqlite_file_path: ColumnType<string | null, string | null, string | null>;
+  color: ColumnType<string, string | undefined, string>;
+  last_connected_at: ColumnType<string | null, string | null, string | null>;
+  sort_order: ColumnType<number, number | undefined, number>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbSavedQueryTable {
+  id: string;
+  connection_id: ColumnType<string | null, string | null, string | null>;
+  folder_id: ColumnType<string | null, string | null, string | null>;
+  name: string;
+  description: ColumnType<string | null, string | null, string | null>;
+  sql_content: string;
+  tags: ColumnType<string | null, string | null, string | null>;
+  sort_order: ColumnType<number, number | undefined, number>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbSavedQueryFolderTable {
+  id: string;
+  name: string;
+  sort_order: ColumnType<number, number | undefined, number>;
+}
+
+export interface DbQueryHistoryTable {
+  id: string;
+  connection_id: ColumnType<string | null, string | null, string | null>;
+  database_name: ColumnType<string | null, string | null, string | null>;
+  sql_content: string;
+  status: string;
+  error_message: ColumnType<string | null, string | null, string | null>;
+  rows_affected: ColumnType<number | null, number | null, number | null>;
+  duration_ms: ColumnType<number | null, number | null, number | null>;
+  executed_at: string;
+}
+
+export interface DbErLayoutTable {
+  id: string;
+  connection_id: string;
+  database_name: string;
+  layout_data: string;
+  updated_at: string;
+}
+
+export type NewDbConnection = Insertable<DbConnectionTable>;
+export type DbConnectionUpdate = Updateable<DbConnectionTable>;
+export type DbConnectionRow = Selectable<DbConnectionTable>;
+
+export type NewDbSavedQuery = Insertable<DbSavedQueryTable>;
+export type DbSavedQueryUpdate = Updateable<DbSavedQueryTable>;
+export type DbSavedQueryRow = Selectable<DbSavedQueryTable>;
+
+export type DbSavedQueryFolderRow = Selectable<DbSavedQueryFolderTable>;
+
+export type DbQueryHistoryRow = Selectable<DbQueryHistoryTable>;
+
+export type DbErLayoutRow = Selectable<DbErLayoutTable>;

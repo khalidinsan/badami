@@ -15,6 +15,7 @@ import {
   Globe,
   BarChart3,
   Info,
+  Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ const navItems: NavItem[] = [
   { to: "/servers", label: "Servers", icon: Server },
   { to: "/credentials", label: "Credentials", icon: KeyRound },
   { to: "/api", label: "API", icon: Globe },
+  { to: "/database", label: "Database", icon: Database },
 ];
 
 const bottomItems: NavItem[] = [

@@ -18,6 +18,7 @@ import migration013 from "./migrations/013_recurring_tasks.sql?raw";
 import migration014 from "./migrations/014_reminders.sql?raw";
 import migration015 from "./migrations/015_sync_settings.sql?raw";
 import migration016 from "./migrations/016_server_enhancement.sql?raw";
+import migration017 from "./migrations/017_db_client_module.sql?raw";
 
 interface DbInitResult {
   success: boolean;
@@ -42,6 +43,7 @@ export async function initDatabase(): Promise<DbInitResult> {
     migration014,
     migration015,
     migration016,
+    migration017,
   ];
 
   return await invoke<DbInitResult>("db_init", { migrations });

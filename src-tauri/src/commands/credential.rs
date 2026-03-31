@@ -68,6 +68,41 @@ pub fn delete_server_passphrase(server_id: String) -> Result<(), String> {
     }
 }
 
+// ─── DB Connection Passwords ─────────────────────────────────────────
+
+fn db_credential_key(connection_id: &str) -> String {
+    format!("db-{}", connection_id)
+}
+
+#[tauri::command]
+pub fn save_db_password(connection_id: String, password: String) -> Result<(), String> {
+    let entry = Entry::new(SERVICE_NAME, &db_credential_key(&connection_id))
+        .map_err(|e| format!("Keychain error: {}", e))?;
+    entry
+        .set_password(&password)
+        .map_err(|e| format!("Failed to save DB password: {}", e))
+}
+
+#[tauri::command]
+pub fn get_db_password(connection_id: String) -> Result<String, String> {
+    let entry = Entry::new(SERVICE_NAME, &db_credential_key(&connection_id))
+        .map_err(|e| format!("Keychain error: {}", e))?;
+    entry
+        .get_password()
+        .map_err(|e| format!("Failed to get DB password: {}", e))
+}
+
+#[tauri::command]
+pub fn delete_db_password(connection_id: String) -> Result<(), String> {
+    let entry = Entry::new(SERVICE_NAME, &db_credential_key(&connection_id))
+        .map_err(|e| format!("Keychain error: {}", e))?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("Failed to delete DB password: {}", e)),
+    }
+}
+
 // ─── PEM Encryption ──────────────────────────────────────────────────
 
 use aes_gcm::{

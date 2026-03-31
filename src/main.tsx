@@ -83,6 +83,9 @@ function AppWrapper() {
 }
 
 function SplashScreen() {
+  const isDark = document.documentElement.classList.contains("dark");
+  const iconSrc = isDark ? "/icon-white.png" : "/icon.png";
+
   return (
     <div
       style={{
@@ -97,18 +100,13 @@ function SplashScreen() {
         fontFamily: '"Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, sans-serif',
       }}
     >
-      <svg
-        width="36"
-        height="36"
-        viewBox="0 0 36 36"
-        fill="none"
+      <img
+        src={iconSrc}
+        width="48"
+        height="48"
+        alt="Badami"
         style={{ opacity: 0.9 }}
-      >
-        <circle cx="18" cy="18" r="18" fill="#0a84ff" opacity="0.15" />
-        <circle cx="18" cy="18" r="18" fill="none" stroke="#0a84ff" strokeWidth="1.5" opacity="0.4" />
-        <text x="18" y="23" textAnchor="middle" fill="#0a84ff" fontSize="15" fontWeight="600"
-          fontFamily='"Plus Jakarta Sans Variable", system-ui, sans-serif'>B</text>
-      </svg>
+      />
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
         <span style={{ fontSize: "15px", fontWeight: 600, letterSpacing: "-0.01em" }}>Badami</span>
         <span style={{ fontSize: "12px", color: "var(--color-muted-foreground, #98989d)" }}>
