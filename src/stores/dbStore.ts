@@ -10,7 +10,7 @@ export type DbEngine = "mysql" | "mariadb" | "postgresql" | "sqlite";
 
 export interface DbTab {
   id: string;
-  type: "table" | "query" | "structure" | "er";
+  type: "table" | "query" | "structure" | "er" | "objects";
   title: string;
   connectionId: string;
   /** For table tabs: the table name */
@@ -204,13 +204,13 @@ export const useDbStore = create<DbClientState>((set, get) => ({
 
   openTab: (tab) =>
     set((s) => {
-      // If tab for same table/query already exists, just switch to it
+      // If tab for same table already exists, just switch to it
       const existing = s.tabs.find(
         (t) =>
           t.connectionId === tab.connectionId &&
           t.type === tab.type &&
           t.tableName === tab.tableName &&
-          t.type === "table",
+          (t.type === "table" || t.type === "objects"),
       );
       if (existing) {
         return { activeTabId: existing.id };
@@ -220,6 +220,10 @@ export const useDbStore = create<DbClientState>((set, get) => ({
 
   closeTab: (tabId) =>
     set((s) => {
+      // Prevent closing the Objects tab
+      const tab = s.tabs.find((t) => t.id === tabId);
+      if (tab?.type === "objects") return {};
+
       const idx = s.tabs.findIndex((t) => t.id === tabId);
       const next = s.tabs.filter((t) => t.id !== tabId);
       let nextActive = s.activeTabId;

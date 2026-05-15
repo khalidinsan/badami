@@ -5,6 +5,12 @@ export interface TableInfo {
   name: string;
   table_type: string;
   row_count: number | null;
+  data_length: number | null;
+  engine: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  collation: string | null;
+  comment: string | null;
 }
 
 interface DatabaseInfo {

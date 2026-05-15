@@ -21,6 +21,7 @@ import { Route as PlanningIndexRouteImport } from "./routes/planning/index"
 import { Route as DatabaseIndexRouteImport } from "./routes/database/index"
 import { Route as CredentialsIndexRouteImport } from "./routes/credentials/index"
 import { Route as ApiIndexRouteImport } from "./routes/api/index"
+import { Route as AiIndexRouteImport } from "./routes/ai/index"
 import { Route as AboutIndexRouteImport } from "./routes/about/index"
 import { Route as ProjectsProjectIdRouteImport } from "./routes/projects/$projectId"
 import { Route as ProjectsProjectIdIndexRouteImport } from "./routes/projects/$projectId/index"
@@ -86,6 +87,11 @@ const ApiIndexRoute = ApiIndexRouteImport.update({
   path: "/api/",
   getParentRoute: () => rootRouteImport,
 } as any)
+const AiIndexRoute = AiIndexRouteImport.update({
+  id: "/ai/",
+  path: "/ai/",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AboutIndexRoute = AboutIndexRouteImport.update({
   id: "/about/",
   path: "/about/",
@@ -114,6 +120,7 @@ export interface FileRoutesByFullPath {
   "/today": typeof TodayRoute
   "/projects/$projectId": typeof ProjectsProjectIdRouteWithChildren
   "/about/": typeof AboutIndexRoute
+  "/ai/": typeof AiIndexRoute
   "/api/": typeof ApiIndexRoute
   "/credentials/": typeof CredentialsIndexRoute
   "/database/": typeof DatabaseIndexRoute
@@ -131,6 +138,7 @@ export interface FileRoutesByTo {
   "/search": typeof SearchRoute
   "/today": typeof TodayRoute
   "/about": typeof AboutIndexRoute
+  "/ai": typeof AiIndexRoute
   "/api": typeof ApiIndexRoute
   "/credentials": typeof CredentialsIndexRoute
   "/database": typeof DatabaseIndexRoute
@@ -150,6 +158,7 @@ export interface FileRoutesById {
   "/today": typeof TodayRoute
   "/projects/$projectId": typeof ProjectsProjectIdRouteWithChildren
   "/about/": typeof AboutIndexRoute
+  "/ai/": typeof AiIndexRoute
   "/api/": typeof ApiIndexRoute
   "/credentials/": typeof CredentialsIndexRoute
   "/database/": typeof DatabaseIndexRoute
@@ -170,6 +179,7 @@ export interface FileRouteTypes {
     | "/today"
     | "/projects/$projectId"
     | "/about/"
+    | "/ai/"
     | "/api/"
     | "/credentials/"
     | "/database/"
@@ -187,6 +197,7 @@ export interface FileRouteTypes {
     | "/search"
     | "/today"
     | "/about"
+    | "/ai"
     | "/api"
     | "/credentials"
     | "/database"
@@ -205,6 +216,7 @@ export interface FileRouteTypes {
     | "/today"
     | "/projects/$projectId"
     | "/about/"
+    | "/ai/"
     | "/api/"
     | "/credentials/"
     | "/database/"
@@ -224,6 +236,7 @@ export interface RootRouteChildren {
   TodayRoute: typeof TodayRoute
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRouteWithChildren
   AboutIndexRoute: typeof AboutIndexRoute
+  AiIndexRoute: typeof AiIndexRoute
   ApiIndexRoute: typeof ApiIndexRoute
   CredentialsIndexRoute: typeof CredentialsIndexRoute
   DatabaseIndexRoute: typeof DatabaseIndexRoute
@@ -321,6 +334,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ApiIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/ai/": {
+      id: "/ai/"
+      path: "/ai"
+      fullPath: "/ai/"
+      preLoaderRoute: typeof AiIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/about/": {
       id: "/about/"
       path: "/about"
@@ -371,6 +391,7 @@ const rootRouteChildren: RootRouteChildren = {
   TodayRoute: TodayRoute,
   ProjectsProjectIdRoute: ProjectsProjectIdRouteWithChildren,
   AboutIndexRoute: AboutIndexRoute,
+  AiIndexRoute: AiIndexRoute,
   ApiIndexRoute: ApiIndexRoute,
   CredentialsIndexRoute: CredentialsIndexRoute,
   DatabaseIndexRoute: DatabaseIndexRoute,

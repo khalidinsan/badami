@@ -9,6 +9,7 @@ import { TableViewer } from "@/components/database/TableViewer";
 import { QueryTab } from "@/components/database/QueryTab";
 import { TableStructureEditor } from "@/components/database/schema/TableStructureEditor";
 import { ErDiagram } from "@/components/database/er/ErDiagram";
+import { ObjectBrowser } from "@/components/database/ObjectBrowser";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 
@@ -22,6 +23,21 @@ export function DbWorkspace({ onBackToList }: DbWorkspaceProps) {
 
   const conn = connections.find((c) => c.id === activeConnectionId);
   const activeTab = tabs.find((t) => t.id === activeTabId);
+
+  // Auto-open Objects tab when workspace mounts (if not already open)
+  useEffect(() => {
+    if (!activeConnectionId) return;
+    const hasObjectsTab = tabs.some((t) => t.type === "objects");
+    if (!hasObjectsTab) {
+      useDbStore.getState().openTab({
+        id: "objects-" + activeConnectionId,
+        type: "objects",
+        title: "Objects",
+        connectionId: activeConnectionId,
+        database: activeDatabase ?? undefined,
+      });
+    }
+  }, [activeConnectionId]);
 
   // Keyboard shortcuts: Cmd+W (close tab), Cmd+T (new query tab)
   const handleNewQueryTab = useCallback(() => {
@@ -156,7 +172,13 @@ export function DbWorkspace({ onBackToList }: DbWorkspaceProps) {
           {/* Content area */}
           <div className="flex-1 overflow-hidden">
             {activeTab ? (
-              activeTab.type === "table" && activeTab.tableName ? (
+              activeTab.type === "objects" ? (
+                <ObjectBrowser
+                  poolId={activeConnectionId}
+                  engine={conn.engine}
+                  database={activeTab.database ?? activeDatabase ?? undefined}
+                />
+              ) : activeTab.type === "table" && activeTab.tableName ? (
                 <TableViewer
                   poolId={activeConnectionId}
                   tableName={activeTab.tableName}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Sidebar } from "./Sidebar";
+import { AppTabBar } from "./AppTabBar";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -46,9 +47,12 @@ export function MainLayout({ children }: MainLayoutProps) {
   return (
     <div ref={containerRef} className="flex h-screen overflow-hidden bg-background">
       <Sidebar collapsed={collapsed} onCollapsedChange={handleCollapsedChange} />
-      <main id="main-content" className="relative min-w-0 flex-1 overflow-y-auto">
-        {children}
-      </main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <AppTabBar />
+        <main id="main-content" className="relative min-w-0 flex-1 overflow-y-auto">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

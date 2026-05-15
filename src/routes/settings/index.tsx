@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Settings, Timer, Monitor, Rocket, Moon, Sun, KeyRound, Terminal, FolderOpen, Lock, ShieldCheck, RefreshCw } from "lucide-react";
+import { Settings, Timer, Monitor, Rocket, Moon, Sun, KeyRound, Terminal, FolderOpen, Lock, ShieldCheck, RefreshCw, Bot } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,7 @@ import { PemKeyManager } from "@/components/server/PemKeyManager";
 import { useMasterPassword } from "@/hooks/useMasterPassword";
 import { useVault } from "@/hooks/useVault";
 import { SyncSettingsPanel } from "@/components/sync/SyncSettingsPanel";
+import { useOpenRouterModels } from "@/hooks/useOpenRouterModels";
 
 export const Route = createFileRoute("/settings/")({
   component: SettingsPage,
@@ -394,6 +395,44 @@ function SettingsPage() {
 
       <Separator className="my-6" />
 
+      {/* AI Chat */}
+      <section className="mb-8">
+        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          <Bot className="h-4 w-4" />
+          AI Assistant
+        </h2>
+        <div className="space-y-4 rounded-xl border border-border/60 bg-card p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="openrouter-key" className="text-sm">
+                OpenRouter API Key
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Get your key from{" "}
+                <a href="https://openrouter.ai/keys" className="text-primary underline" target="_blank" rel="noreferrer">
+                  openrouter.ai/keys
+                </a>
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              id="openrouter-key"
+              type="password"
+              value={getSetting("openrouter_api_key", "")}
+              onChange={(e) => setSetting("openrouter_api_key", e.target.value)}
+              placeholder="sk-or-v1-..."
+              className="flex-1 font-mono text-xs"
+            />
+            <TestApiKeyButton />
+          </div>
+          <Separator />
+          <AiModelSelector />
+        </div>
+      </section>
+
+      <Separator className="my-6" />
+
       {/* Cross-Device Sync */}
       <section className="mb-8">
         <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
@@ -420,6 +459,142 @@ function SettingsPage() {
           <PemKeyManager />
         </div>
       </section>
+    </div>
+  );
+}
+
+// ─── Test API Key Button ────────────────────────────────────────────
+
+function TestApiKeyButton() {
+  const { getSetting } = useSettingsStore();
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<"idle" | "success" | "error">("idle");
+
+  const handleTest = async () => {
+    const apiKey = getSetting("openrouter_api_key", "");
+    if (!apiKey) {
+      setResult("error");
+      return;
+    }
+    setTesting(true);
+    setResult("idle");
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/auth/key", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (res.ok) {
+        setResult("success");
+      } else {
+        setResult("error");
+      }
+    } catch {
+      setResult("error");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className={`h-8 text-xs gap-1.5 ${result === "success" ? "border-green-500 text-green-500" : result === "error" ? "border-destructive text-destructive" : ""}`}
+      onClick={handleTest}
+      disabled={testing}
+    >
+      {testing ? (
+        <RefreshCw className="h-3 w-3 animate-spin" />
+      ) : result === "success" ? (
+        "✓ Valid"
+      ) : result === "error" ? (
+        "✗ Invalid"
+      ) : (
+        "Test"
+      )}
+    </Button>
+  );
+}
+
+// ─── AI Model Selector (dynamic from OpenRouter) ────────────────────
+
+function formatPrice(price: string | undefined): string {
+  if (!price) return "—";
+  const num = parseFloat(price) * 1_000_000;
+  if (num === 0) return "Free";
+  if (num < 0.01) return "<$0.01";
+  return `$${num.toFixed(2)}`;
+}
+
+function AiModelSelector() {
+  const { getSetting, setSetting } = useSettingsStore();
+  const { models, loading, refresh } = useOpenRouterModels();
+  const [search, setSearch] = useState("");
+  const currentModel = getSetting("ai_model", "openai/gpt-4o-mini");
+
+  const filtered = search
+    ? models.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()) || m.id.toLowerCase().includes(search.toLowerCase()))
+    : models.slice(0, 50);
+
+  const selectedModelData = models.find((m) => m.id === currentModel);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm">Default model</Label>
+        <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={refresh} disabled={loading}>
+          <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
+      </div>
+      <Input
+        placeholder="Search models..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="h-8 text-xs"
+      />
+      <div className="max-h-[240px] overflow-y-auto rounded-md border border-border/40">
+        {filtered.length === 0 && (
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+            {loading ? "Loading models..." : "No models found"}
+          </p>
+        )}
+        {filtered.map((m) => (
+          <button
+            key={m.id}
+            onClick={() => setSetting("ai_model", m.id)}
+            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/40 border-b border-border/20 last:border-0 ${currentModel === m.id ? "bg-primary/10 text-primary" : "text-foreground"}`}
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium">{m.name}</p>
+              <p className="truncate text-[10px] text-muted-foreground/60">{m.id}</p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-[10px] text-muted-foreground">
+                <span className="text-green-500">{formatPrice(m.pricing?.prompt)}</span>
+                {" / "}
+                <span className="text-blue-500">{formatPrice(m.pricing?.completion)}</span>
+              </p>
+              <p className="text-[9px] text-muted-foreground/50">
+                {m.context_length ? `${Math.round(m.context_length / 1000)}k ctx` : ""}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* Selected model info */}
+      {selectedModelData && (
+        <div className="rounded-md bg-muted/30 px-3 py-2 text-[11px]">
+          <p className="font-medium">{selectedModelData.name}</p>
+          <div className="mt-1 flex items-center gap-3 text-muted-foreground">
+            <span>Input: <span className="text-green-500 font-medium">{formatPrice(selectedModelData.pricing?.prompt)}/1M</span></span>
+            <span>Output: <span className="text-blue-500 font-medium">{formatPrice(selectedModelData.pricing?.completion)}/1M</span></span>
+            {selectedModelData.context_length && (
+              <span>Context: {Math.round(selectedModelData.context_length / 1000)}k</span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

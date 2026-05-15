@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { routeTree } from "./routeTree.gen";
+import { invoke } from "@tauri-apps/api/core";
 import { initDatabase } from "@/db/client";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useSyncStore } from "@/stores/syncStore";
@@ -37,6 +38,38 @@ function AppWrapper() {
 
         const store = useSettingsStore.getState();
         await store.loadSettings();
+
+        // Auto-repair: settings say sync is on but backend didn't init the replica
+        // (happens when sync-config.json is deleted but settings weren't reset).
+        // db_enable_sync reads the token from keychain internally — no token needed here.
+        if (
+          !result.sync_enabled &&
+          store.getSetting("sync_enabled", "false") === "true"
+        ) {
+          const syncUrl = store.getSetting("sync_turso_url", "");
+          const syncInterval =
+            parseInt(store.getSetting("sync_interval_minutes", "5")) || 5;
+          if (syncUrl) {
+            useSyncStore.getState().setStatus("pending");
+            invoke<{ success: boolean; duration_ms: number }>("db_enable_sync", {
+              url: syncUrl,
+              syncIntervalMinutes: syncInterval,
+            })
+              .then(async () => {
+                // Re-write all settings to the newly-active replica connection
+                const currentSettings = { ...useSettingsStore.getState().settings };
+                for (const [key, value] of Object.entries(currentSettings)) {
+                  await store.setSetting(key, value);
+                }
+              })
+              .catch((err) => {
+                console.error("[sync-repair] failed:", err);
+                // Reset sync_enabled so the UI shows setup form instead of broken sync
+                store.setSetting("sync_enabled", "false").catch(() => {});
+                useSyncStore.getState().setStatus("disabled");
+              });
+          }
+        }
 
         const theme = store.getSetting("app_theme", "dark");
         // Persist to localStorage so next boot applies theme before db_init

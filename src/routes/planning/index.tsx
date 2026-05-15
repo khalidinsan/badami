@@ -18,7 +18,6 @@ import { TaskPool } from "@/components/planning/TaskPool";
 import { today, formatDate } from "@/lib/dateUtils";
 import * as projectQueries from "@/db/queries/projects";
 import type { ProjectRow } from "@/types/db";
-import dayjs from "dayjs";
 
 export const Route = createFileRoute("/planning/")({ component: PlanningPage });
 
@@ -50,11 +49,12 @@ function PlanningPage() {
     projectQueries.getProjects("active").then(setProjects);
   }, []);
 
-  useEffect(() => {
-    const start = dayjs(selectedDate).startOf("month").format("YYYY-MM-DD");
-    const end = dayjs(selectedDate).endOf("month").format("YYYY-MM-DD");
-    loadCalendarEvents(start, end);
-  }, [selectedDate]);
+  const handleRangeChange = useCallback(
+    (start: string, end: string) => {
+      loadCalendarEvents(start, end);
+    },
+    [loadCalendarEvents],
+  );
 
   const handleDateClick = useCallback(
     (date: string) => {
@@ -121,6 +121,7 @@ function PlanningPage() {
             calendarEvents={calendarEvents}
             onDateClick={handleDateClick}
             onEventDrop={handleEventDrop}
+            onRangeChange={handleRangeChange}
           />
         ) : (
           <AgendaView

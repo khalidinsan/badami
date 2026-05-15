@@ -6,14 +6,13 @@ import {
   FolderKanban,
   CheckSquare,
   FileText,
-  CalendarDays,
-  Settings,
   Search,
   ArrowRight,
   KeyRound,
   Server,
   Globe,
   Zap,
+  Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as projectQueries from "@/db/queries/projects";
@@ -21,18 +20,41 @@ import * as taskQueries from "@/db/queries/tasks";
 import * as credentialQueries from "@/db/queries/credentials";
 import * as serverQueries from "@/db/queries/servers";
 import * as apiQueries from "@/db/queries/api";
+import * as dbClientQueries from "@/db/queries/dbClient";
 import { invoke } from "@tauri-apps/api/core";
 import type { PageRow } from "@/types/db";
 
+// ── Types ───────────────────────────────────────────────────────────
+
 interface SearchItem {
   id: string;
-  type: "project" | "task" | "page" | "credential" | "server" | "api_collection" | "api_request";
+  type: "project" | "task" | "page" | "credential" | "server" | "api_collection" | "api_request" | "db_connection" | "command";
   title: string;
   subtitle?: string;
   route: string;
 }
 
-// Overlay mode (inside main window via Cmd+K)
+type CategoryFilter = "all" | "projects" | "tasks" | "servers" | "credentials" | "api" | "database" | "commands";
+
+// ── Recent items (localStorage) ─────────────────────────────────────
+
+const RECENT_KEY = "badami_search_recent";
+const MAX_RECENT = 10;
+
+function getRecentItems(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+  } catch { return []; }
+}
+
+function addRecentItem(id: string) {
+  const recent = getRecentItems().filter((r) => r !== id);
+  recent.unshift(id);
+  localStorage.setItem(RECENT_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)));
+}
+
+// ── Props ───────────────────────────────────────────────────────────
+
 interface OverlayProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -41,7 +63,6 @@ interface OverlayProps {
   onClose?: never;
 }
 
-// Window mode (standalone search window)
 interface WindowProps {
   isWindow: true;
   onClose: () => void;
@@ -52,12 +73,32 @@ interface WindowProps {
 
 type CommandPaletteProps = OverlayProps | WindowProps;
 
+// ── Commands (quick actions) ────────────────────────────────────────
+
+const COMMANDS: SearchItem[] = [
+  { id: "cmd-new-project", type: "command", title: "New Project", subtitle: "Create a new project", route: "/projects" },
+  { id: "cmd-new-task", type: "command", title: "New Task", subtitle: "Create a new task", route: "/tasks" },
+  { id: "cmd-planning", type: "command", title: "Go to Planning", subtitle: "Daily planning & calendar", route: "/planning" },
+  { id: "cmd-projects", type: "command", title: "Go to Projects", subtitle: "All projects", route: "/projects" },
+  { id: "cmd-tasks", type: "command", title: "Go to Tasks", subtitle: "Task management", route: "/tasks" },
+  { id: "cmd-servers", type: "command", title: "Go to Servers", subtitle: "SSH & FTP servers", route: "/servers" },
+  { id: "cmd-credentials", type: "command", title: "Go to Credentials", subtitle: "Credential vault", route: "/credentials" },
+  { id: "cmd-api", type: "command", title: "Go to API", subtitle: "REST API tool", route: "/api" },
+  { id: "cmd-database", type: "command", title: "Go to Database", subtitle: "Database client", route: "/database" },
+  { id: "cmd-stats", type: "command", title: "Go to Statistics", subtitle: "Focus & pomodoro stats", route: "/stats" },
+  { id: "cmd-settings", type: "command", title: "Go to Settings", subtitle: "App settings", route: "/settings" },
+  { id: "cmd-about", type: "command", title: "About Badami", subtitle: "Version & info", route: "/about" },
+];
+
+// ── Component ───────────────────────────────────────────────────────
+
 export function CommandPalette(props: CommandPaletteProps) {
   const isWindow = props.isWindow === true;
   const isOpen = isWindow || props.open;
 
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<SearchItem[]>([]);
+  const [category, setCategory] = useState<CategoryFilter>("all");
   const fuseRef = useRef<Fuse<SearchItem> | null>(null);
 
   const handleClose = useCallback(() => {
@@ -68,11 +109,21 @@ export function CommandPalette(props: CommandPaletteProps) {
     }
   }, [isWindow, props]);
 
+  // Detect prefix commands
+  const { effectiveSearch, effectiveCategory } = useMemo(() => {
+    const trimmed = search.trim();
+    if (trimmed.startsWith(">")) return { effectiveSearch: trimmed.slice(1).trim(), effectiveCategory: "commands" as CategoryFilter };
+    if (trimmed.startsWith("#")) return { effectiveSearch: trimmed.slice(1).trim(), effectiveCategory: "tasks" as CategoryFilter };
+    if (trimmed.startsWith("@")) return { effectiveSearch: trimmed.slice(1).trim(), effectiveCategory: "servers" as CategoryFilter };
+    if (trimmed.startsWith("/")) return { effectiveSearch: trimmed.slice(1).trim(), effectiveCategory: "projects" as CategoryFilter };
+    return { effectiveSearch: trimmed, effectiveCategory: category };
+  }, [search, category]);
+
   // Load searchable items
   useEffect(() => {
     if (!isOpen) return;
     const load = async () => {
-      const [projects, tasks, allPages, allCredentials, allServers, allCollections, allRequests] = await Promise.all([
+      const [projects, tasks, allPages, allCredentials, allServers, allCollections, allRequests, allDbConnections] = await Promise.all([
         projectQueries.getProjects(),
         taskQueries.getTasks(),
         loadAllPages(),
@@ -80,6 +131,7 @@ export function CommandPalette(props: CommandPaletteProps) {
         serverQueries.getAllServers(),
         apiQueries.getAllCollections(),
         loadAllApiRequests(),
+        dbClientQueries.getConnections(),
       ]);
 
       const searchItems: SearchItem[] = [
@@ -108,9 +160,7 @@ export function CommandPalette(props: CommandPaletteProps) {
           id: c.id,
           type: "credential" as const,
           title: c.name,
-          subtitle: [c.type, c.username, c.service_name, c.url]
-            .filter(Boolean)
-            .join(" · "),
+          subtitle: [c.type, c.username, c.service_name, c.url].filter(Boolean).join(" · "),
           route: "/credentials",
         })),
         ...allServers.map((s) => ({
@@ -134,30 +184,71 @@ export function CommandPalette(props: CommandPaletteProps) {
           subtitle: `${r.method} · ${r.url}`,
           route: "/api",
         })),
+        ...allDbConnections.map((d) => ({
+          id: d.id,
+          type: "db_connection" as const,
+          title: d.name,
+          subtitle: `${d.engine.toUpperCase()} · ${d.host}:${d.port}`,
+          route: "/database",
+        })),
+        ...COMMANDS,
       ];
 
       setItems(searchItems);
       fuseRef.current = new Fuse(searchItems, {
-        keys: ["title", "subtitle"],
-        threshold: 0.4,
-        includeMatches: true,
+        keys: [{ name: "title", weight: 2 }, { name: "subtitle", weight: 1 }],
+        threshold: 0.35,
       });
     };
     load();
     setSearch("");
+    setCategory("all");
   }, [isOpen]);
 
+  // Filter by category then search
   const filtered = useMemo(() => {
-    if (!search.trim()) return items.slice(0, 20);
-    if (!fuseRef.current) return [];
-    return fuseRef.current.search(search, { limit: 20 }).map((r) => r.item);
-  }, [search, items]);
+    let pool = items;
+
+    // Category filter
+    if (effectiveCategory !== "all") {
+      const typeMap: Record<CategoryFilter, string[]> = {
+        all: [],
+        projects: ["project", "page"],
+        tasks: ["task"],
+        servers: ["server"],
+        credentials: ["credential"],
+        api: ["api_collection", "api_request"],
+        database: ["db_connection"],
+        commands: ["command"],
+      };
+      const types = typeMap[effectiveCategory];
+      if (types.length > 0) {
+        pool = pool.filter((i) => types.includes(i.type));
+      }
+    }
+
+    // Text search
+    if (!effectiveSearch) {
+      // Show recent items first, then rest
+      const recentIds = getRecentItems();
+      const recentItems = recentIds
+        .map((id) => pool.find((i) => i.id === id))
+        .filter(Boolean) as SearchItem[];
+      const rest = pool.filter((i) => !recentIds.includes(i.id));
+      return [...recentItems, ...rest].slice(0, 25);
+    }
+
+    // Use fuse on the filtered pool
+    const fuse = new Fuse(pool, {
+      keys: [{ name: "title", weight: 2 }, { name: "subtitle", weight: 1 }],
+      threshold: 0.35,
+    });
+    return fuse.search(effectiveSearch, { limit: 25 }).map((r) => r.item);
+  }, [effectiveSearch, effectiveCategory, items]);
 
   const navigateInMain = useCallback(
     async (route: string) => {
       if (isWindow) {
-        // invoke calls Rust directly — Rust evaluates window.location.assign()
-        // in main window's webview. No React/event/timing issues.
         await invoke("navigate_main_window", { path: route });
         handleClose();
       } else if (props.onNavigate) {
@@ -170,6 +261,7 @@ export function CommandPalette(props: CommandPaletteProps) {
 
   const handleSelect = useCallback(
     async (item: SearchItem) => {
+      addRecentItem(item.id);
       navigateInMain(item.route);
     },
     [navigateInMain],
@@ -177,63 +269,44 @@ export function CommandPalette(props: CommandPaletteProps) {
 
   const getIcon = (type: string) => {
     switch (type) {
-      case "project":
-        return <FolderKanban className="h-4 w-4 shrink-0 text-blue-500" />;
-      case "task":
-        return <CheckSquare className="h-4 w-4 shrink-0 text-orange-500" />;
-      case "page":
-        return <FileText className="h-4 w-4 shrink-0 text-purple-500" />;
-      case "credential":
-        return <KeyRound className="h-4 w-4 shrink-0 text-amber-500" />;
-      case "server":
-        return <Server className="h-4 w-4 shrink-0 text-emerald-500" />;
-      case "api_collection":
-        return <Globe className="h-4 w-4 shrink-0 text-sky-500" />;
-      case "api_request":
-        return <Zap className="h-4 w-4 shrink-0 text-violet-500" />;
-      default:
-        return null;
+      case "project": return <FolderKanban className="h-4 w-4 shrink-0 text-blue-500" />;
+      case "task": return <CheckSquare className="h-4 w-4 shrink-0 text-orange-500" />;
+      case "page": return <FileText className="h-4 w-4 shrink-0 text-purple-500" />;
+      case "credential": return <KeyRound className="h-4 w-4 shrink-0 text-amber-500" />;
+      case "server": return <Server className="h-4 w-4 shrink-0 text-emerald-500" />;
+      case "api_collection": return <Globe className="h-4 w-4 shrink-0 text-sky-500" />;
+      case "api_request": return <Zap className="h-4 w-4 shrink-0 text-violet-500" />;
+      case "db_connection": return <Database className="h-4 w-4 shrink-0 text-teal-500" />;
+      case "command": return <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />;
+      default: return null;
     }
   };
 
-  const quickLinks: { label: string; route: string; icon: React.ReactNode }[] =
-    [
-      {
-        label: "Planning",
-        route: "/planning",
-        icon: <CalendarDays className="h-4 w-4" />,
-      },
-      {
-        label: "Projects",
-        route: "/projects",
-        icon: <FolderKanban className="h-4 w-4" />,
-      },
-      {
-        label: "Tasks",
-        route: "/tasks",
-        icon: <CheckSquare className="h-4 w-4" />,
-      },
-      {
-        label: "Servers",
-        route: "/servers",
-        icon: <Server className="h-4 w-4" />,
-      },
-      {
-        label: "Credentials",
-        route: "/credentials",
-        icon: <KeyRound className="h-4 w-4" />,
-      },
-      {
-        label: "API",
-        route: "/api",
-        icon: <Globe className="h-4 w-4" />,
-      },
-      {
-        label: "Settings",
-        route: "/settings",
-        icon: <Settings className="h-4 w-4" />,
-      },
-    ];
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case "project": return "Project";
+      case "task": return "Task";
+      case "page": return "Page";
+      case "credential": return "Credential";
+      case "server": return "Server";
+      case "api_collection": return "Collection";
+      case "api_request": return "Request";
+      case "db_connection": return "Database";
+      case "command": return "Command";
+      default: return type;
+    }
+  };
+
+  const categories: { key: CategoryFilter; label: string; icon: React.ReactNode }[] = [
+    { key: "all", label: "All", icon: <Search className="h-3 w-3" /> },
+    { key: "projects", label: "Projects", icon: <FolderKanban className="h-3 w-3" /> },
+    { key: "tasks", label: "Tasks", icon: <CheckSquare className="h-3 w-3" /> },
+    { key: "servers", label: "Servers", icon: <Server className="h-3 w-3" /> },
+    { key: "credentials", label: "Credentials", icon: <KeyRound className="h-3 w-3" /> },
+    { key: "api", label: "API", icon: <Globe className="h-3 w-3" /> },
+    { key: "database", label: "Database", icon: <Database className="h-3 w-3" /> },
+    { key: "commands", label: "Commands", icon: <ArrowRight className="h-3 w-3" /> },
+  ];
 
   if (!isOpen) return null;
 
@@ -242,7 +315,7 @@ export function CommandPalette(props: CommandPaletteProps) {
       className={cn(
         "flex h-full flex-col overflow-hidden bg-popover/95 backdrop-blur-xl",
         isWindow
-          ? "rounded-none border-0 shadow-none"
+          ? "rounded-lg border border-border/30 shadow-lg"
           : "rounded-2xl border border-border/40 shadow-2xl ring-1 ring-black/[0.04]",
       )}
       shouldFilter={false}
@@ -257,7 +330,7 @@ export function CommandPalette(props: CommandPaletteProps) {
           autoFocus
           value={search}
           onValueChange={setSearch}
-          placeholder="Search projects, tasks, pages..."
+          placeholder="Search or type > for commands, # tasks, @ servers, / projects..."
           className="flex-1 bg-transparent py-3.5 text-sm font-medium outline-none placeholder:text-muted-foreground/40"
         />
         {!isWindow && (
@@ -267,69 +340,73 @@ export function CommandPalette(props: CommandPaletteProps) {
         )}
       </div>
 
+      {/* Category filter tabs */}
+      <div className="flex items-center gap-0.5 overflow-x-auto overflow-y-hidden border-b border-border/30 px-3 py-1.5" style={{ scrollbarWidth: "none" }}>
+        {categories.map((cat) => (
+          <button
+            key={cat.key}
+            onClick={() => { setCategory(cat.key); setSearch(""); }}
+            className={cn(
+              "flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+              effectiveCategory === cat.key
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40",
+            )}
+          >
+            {cat.icon}
+            {cat.label}
+          </button>
+        ))}
+      </div>
+
       <Command.List
         className={cn(
           "flex-1 overflow-auto px-2 py-2",
-          "max-h-[400px]",
-          "[&_[cmdk-group-heading]]:mb-1.5 [&_[cmdk-group-heading]]:mt-2 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:text-muted-foreground/50",
-          "[&_[cmdk-group]+[cmdk-group]]:mt-1",
+          isWindow ? "max-h-[calc(100vh-140px)]" : "max-h-[380px]",
         )}
       >
         <Command.Empty className="flex flex-col items-center gap-2 py-10 text-center">
           <Search className="h-8 w-8 text-muted-foreground/20" />
           <p className="text-sm text-muted-foreground/60">No results found</p>
+          <p className="text-xs text-muted-foreground/40">Try a different search or category</p>
         </Command.Empty>
 
-        {/* Quick links when no search */}
-        {!search.trim() && (
-          <Command.Group heading="Navigate">
-            {quickLinks.map((link) => (
-              <Command.Item
-                key={link.route}
-                value={link.label}
-                onSelect={() => navigateInMain(link.route)}
-                className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-150 select-none hover:bg-accent/60 data-[selected=true]:bg-accent"
-              >
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground">
-                  {link.icon}
-                </span>
-                <span className="flex-1 font-medium">{link.label}</span>
-                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/30" />
-              </Command.Item>
-            ))}
-          </Command.Group>
-        )}
+        {/* Results grouped by type */}
+        {filtered.length > 0 && (() => {
+          // Group items by type
+          const groups = new Map<string, SearchItem[]>();
+          for (const item of filtered) {
+            const key = item.type;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key)!.push(item);
+          }
 
-        {/* Search results */}
-        {filtered.length > 0 && (
-          <Command.Group heading={search.trim() ? "Results" : "Recent"}>
-            {filtered.map((item) => (
-              <Command.Item
-                key={`${item.type}-${item.id}`}
-                value={`${item.type}-${item.id}`}
-                onSelect={() => handleSelect(item)}
-                className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-150 select-none hover:bg-accent/60 data-[selected=true]:bg-accent"
-              >
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60">
-                  {getIcon(item.type)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium leading-snug">
-                    {item.title}
-                  </p>
-                  {item.subtitle && (
-                    <p className="truncate text-xs leading-snug text-muted-foreground/60">
-                      {item.subtitle}
-                    </p>
-                  )}
-                </div>
-                <span className="shrink-0 rounded-lg bg-muted/50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/50">
-                  {item.type}
-                </span>
-              </Command.Item>
-            ))}
-          </Command.Group>
-        )}
+          return Array.from(groups.entries()).map(([type, groupItems]) => (
+            <Command.Group key={type} heading={getTypeLabel(type) + "s"}>
+              {groupItems.map((item) => (
+                <Command.Item
+                  key={`${item.type}-${item.id}`}
+                  value={`${item.type}-${item.id}`}
+                  onSelect={() => handleSelect(item)}
+                  className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-150 select-none hover:bg-accent/60 data-[selected=true]:bg-accent"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60">
+                    {getIcon(item.type)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium leading-snug">{item.title}</p>
+                    {item.subtitle && (
+                      <p className="truncate text-xs leading-snug text-muted-foreground/60">{item.subtitle}</p>
+                    )}
+                  </div>
+                  <span className="shrink-0 rounded-lg bg-muted/50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/50">
+                    {getTypeLabel(item.type)}
+                  </span>
+                </Command.Item>
+              ))}
+            </Command.Group>
+          ));
+        })()}
       </Command.List>
 
       {/* Footer hints */}
@@ -346,13 +423,21 @@ export function CommandPalette(props: CommandPaletteProps) {
           <kbd className="rounded border border-border/40 bg-muted/30 px-1 py-px font-mono text-[10px]">esc</kbd>
           close
         </span>
+        <span className="ml-auto flex items-center gap-1.5 text-[10px] text-muted-foreground/40">
+          <kbd className="rounded border border-border/40 bg-muted/30 px-1 py-px font-mono text-[10px]">&gt;</kbd>
+          commands
+          <kbd className="rounded border border-border/40 bg-muted/30 px-1 py-px font-mono text-[10px]">#</kbd>
+          tasks
+          <kbd className="rounded border border-border/40 bg-muted/30 px-1 py-px font-mono text-[10px]">@</kbd>
+          servers
+        </span>
       </div>
     </Command>
   );
 
-  // Window mode: fill entire window, no backdrop
+  // Window mode: fill entire window
   if (isWindow) {
-    return <div className="flex h-screen flex-col">{commandContent}</div>;
+    return <div className="flex h-screen flex-col overflow-hidden bg-background">{commandContent}</div>;
   }
 
   // Overlay mode
@@ -372,7 +457,7 @@ export function CommandPalette(props: CommandPaletteProps) {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.97, y: -6 }}
           transition={{ duration: 0.12, ease: [0.32, 0.72, 0, 1] }}
-          className="relative w-full max-w-[520px]"
+          className="relative w-full max-w-[560px]"
         >
           {commandContent}
         </motion.div>

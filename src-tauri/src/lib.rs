@@ -118,6 +118,7 @@ pub fn run() {
             commands::sftp::sftp_download,
             commands::sftp::sftp_upload,
             commands::sftp::sftp_stat,
+            commands::sftp::sftp_search_files,
             commands::ftp::ftp_connect,
             commands::ftp::ftp_disconnect,
             commands::ftp::ftp_list_dir,

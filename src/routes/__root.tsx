@@ -7,6 +7,8 @@ import {
 import { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
+import { useTabRouteSync } from "@/components/layout/AppTabContent";
+import { useAppTabStore } from "@/stores/appTabStore";
 import { CommandPalette } from "@/components/search/CommandPalette";
 import { Toaster } from "@/components/ui/sonner";
 import { OnboardingDialog } from "@/components/OnboardingDialog";
@@ -24,6 +26,23 @@ function RootComponent() {
   const location = useLocation();
   const navigate = useNavigate();
   const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Sync active tab with router (main window only)
+  useTabRouteSync();
+
+  // Restore persisted tab route on initial load (main window only)
+  useEffect(() => {
+    // Skip for Today/Search windows — they have their own routes
+    if (location.pathname === "/today" || location.pathname === "/search") return;
+
+    const { tabs, activeTabId } = useAppTabStore.getState();
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    if (activeTab && activeTab.route !== "/" && location.pathname === "/") {
+      navigate({ to: activeTab.route as any });
+    } else if (activeTab && !location.pathname.startsWith(activeTab.route.split("/").slice(0, 2).join("/"))) {
+      navigate({ to: activeTab.route as any });
+    }
+  }, []);
 
   // Check credential expiry on app startup
   useExpiryCheck();
@@ -61,38 +80,44 @@ function RootComponent() {
         ? "Command+Shift+K"
         : "Control+Shift+K";
 
-    // Always unregister first in case a previous registration is stale,
-    // then register the shortcut.
-    unregisterAll().catch(() => {}).finally(() => {
-      register(shortcut, async () => {
-        // Try to show existing search window
-        const existing = await WebviewWindow.getByLabel("search");
-        if (existing) {
-          await existing.show();
-          await existing.setFocus();
-          return;
-        }
-        // Create new search window — don't focus main
-        const searchWin = new WebviewWindow("search", {
-          url: "/search",
-          title: "Quick Search",
-          width: 520,
-          height: 460,
-          decorations: false,
-          transparent: false,
-          alwaysOnTop: true,
-          resizable: false,
-          center: true,
-          focus: true,
-        });
-        // Ensure search window gets focus once created
-        searchWin.once("tauri://created", async () => {
-          await searchWin.setFocus();
-        });
-      }).catch(() => {});
-    });
+    let cancelled = false;
+
+    // Delay registration slightly to avoid race with HMR cleanup
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      unregisterAll().catch(() => {}).finally(() => {
+        if (cancelled) return;
+        register(shortcut, async () => {
+          // Try to show existing search window
+          const existing = await WebviewWindow.getByLabel("search");
+          if (existing) {
+            await existing.show();
+            await existing.setFocus();
+            return;
+          }
+          // Create new search window
+          const searchWin = new WebviewWindow("search", {
+            url: "/search",
+            title: "Quick Search",
+            width: 560,
+            height: 500,
+            decorations: false,
+            transparent: false,
+            alwaysOnTop: true,
+            resizable: false,
+            center: true,
+            focus: true,
+          });
+          searchWin.once("tauri://created", async () => {
+            await searchWin.setFocus();
+          });
+        }).catch(() => {});
+      });
+    }, 100);
 
     return () => {
+      cancelled = true;
+      clearTimeout(timer);
       unregisterAll().catch(() => {});
     };
   }, []);

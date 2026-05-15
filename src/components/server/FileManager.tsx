@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { AnimatePresence } from "framer-motion";
 import {
   ArrowUp,
   FolderPlus,
@@ -16,6 +17,7 @@ import {
   FileUp,
   History,
   Terminal,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +35,8 @@ import {
 import { FileEntryRow } from "./FileEntryRow";
 import { TransferQueue } from "./TransferQueue";
 import { TransferHistory } from "./TransferHistory";
-import { RemoteCodeEditor } from "./RemoteCodeEditor";
+import { FileSearchPanel } from "./FileSearchPanel";
+import { FileEditorModal, type EditorTab } from "./FileEditorModal";
 import { useFileManager } from "@/hooks/useFileManager";
 import { openInCodeEditor } from "@/lib/osOpen";
 import type { ServerCredentialRow } from "@/types/db";
@@ -67,11 +70,10 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
   const [isDragging, setIsDragging] = useState(false);
   const [pendingDropPaths, setPendingDropPaths] = useState<string[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [editingFile, setEditingFile] = useState<{
-    path: string;
-    content: string;
-    readOnly: boolean;
-  } | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [editorTabs, setEditorTabs] = useState<EditorTab[]>([]);
+  const [activeEditorTabId, setActiveEditorTabId] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const connectedRef = useRef(false);
   // Tracks files opened in editor: watchId -> { remotePath, localPath }
@@ -198,7 +200,25 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
       }
       try {
         const content = await fm.readFile(entry.path);
-        setEditingFile({ path: entry.path, content, readOnly: false });
+        const tabId = entry.path;
+        // Check if tab already open
+        setEditorTabs((prev) => {
+          const existing = prev.find((t) => t.id === tabId);
+          if (existing) return prev;
+          return [
+            ...prev,
+            {
+              id: tabId,
+              path: entry.path,
+              content,
+              originalContent: content,
+              readOnly: false,
+              hasChanges: false,
+            },
+          ];
+        });
+        setActiveEditorTabId(tabId);
+        setEditorOpen(true);
       } catch (err) {
         toast.error(`Failed to open file: ${err}`);
       }
@@ -208,12 +228,68 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
 
   // Save edited file back to server via SFTP
   const handleSaveEditedFile = useCallback(
-    async (content: string) => {
-      if (!editingFile) return;
-      await fm.writeFile(editingFile.path, content);
-      toast.success(`Saved ${editingFile.path.split("/").pop()}`);
+    async (tabId: string, content: string) => {
+      const tab = editorTabs.find((t) => t.id === tabId);
+      if (!tab) return;
+      await fm.writeFile(tab.path, content);
+      setEditorTabs((prev) =>
+        prev.map((t) =>
+          t.id === tabId ? { ...t, hasChanges: false, originalContent: content, content } : t,
+        ),
+      );
+      toast.success(`Saved ${tab.path.split("/").pop()}`);
     },
-    [fm, editingFile],
+    [fm, editorTabs],
+  );
+
+  const handleEditorContentChange = useCallback((tabId: string, content: string) => {
+    setEditorTabs((prev) =>
+      prev.map((t) =>
+        t.id === tabId
+          ? { ...t, content, hasChanges: content !== t.originalContent }
+          : t,
+      ),
+    );
+  }, []);
+
+  const handleEditorTabClose = useCallback((tabId: string) => {
+    setEditorTabs((prev) => {
+      const next = prev.filter((t) => t.id !== tabId);
+      if (next.length === 0) {
+        setEditorOpen(false);
+        setActiveEditorTabId(null);
+      } else if (activeEditorTabId === tabId) {
+        setActiveEditorTabId(next[next.length - 1].id);
+      }
+      return next;
+    });
+  }, [activeEditorTabId]);
+
+  const handleEditorClose = useCallback(() => {
+    setEditorOpen(false);
+  }, []);
+
+  // Keyboard shortcut: Cmd/Ctrl+F for search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+      if (isMod && e.key === "f" && fm.status === "connected" && server.protocol === "ssh") {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [fm.status, server.protocol]);
+
+  // Handle opening file from search results
+  const handleSearchOpenFile = useCallback(
+    (entry: FileEntry) => {
+      if (entry.kind !== "directory") {
+        handleEditFile(entry);
+      }
+    },
+    [handleEditFile],
   );
 
   // Confirm and execute drop upload
@@ -352,6 +428,40 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
 
   // Breadcrumb parts
   const pathParts = fm.currentPath.split("/").filter(Boolean);
+  const [editingPath, setEditingPath] = useState(false);
+  const [pathInput, setPathInput] = useState(fm.currentPath);
+  const pathInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync pathInput when currentPath changes externally
+  useEffect(() => {
+    if (!editingPath) {
+      setPathInput(fm.currentPath);
+    }
+  }, [fm.currentPath, editingPath]);
+
+  const handlePathSubmit = useCallback(() => {
+    const target = pathInput.trim() || "/";
+    setEditingPath(false);
+    if (target !== fm.currentPath) {
+      fm.navigateTo(target).catch((e) => toast.error(`${e}`));
+    }
+  }, [pathInput, fm]);
+
+  const handlePathKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handlePathSubmit();
+    }
+    if (e.key === "Escape") {
+      setEditingPath(false);
+      setPathInput(fm.currentPath);
+    }
+  };
+
+  const startEditingPath = () => {
+    setEditingPath(true);
+    setPathInput(fm.currentPath);
+    setTimeout(() => pathInputRef.current?.select(), 0);
+  };
 
   const StatusIcon = fm.status === "connected" ? Wifi : fm.status === "connecting" ? Loader2 : WifiOff;
 
@@ -419,29 +529,52 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
           <RefreshCw className={cn("h-3.5 w-3.5", fm.loading && "animate-spin")} />
         </Button>
 
-        {/* Breadcrumb */}
-        <div className="flex flex-1 items-center gap-0.5 overflow-hidden px-2">
-          <button
-            className="shrink-0 text-[12px] text-muted-foreground hover:text-foreground"
-            onClick={() => fm.navigateTo("/").catch((e) => toast.error(`${e}`))}
+        {/* Breadcrumb — click to edit */}
+        {editingPath ? (
+          <div className="flex flex-1 items-center px-1">
+            <Input
+              ref={pathInputRef}
+              value={pathInput}
+              onChange={(e) => setPathInput(e.target.value)}
+              onKeyDown={handlePathKeyDown}
+              onBlur={handlePathSubmit}
+              className="h-6 text-xs font-mono"
+              autoFocus
+            />
+          </div>
+        ) : (
+          <div
+            className="flex flex-1 items-center gap-0.5 overflow-hidden px-2 cursor-text rounded hover:bg-muted/30 transition-colors"
+            onClick={startEditingPath}
           >
-            /
-          </button>
-          {pathParts.map((part, i) => {
-            const fullPath = "/" + pathParts.slice(0, i + 1).join("/");
-            return (
-              <span key={fullPath} className="flex items-center gap-0.5">
-                <ChevronRight className="h-3 w-3 text-muted-foreground/40" />
-                <button
-                  className="truncate text-[12px] text-muted-foreground hover:text-foreground"
-                  onClick={() => fm.navigateTo(fullPath).catch((e) => toast.error(`${e}`))}
-                >
-                  {part}
-                </button>
-              </span>
-            );
-          })}
-        </div>
+            <button
+              className="shrink-0 text-[12px] text-muted-foreground hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation();
+                fm.navigateTo("/").catch((err) => toast.error(`${err}`));
+              }}
+            >
+              /
+            </button>
+            {pathParts.map((part, i) => {
+              const fullPath = "/" + pathParts.slice(0, i + 1).join("/");
+              return (
+                <span key={fullPath} className="flex items-center gap-0.5">
+                  <ChevronRight className="h-3 w-3 text-muted-foreground/40" />
+                  <button
+                    className="truncate text-[12px] text-muted-foreground hover:text-foreground"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fm.navigateTo(fullPath).catch((err) => toast.error(`${err}`));
+                    }}
+                  >
+                    {part}
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
 
         {/* Right toolbar */}
         {onOpenTerminal && server.protocol === "ssh" && (
@@ -454,6 +587,18 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
             title="Open in Terminal"
           >
             <Terminal className="h-3.5 w-3.5" />
+          </Button>
+        )}
+        {server.protocol === "ssh" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn("h-7 w-7", searchOpen && "text-primary")}
+            onClick={() => setSearchOpen(!searchOpen)}
+            disabled={fm.status !== "connected"}
+            title="Search files (⌘F)"
+          >
+            <Search className="h-3.5 w-3.5" />
           </Button>
         )}
         <Button
@@ -601,6 +746,22 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
           </div>
         )}
       </ScrollArea>
+
+        {/* Search panel — absolute overlay */}
+        <AnimatePresence>
+          {searchOpen && server.protocol === "ssh" && (
+            <FileSearchPanel
+              sessionId={fm.sessionId}
+              currentPath={fm.currentPath}
+              onOpenFile={handleSearchOpenFile}
+              onNavigate={(path) => {
+                fm.navigateTo(path).catch((e) => toast.error(`${e}`));
+                setSearchOpen(false);
+              }}
+              onClose={() => setSearchOpen(false)}
+            />
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Transfer queue */}
@@ -729,17 +890,17 @@ export function FileManager({ server, onClose, onOpenTerminal }: FileManagerProp
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Built-in code editor overlay */}
-      {editingFile && (
-        <div className="absolute inset-0 z-20 bg-background">
-          <RemoteCodeEditor
-            remotePath={editingFile.path}
-            initialContent={editingFile.content}
-            readOnly={editingFile.readOnly}
-            onSave={handleSaveEditedFile}
-            onClose={() => setEditingFile(null)}
-          />
-        </div>
+      {/* Modal-based multi-tab code editor */}
+      {editorOpen && editorTabs.length > 0 && (
+        <FileEditorModal
+          tabs={editorTabs}
+          activeTabId={activeEditorTabId}
+          onTabChange={setActiveEditorTabId}
+          onTabClose={handleEditorTabClose}
+          onSave={handleSaveEditedFile}
+          onClose={handleEditorClose}
+          onContentChange={handleEditorContentChange}
+        />
       )}
     </div>
   );

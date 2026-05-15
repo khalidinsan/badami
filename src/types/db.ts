@@ -32,6 +32,8 @@ export interface Database {
   db_saved_query_folders: DbSavedQueryFolderTable;
   db_query_history: DbQueryHistoryTable;
   db_er_layouts: DbErLayoutTable;
+  ai_conversations: AiConversationTable;
+  ai_messages: AiMessageTable;
 }
 
 export interface ProjectTable {
@@ -475,3 +477,28 @@ export type DbSavedQueryFolderRow = Selectable<DbSavedQueryFolderTable>;
 export type DbQueryHistoryRow = Selectable<DbQueryHistoryTable>;
 
 export type DbErLayoutRow = Selectable<DbErLayoutTable>;
+
+// ─── AI Chat (Phase 18) ─────────────────────────────────────────────
+
+export interface AiConversationTable {
+  id: string;
+  title: string;
+  model: string;
+  system_prompt: ColumnType<string | null, string | null, string | null>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AiMessageTable {
+  id: string;
+  conversation_id: string;
+  role: string;
+  content: string;
+  tool_calls: ColumnType<string | null, string | null, string | null>;
+  tool_call_id: ColumnType<string | null, string | null, string | null>;
+  tokens_used: ColumnType<number | null, number | null, number | null>;
+  created_at: string;
+}
+
+export type AiConversationRow = Selectable<AiConversationTable>;
+export type AiMessageRow = Selectable<AiMessageTable>;

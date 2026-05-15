@@ -14,6 +14,12 @@ pub struct TableInfo {
     pub name: String,
     pub table_type: String, // table | view
     pub row_count: Option<i64>,
+    pub data_length: Option<i64>,
+    pub engine: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub collation: Option<String>,
+    pub comment: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -109,7 +115,13 @@ pub async fn dbc_list_tables(
         super::db_connection::DbPool::MySQL(p) => {
             let db_name = database.unwrap_or_default();
             let rows = sqlx::query(
-                "SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS \
+                "SELECT TABLE_NAME, TABLE_TYPE, \
+                 CAST(TABLE_ROWS AS SIGNED) AS TABLE_ROWS, \
+                 CAST(DATA_LENGTH AS SIGNED) AS DATA_LENGTH, \
+                 ENGINE, \
+                 CAST(CREATE_TIME AS CHAR) AS CREATE_TIME, \
+                 CAST(UPDATE_TIME AS CHAR) AS UPDATE_TIME, \
+                 TABLE_COLLATION, TABLE_COMMENT \
                  FROM information_schema.TABLES \
                  WHERE TABLE_SCHEMA = ? \
                  ORDER BY TABLE_NAME",
@@ -131,6 +143,12 @@ pub async fn dbc_list_tables(
                             "table".into()
                         },
                         row_count: r.try_get("TABLE_ROWS").ok(),
+                        data_length: r.try_get("DATA_LENGTH").ok(),
+                        engine: r.try_get::<String, _>("ENGINE").ok(),
+                        created_at: r.try_get::<String, _>("CREATE_TIME").ok(),
+                        updated_at: r.try_get::<String, _>("UPDATE_TIME").ok(),
+                        collation: r.try_get::<String, _>("TABLE_COLLATION").ok(),
+                        comment: r.try_get::<String, _>("TABLE_COMMENT").ok(),
                     }
                 })
                 .collect())
@@ -140,7 +158,8 @@ pub async fn dbc_list_tables(
             let rows = sqlx::query(
                 "SELECT c.relname AS table_name, \
                         CASE WHEN c.relkind = 'v' THEN 'view' ELSE 'table' END AS table_type, \
-                        c.reltuples::bigint AS row_count \
+                        c.reltuples::bigint AS row_count, \
+                        pg_total_relation_size(c.oid)::bigint AS data_length \
                  FROM pg_class c \
                  JOIN pg_namespace n ON n.oid = c.relnamespace \
                  WHERE n.nspname = $1 AND c.relkind IN ('r', 'v') \
@@ -157,6 +176,12 @@ pub async fn dbc_list_tables(
                     name: r.get("table_name"),
                     table_type: r.get("table_type"),
                     row_count: r.try_get::<i64, _>("row_count").ok(),
+                    data_length: r.try_get::<i64, _>("data_length").ok(),
+                    engine: None,
+                    created_at: None,
+                    updated_at: None,
+                    collation: None,
+                    comment: None,
                 })
                 .collect())
         }
@@ -192,6 +217,12 @@ pub async fn dbc_list_tables(
                     name: name.clone(),
                     table_type: ttype.clone(),
                     row_count,
+                    data_length: None,
+                    engine: Some("SQLite".into()),
+                    created_at: None,
+                    updated_at: None,
+                    collation: None,
+                    comment: None,
                 });
             }
             Ok(tables)

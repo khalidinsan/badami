@@ -6,9 +6,13 @@ export const Route = createFileRoute("/search")({
 });
 
 function SearchPage() {
-  return <CommandPalette isWindow onClose={() => {
-    import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
-      getCurrentWindow().close();
-    });
-  }} />;
+  return (
+    <div className="flex h-screen flex-col overflow-hidden rounded-lg border border-border/30">
+      <CommandPalette isWindow onClose={() => {
+        import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+          getCurrentWindow().close();
+        });
+      }} />
+    </div>
+  );
 }

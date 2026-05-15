@@ -4,7 +4,7 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import type { DateClickArg } from "@fullcalendar/interaction";
-import type { EventDropArg } from "@fullcalendar/core";
+import type { EventDropArg, DatesSetArg } from "@fullcalendar/core";
 import type { CalendarEventData } from "@/db/queries/planning";
 import dayjs from "dayjs";
 
@@ -13,6 +13,7 @@ interface CalendarViewProps {
   calendarEvents: CalendarEventData[];
   onDateClick: (date: string) => void;
   onEventDrop?: (taskId: string, newDate: string) => void;
+  onRangeChange?: (start: string, end: string) => void;
 }
 
 export function CalendarView({
@@ -20,6 +21,7 @@ export function CalendarView({
   calendarEvents,
   onDateClick,
   onEventDrop,
+  onRangeChange,
 }: CalendarViewProps) {
   const calRef = useRef<FullCalendar>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -74,6 +76,16 @@ export function CalendarView({
     onEventDrop(info.event.id, newDate);
   };
 
+  const handleDatesSet = (arg: DatesSetArg) => {
+    if (!onRangeChange) return;
+    // arg.startStr / endStr are ISO dates for the actual visible range
+    // (includes leading/trailing days from adjacent months)
+    const start = dayjs(arg.start).format("YYYY-MM-DD");
+    // arg.end is exclusive — subtract 1 day to get the last visible date
+    const end = dayjs(arg.end).subtract(1, "day").format("YYYY-MM-DD");
+    onRangeChange(start, end);
+  };
+
   return (
     <div ref={containerRef} className="planning-calendar h-full">
       <FullCalendar
@@ -84,6 +96,7 @@ export function CalendarView({
         events={events}
         editable={true}
         eventDrop={handleEventDrop}
+        datesSet={handleDatesSet}
         headerToolbar={{
           left: "prev,next today",
           center: "title",

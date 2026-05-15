@@ -425,13 +425,15 @@ pub async fn db_init(
                                     // embedded local WAL + network, independent of Connection.
                                     match replica_db_clone.sync().await {
                                         Ok(_) => {
-                                            // Migrations + second sync while holding lock briefly
-                                            let inner = state_clone.lock().await;
-                                            if let Some(ref db_inner) = *inner {
-                                                run_pending_migrations(&db_inner.conn, &migrations_clone).await;
-                                            }
-                                            drop(inner);
-                                            // Second sync to push any local changes
+                                            // Apply any migrations that arrived via sync,
+                                            // then push them back to Turso.
+                                            // Hold the mutex briefly just for the migration queries.
+                                            {
+                                                let inner = state_clone.lock().await;
+                                                if let Some(ref db_inner) = *inner {
+                                                    run_pending_migrations(&db_inner.conn, &migrations_clone).await;
+                                                }
+                                            } // mutex released here before second sync
                                             let _ = replica_db_clone.sync().await;
 
                                             let now = chrono::Utc::now().to_rfc3339();
@@ -503,6 +505,21 @@ pub async fn db_init(
     // ── Step 1: Open local badami.db (fallback / no-sync path) ────────────────
     // Covers: no sync config, first-time sync setup (replica not yet built),
     // or replica open failed above — app still starts correctly.
+
+    // If sync-config.json is absent but orphaned sync sidecar files exist, clean
+    // them up so a future db_enable_sync call can build a fresh replica.
+    if sync_config.is_none() && !sync_db_path.exists() {
+        let info = app_dir.join("badami_sync.db-info");
+        if info.exists() {
+            eprintln!("[db_init] no sync config but orphaned sidecar files found — purging");
+            // We only delete sidecars (not the main db since it doesn't exist here)
+            let base = sync_db_path.to_string_lossy();
+            let _ = std::fs::remove_file(format!("{base}-shm"));
+            let _ = std::fs::remove_file(format!("{base}-wal"));
+            let _ = std::fs::remove_file(format!("{base}-client_wal_index"));
+            let _ = std::fs::remove_file(format!("{base}-info"));
+        }
+    }
 
     // If badami.db has a -client_wal_index sidecar it's a libsql replica file,
     // not a standard SQLite. Delete the whole family so we start fresh.
@@ -804,24 +821,52 @@ pub async fn db_enable_sync(
     let mut inner = state.inner.lock().await;
     let previous = inner.take();
 
+    // ── Clean up any orphaned sidecar files before building the replica ────────
+    // If the main db file doesn't exist but sidecar files do (e.g. a previous
+    // session crashed mid-creation), libsql reads the stale metadata and fails.
+    // Also purge when the db exists but we detect a known-bad state.
+    let purge_sync_db_files = |base: &std::path::Path| {
+        let _ = std::fs::remove_file(base);
+        let _ = std::fs::remove_file(base.with_extension("db-shm"));
+        let _ = std::fs::remove_file(base.with_extension("db-wal"));
+        let _ = std::fs::remove_file(base.with_extension("db-client_wal_index"));
+        let _ = std::fs::remove_file(base.with_extension("db-info"));
+        // Also try the literal suffixed paths libsql uses
+        let s = base.to_string_lossy();
+        let _ = std::fs::remove_file(format!("{s}-shm"));
+        let _ = std::fs::remove_file(format!("{s}-wal"));
+        let _ = std::fs::remove_file(format!("{s}-client_wal_index"));
+        let _ = std::fs::remove_file(format!("{s}-info"));
+    };
+
+    if !sync_db_path.exists() {
+        // Orphaned sidecars from a previous incomplete build — wipe them
+        eprintln!("[enable_sync] sync db missing — purging any stale sidecar files");
+        purge_sync_db_files(&sync_db_path);
+    }
+
     // Build embedded replica (badami_sync.db — separate from local SQLite)
+    let build_replica = |u: String, tok: String| {
+        let path = sync_db_path.clone();
+        let interval = sync_interval_minutes;
+        async move {
+            let mut b = Builder::new_remote_replica(&path, u, tok);
+            if interval > 0 {
+                b = b.sync_interval(Duration::from_secs(interval * 60));
+            }
+            b.build().await
+        }
+    };
     let url2 = url.clone();
     let token2 = token.clone();
-    let mut builder = Builder::new_remote_replica(&sync_db_path, url.clone(), token.clone());
-    if sync_interval_minutes > 0 {
-        builder = builder.sync_interval(Duration::from_secs(sync_interval_minutes * 60));
-    }
-    let build_result = match builder.build().await {
-        Err(ref e) if e.to_string().contains("wal_index") => {
-            eprintln!("[enable_sync] wal_index mismatch — recreating sync db");
-            let _ = std::fs::remove_file(&sync_db_path);
-            let mut b2 = Builder::new_remote_replica(&sync_db_path, url2, token2);
-            if sync_interval_minutes > 0 {
-                b2 = b2.sync_interval(Duration::from_secs(sync_interval_minutes * 60));
-            }
-            b2.build().await
+    let build_result = match build_replica(url.clone(), token.clone()).await {
+        Err(ref e) => {
+            // Any build error: wipe all sync files and retry once from scratch
+            eprintln!("[enable_sync] first build attempt failed ({e}) — purging and retrying");
+            purge_sync_db_files(&sync_db_path);
+            build_replica(url2, token2).await
         }
-        other => other,
+        ok => ok,
     };
 
     let db = match build_result {
@@ -852,36 +897,30 @@ pub async fn db_enable_sync(
         sync_enabled: true,
     });
 
-    // Initial sync — if this fails, keep the replica conn (it works locally)
-    // but write the config so next restart will retry
-    // Note: sync() is called on the Arc clone without holding the inner lock.
-    let start = std::time::Instant::now();
-    drop(inner); // Release lock before network call
-
     // ── Migrate local data to replica (first-time sync enable only) ──────────
-    // If the previous connection was a plain local DB (not sync_enabled), any rows
-    // created before sync was turned on live only in badami.db and would be silently
-    // lost once we switch the active connection to the replica.  Copy every row with
-    // INSERT OR IGNORE so Turso data always wins on conflict.
+    // IMPORTANT: migration runs BEFORE drop(inner) so we still hold the mutex.
+    // This guarantees the main app conn (used for writes by db_execute) and the
+    // migration are NEVER concurrent — previously a second connection was opened
+    // after the mutex was released, racing with db_execute and corrupting the WAL.
     let was_local = previous
         .as_ref()
         .map(|p| !p.sync_enabled)
         .unwrap_or(false);
     if was_local {
         if let Some(ref prev_inner) = previous {
-            // Open a second connection to the replica just for the migration
-            match db.connect() {
-                Ok(migration_conn) => {
-                    eprintln!("[migrate] migrating local data → replica …");
-                    let _ = migration_conn.execute("PRAGMA foreign_keys=OFF", ()).await;
-                    migrate_tables(&prev_inner.conn, &migration_conn).await;
-                    let _ = migration_conn.execute("PRAGMA foreign_keys=ON", ()).await;
-                    eprintln!("[migrate] done");
-                }
-                Err(e) => eprintln!("[migrate] could not open migration conn: {e}"),
+            // Use the main conn already in DbInner — avoids any second writer
+            if let Some(ref db_inner) = *inner {
+                eprintln!("[migrate] migrating local data → replica …");
+                let _ = db_inner.conn.execute("PRAGMA foreign_keys=OFF", ()).await;
+                migrate_tables(&prev_inner.conn, &db_inner.conn).await;
+                let _ = db_inner.conn.execute("PRAGMA foreign_keys=ON", ()).await;
+                eprintln!("[migrate] done");
             }
         }
     }
+
+    let start = std::time::Instant::now();
+    drop(inner); // Release lock before network call — all writes can now proceed
 
     let sync_error = match db.sync().await {
         Ok(_) => None,

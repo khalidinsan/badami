@@ -1,4 +1,4 @@
-import { Link, useRouterState, useRouter } from "@tanstack/react-router";
+import { useRouterState, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 import {
   FolderKanban,
@@ -16,6 +16,7 @@ import {
   BarChart3,
   Info,
   Database,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Separator } from "@/components/ui/separator";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useTaskStore } from "@/stores/taskStore";
@@ -31,27 +38,31 @@ import sidebarPattern from "@/assets/sidebar-pattern.svg";
 import { useCredentialStore } from "@/stores/credentialStore";
 import { getExpiryBadgeCount } from "@/hooks/useExpiryCheck";
 import { SyncStatusIndicator } from "@/components/sync/SyncStatusIndicator";
+import { useAppTabStore, type AppTabType } from "@/stores/appTabStore";
 
 interface NavItem {
   to: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  iconName: string;
+  tabType: AppTabType;
 }
 
 const navItems: NavItem[] = [
-  { to: "/planning", label: "Planning", icon: CalendarDays },
-  { to: "/projects", label: "Projects", icon: FolderKanban },
-  { to: "/tasks", label: "Tasks", icon: CheckSquare },
-  { to: "/servers", label: "Servers", icon: Server },
-  { to: "/credentials", label: "Credentials", icon: KeyRound },
-  { to: "/api", label: "API", icon: Globe },
-  { to: "/database", label: "Database", icon: Database },
+  { to: "/planning", label: "Planning", icon: CalendarDays, iconName: "CalendarDays", tabType: "planning" },
+  { to: "/projects", label: "Projects", icon: FolderKanban, iconName: "FolderKanban", tabType: "projects" },
+  { to: "/tasks", label: "Tasks", icon: CheckSquare, iconName: "CheckSquare", tabType: "tasks" },
+  { to: "/servers", label: "Servers", icon: Server, iconName: "Server", tabType: "servers" },
+  { to: "/credentials", label: "Credentials", icon: KeyRound, iconName: "KeyRound", tabType: "credentials" },
+  { to: "/api", label: "API", icon: Globe, iconName: "Globe", tabType: "api" },
+  { to: "/database", label: "Database", icon: Database, iconName: "Database", tabType: "database" },
+  { to: "/ai", label: "AI Chat", icon: Bot, iconName: "Bot", tabType: "ai" },
 ];
 
 const bottomItems: NavItem[] = [
-  { to: "/stats", label: "Statistics", icon: BarChart3 },
-  { to: "/settings", label: "Settings", icon: Settings },
-  { to: "/about", label: "About", icon: Info },
+  { to: "/stats", label: "Statistics", icon: BarChart3, iconName: "BarChart3", tabType: "stats" },
+  { to: "/settings", label: "Settings", icon: Settings, iconName: "Settings", tabType: "settings" },
+  { to: "/about", label: "About", icon: Info, iconName: "Info", tabType: "about" },
 ];
 
 interface SidebarProps {
@@ -167,10 +178,34 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
         <nav className="flex-1 space-y-0.5 px-2 py-3">
           {navItems.map((item) => {
             const isActive = currentPath.startsWith(item.to);
+
+            const handleClick = (e: React.MouseEvent) => {
+              e.preventDefault();
+              const { navigateTab } = useAppTabStore.getState();
+              navigateTab({
+                type: item.tabType,
+                title: item.label,
+                icon: item.iconName,
+                route: item.to,
+              });
+              router.navigate({ to: item.to });
+            };
+
+            const handleOpenNewTab = () => {
+              const { openTab } = useAppTabStore.getState();
+              openTab({
+                type: item.tabType,
+                title: item.label,
+                icon: item.iconName,
+                route: item.to,
+              });
+              router.navigate({ to: item.to });
+            };
+
             const linkContent = (
-              <Link
-                key={item.to}
-                to={item.to}
+              <a
+                href={item.to}
+                onClick={handleClick}
                 className={cn(
                   "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   isActive
@@ -189,21 +224,32 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
                     {expiryCount}
                   </span>
                 )}
-              </Link>
+              </a>
             );
 
-            if (collapsed) {
-              return (
-                <Tooltip key={item.to}>
-                  <TooltipTrigger asChild>
-                    <span className="relative">{linkContent}</span>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{item.label}</TooltipContent>
-                </Tooltip>
-              );
-            }
+            const wrappedWithContext = (
+              <ContextMenu key={item.to}>
+                <ContextMenuTrigger asChild>
+                  {collapsed ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="relative">{linkContent}</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">{item.label}</TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    linkContent
+                  )}
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                  <ContextMenuItem onClick={handleOpenNewTab}>
+                    Open in New Tab
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
+            );
 
-            return linkContent;
+            return wrappedWithContext;
           })}
         </nav>
 
@@ -282,10 +328,34 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
 
           {bottomItems.map((item) => {
             const isActive = currentPath.startsWith(item.to);
+
+            const handleClick = (e: React.MouseEvent) => {
+              e.preventDefault();
+              const { navigateTab } = useAppTabStore.getState();
+              navigateTab({
+                type: item.tabType,
+                title: item.label,
+                icon: item.iconName,
+                route: item.to,
+              });
+              router.navigate({ to: item.to });
+            };
+
+            const handleOpenNewTab = () => {
+              const { openTab } = useAppTabStore.getState();
+              openTab({
+                type: item.tabType,
+                title: item.label,
+                icon: item.iconName,
+                route: item.to,
+              });
+              router.navigate({ to: item.to });
+            };
+
             const linkContent = (
-              <Link
-                key={item.to}
-                to={item.to}
+              <a
+                href={item.to}
+                onClick={handleClick}
                 className={cn(
                   "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   isActive
@@ -296,19 +366,28 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
               >
                 <item.icon className="h-5 w-5 shrink-0" />
                 {!collapsed && <span>{item.label}</span>}
-              </Link>
+              </a>
             );
 
-            if (collapsed) {
-              return (
-                <Tooltip key={item.to}>
-                  <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                  <TooltipContent side="right">{item.label}</TooltipContent>
-                </Tooltip>
-              );
-            }
-
-            return linkContent;
+            return (
+              <ContextMenu key={item.to}>
+                <ContextMenuTrigger asChild>
+                  {collapsed ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                      <TooltipContent side="right">{item.label}</TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    linkContent
+                  )}
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                  <ContextMenuItem onClick={handleOpenNewTab}>
+                    Open in New Tab
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
+            );
           })}
         </div>
       </div>

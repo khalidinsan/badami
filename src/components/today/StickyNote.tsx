@@ -12,6 +12,7 @@ import {
   Inbox,
   AArrowDown,
   AArrowUp,
+  RotateCw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -627,6 +628,15 @@ export function StickyNote() {
             )}
           </button>
 
+          {/* Refresh */}
+          <button
+            onClick={() => window.location.reload()}
+            className="flex h-5 w-5 items-center justify-center rounded text-white/60 transition-colors hover:bg-white/15 hover:text-white"
+            title="Refresh"
+          >
+            <RotateCw className="h-3 w-3" />
+          </button>
+
           {/* Close */}
           <button
             onClick={handleClose}
@@ -816,6 +826,7 @@ export function StickyNote() {
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.15 }}
             className="shrink-0 overflow-hidden border-t border-black/10"
+            data-tauri-no-drag
           >
             <PomodoroTimer compact={false} />
           </motion.div>

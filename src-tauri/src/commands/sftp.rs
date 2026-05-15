@@ -591,3 +591,100 @@ fn get_sftp_conn(
         .cloned()
         .ok_or_else(|| "SFTP session not found".to_string())
 }
+
+/// Search for files by name pattern, optionally recursive.
+/// Uses `find` command via SSH exec channel for performance.
+#[tauri::command]
+pub async fn sftp_search_files(
+    app: AppHandle,
+    session_id: String,
+    base_path: String,
+    query: String,
+    recursive: bool,
+    max_results: Option<u32>,
+) -> Result<Vec<FileEntry>, String> {
+    let conn = get_sftp_conn(&app, &session_id)?;
+    let limit = max_results.unwrap_or(200);
+
+    tokio::task::spawn_blocking(move || {
+        let conn = conn.lock().unwrap();
+        conn.session.set_blocking(true);
+
+        // Use `find` command via exec channel for fast recursive search
+        let depth_flag = if recursive { "" } else { "-maxdepth 1 " };
+        let cmd = format!(
+            "find {} {}-iname '*{}*' -not -name '.' -not -name '..' 2>/dev/null | head -n {}",
+            shell_escape(&base_path),
+            depth_flag,
+            shell_escape_pattern(&query),
+            limit
+        );
+
+        let mut channel = conn.session.channel_session()
+            .map_err(|e| format!("Channel error: {}", e))?;
+        channel.exec(&cmd)
+            .map_err(|e| format!("Exec error: {}", e))?;
+
+        let mut output = String::new();
+        channel.read_to_string(&mut output)
+            .map_err(|e| format!("Read error: {}", e))?;
+        channel.wait_close().ok();
+
+        // Now stat each found path via SFTP
+        let sftp = conn.session.sftp()
+            .map_err(|e| format!("SFTP error: {}", e))?;
+
+        let mut results: Vec<FileEntry> = Vec::new();
+        for line in output.lines() {
+            let path_str = line.trim();
+            if path_str.is_empty() {
+                continue;
+            }
+            let stat = match sftp.stat(Path::new(path_str)) {
+                Ok(s) => s,
+                Err(_) => continue, // skip broken symlinks etc.
+            };
+
+            let name = Path::new(path_str)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path_str.to_string());
+
+            let kind = if stat.is_dir() {
+                "directory"
+            } else if stat.file_type().is_symlink() {
+                "symlink"
+            } else {
+                "file"
+            };
+            let size = stat.size.unwrap_or(0);
+
+            results.push(FileEntry {
+                name: name.clone(),
+                path: path_str.to_string(),
+                size,
+                size_formatted: ByteSize(size).to_string(),
+                kind: kind.to_string(),
+                permissions: stat.perm.map(unix_mode_to_string).unwrap_or_default(),
+                owner: stat.uid.unwrap_or(0).to_string(),
+                modified_at: format_time(stat.mtime.unwrap_or(0)),
+                is_hidden: name.starts_with('.'),
+            });
+        }
+
+        Ok(results)
+    })
+    .await
+    .map_err(|e| format!("Task error: {}", e))?
+}
+
+/// Escape a string for use in a shell command (wraps in single quotes).
+fn shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Escape special glob characters in the search pattern for use inside find -iname.
+fn shell_escape_pattern(s: &str) -> String {
+    s.replace('\'', "")
+     .replace('\\', "\\\\")
+}

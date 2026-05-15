@@ -83,6 +83,24 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
     maxReconnectAttempts: Number(getSetting("ssh_auto_reconnect_max_attempts", "5")) || 5,
   });
 
+  // Send correct terminal size to PTY once connected
+  const prevStatusRef = useRef<SshConnectionStatus>("idle");
+  useEffect(() => {
+    if (status === "connected" && prevStatusRef.current !== "connected") {
+      // Just became connected — sync PTY size with actual terminal dimensions
+      if (xtermRef.current && fitAddonRef.current) {
+        try {
+          fitAddonRef.current.fit();
+        } catch {
+          // ignore
+        }
+        const { cols, rows } = xtermRef.current;
+        resize(cols, rows);
+      }
+    }
+    prevStatusRef.current = status;
+  }, [status, resize]);
+
   // Initialize xterm
   useEffect(() => {
     if (!termRef.current) return;
