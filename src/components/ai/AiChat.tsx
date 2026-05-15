@@ -7,14 +7,13 @@ import {
   Trash2,
   Bot,
   User,
-  Loader2,
   MessageSquare,
   StopCircle,
   Copy,
   Check,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useAiChat, type ChatMessage } from "@/hooks/useAiChat";
@@ -30,7 +29,7 @@ export function AiChat() {
   const [input, setInput] = useState("");
   const [showSidebar, setShowSidebar] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const selectedModel = getSetting("ai_model", "openai/gpt-4o-mini");
   const apiKey = getSetting("openrouter_api_key", "");
@@ -51,17 +50,27 @@ export function AiChat() {
     }
   }, [activeConvId, loadMessages, setMessages]);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom on new messages
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    });
+  }, [messages]);
+
+  // Focus input after response completes
+  useEffect(() => {
+    if (!loading) {
+      inputRef.current?.focus();
     }
-  }, [messages, loading]);
+  }, [loading]);
 
   const handleNewConversation = async () => {
     const conv = await aiQueries.createConversation({ model: selectedModel });
     setConversations((prev) => [conv, ...prev]);
     setActiveConvId(conv.id);
+    setInput("");
   };
 
   const handleDeleteConversation = async (id: string) => {
@@ -69,6 +78,7 @@ export function AiChat() {
     setConversations((prev) => prev.filter((c) => c.id !== id));
     if (activeConvId === id) {
       setActiveConvId(null);
+      setMessages([]);
     }
   };
 
@@ -80,25 +90,30 @@ export function AiChat() {
       return;
     }
 
+    const msg = input.trim();
+    setInput("");
+
+    // Auto-resize textarea back
+    if (inputRef.current) inputRef.current.style.height = "auto";
+
+    // Create conversation if needed (but don't block UI)
     let convId = activeConvId;
     if (!convId) {
-      const conv = await aiQueries.createConversation({ model: selectedModel, title: input.slice(0, 50) });
+      const conv = await aiQueries.createConversation({ model: selectedModel, title: msg.slice(0, 50) });
       setConversations((prev) => [conv, ...prev]);
       setActiveConvId(conv.id);
       convId = conv.id;
+    } else {
+      // Auto-rename if still "New Chat"
+      const conv = conversations.find((c) => c.id === convId);
+      if (conv && conv.title === "New Chat") {
+        aiQueries.updateConversation(convId, { title: msg.slice(0, 50) });
+        setConversations((prev) => prev.map((c) => c.id === convId ? { ...c, title: msg.slice(0, 50) } : c));
+      }
     }
-
-    const msg = input;
-    setInput("");
 
     try {
       await sendMessage(msg, convId, selectedModel);
-      // Auto-rename conversation if it's the first message
-      const conv = conversations.find((c) => c.id === convId);
-      if (conv && conv.title === "New Chat") {
-        await aiQueries.updateConversation(convId, { title: msg.slice(0, 50) });
-        setConversations((prev) => prev.map((c) => c.id === convId ? { ...c, title: msg.slice(0, 50) } : c));
-      }
     } catch (err) {
       toast.error(String(err));
     }
@@ -109,6 +124,13 @@ export function AiChat() {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  // Auto-resize textarea
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    e.target.style.height = "auto";
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
   };
 
   return (
@@ -152,7 +174,6 @@ export function AiChat() {
               )}
             </div>
           </ScrollArea>
-          {/* Current model indicator */}
           <div className="border-t border-border/40 px-3 py-2">
             <p className="truncate text-[10px] text-muted-foreground/60">
               Model: <span className="font-medium text-muted-foreground">{selectedModel.split("/").pop()}</span>
@@ -180,17 +201,34 @@ export function AiChat() {
               API key not set
             </span>
           )}
+          {loading && (
+            <span className="ml-auto flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <Sparkles className="h-3 w-3 animate-pulse text-primary" />
+              Generating...
+            </span>
+          )}
         </div>
 
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
           {messages.length === 0 && !loading && (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-              <Bot className="h-10 w-10 mb-3 opacity-20" />
-              <p className="text-sm font-medium">How can I help you?</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">
-                I can manage your tasks, search projects, and more.
+              <Bot className="h-12 w-12 mb-4 opacity-15" />
+              <p className="text-sm font-medium">Ada yang bisa dibantu?</p>
+              <p className="text-xs text-muted-foreground/60 mt-1 text-center max-w-[280px]">
+                Aku bisa bantu kelola tasks, cari project, lihat planning, dan lainnya.
               </p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {["Ada task overdue?", "List semua project", "Buatkan task baru"].map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => { setInput(q); inputRef.current?.focus(); }}
+                    className="rounded-full border border-border/60 px-3 py-1 text-[11px] text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -198,38 +236,57 @@ export function AiChat() {
             <MessageBubble key={msg.id} message={msg} />
           ))}
 
-          {loading && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-xs">Thinking...</span>
-              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={stopGeneration}>
-                <StopCircle className="h-3 w-3 mr-1" />
-                Stop
-              </Button>
+          {/* Typing indicator — only show when loading AND no streaming content visible */}
+          {loading && !messages.some((m) => m.isStreaming && m.content) && (
+            <div className="flex gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted/60">
+                <Bot className="h-3.5 w-3.5 text-muted-foreground" />
+              </div>
+              <div className="rounded-xl bg-muted/50 px-4 py-3">
+                <div className="flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: "300ms" }} />
+                </div>
+              </div>
             </div>
           )}
         </div>
 
         {/* Input */}
         <div className="border-t border-border/40 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Input
+          <div className="flex items-end gap-2">
+            <textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder="Ask anything... (tasks, projects, planning)"
-              className="flex-1 text-sm"
+              placeholder="Ketik pesan... (Enter kirim, Shift+Enter baris baru)"
+              className="flex-1 resize-none rounded-lg border border-border/60 bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground/40 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-50"
+              rows={1}
+              style={{ maxHeight: "120px" }}
               disabled={loading}
             />
-            <Button
-              size="icon"
-              className="h-9 w-9"
-              onClick={handleSend}
-              disabled={loading || !input.trim()}
-            >
-              <Send className="h-4 w-4" />
-            </Button>
+            {loading ? (
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-9 w-9 shrink-0"
+                onClick={stopGeneration}
+                title="Stop"
+              >
+                <StopCircle className="h-4 w-4 text-destructive" />
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                onClick={handleSend}
+                disabled={!input.trim()}
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -262,23 +319,25 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         isUser
           ? "bg-primary text-primary-foreground"
           : "bg-muted/50 text-foreground",
+        message.isStreaming && "animate-pulse-subtle",
       )}>
         {isUser ? (
           <div className="whitespace-pre-wrap break-words leading-relaxed">
             {message.content}
           </div>
-        ) : (
-          <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-2 prose-code:text-[12px] prose-pre:bg-black/20 prose-pre:rounded-lg prose-code:before:content-none prose-code:after:content-none">
+        ) : message.content ? (
+          <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-2 prose-code:text-[12px] prose-pre:bg-black/20 prose-pre:rounded-lg prose-code:before:content-none prose-code:after:content-none prose-table:text-xs">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {message.content}
             </ReactMarkdown>
           </div>
-        )}
+        ) : null}
+
         {/* Copy button for assistant messages */}
-        {!isUser && message.content && (
+        {!isUser && message.content && !message.isStreaming && (
           <button
             onClick={handleCopy}
-            className="absolute -bottom-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-muted/60"
+            className="absolute -bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity rounded-md bg-background border border-border/60 p-1 shadow-sm hover:bg-muted/60"
             title="Copy"
           >
             {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3 text-muted-foreground" />}

@@ -181,13 +181,24 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
 
             const handleClick = (e: React.MouseEvent) => {
               e.preventDefault();
-              const { navigateTab } = useAppTabStore.getState();
-              navigateTab({
-                type: item.tabType,
-                title: item.label,
-                icon: item.iconName,
-                route: item.to,
-              });
+              const isMod = e.metaKey || e.ctrlKey;
+              const { openTab, navigateTab } = useAppTabStore.getState();
+
+              if (isMod) {
+                openTab({
+                  type: item.tabType,
+                  title: item.label,
+                  icon: item.iconName,
+                  route: item.to,
+                }, true);
+              } else {
+                navigateTab({
+                  type: item.tabType,
+                  title: item.label,
+                  icon: item.iconName,
+                  route: item.to,
+                });
+              }
               router.navigate({ to: item.to });
             };
 
@@ -198,7 +209,7 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
                 title: item.label,
                 icon: item.iconName,
                 route: item.to,
-              });
+              }, true);
               router.navigate({ to: item.to });
             };
 
@@ -206,6 +217,9 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
               <a
                 href={item.to}
                 onClick={handleClick}
+                onAuxClick={(e) => {
+                  if (e.button === 1) { e.preventDefault(); handleOpenNewTab(); }
+                }}
                 className={cn(
                   "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   isActive
@@ -331,13 +345,24 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
 
             const handleClick = (e: React.MouseEvent) => {
               e.preventDefault();
-              const { navigateTab } = useAppTabStore.getState();
-              navigateTab({
-                type: item.tabType,
-                title: item.label,
-                icon: item.iconName,
-                route: item.to,
-              });
+              const isMod = e.metaKey || e.ctrlKey;
+              const { openTab, navigateTab } = useAppTabStore.getState();
+
+              if (isMod) {
+                openTab({
+                  type: item.tabType,
+                  title: item.label,
+                  icon: item.iconName,
+                  route: item.to,
+                }, true);
+              } else {
+                navigateTab({
+                  type: item.tabType,
+                  title: item.label,
+                  icon: item.iconName,
+                  route: item.to,
+                });
+              }
               router.navigate({ to: item.to });
             };
 
@@ -348,7 +373,7 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
                 title: item.label,
                 icon: item.iconName,
                 route: item.to,
-              });
+              }, true);
               router.navigate({ to: item.to });
             };
 
@@ -356,6 +381,9 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
               <a
                 href={item.to}
                 onClick={handleClick}
+                onAuxClick={(e) => {
+                  if (e.button === 1) { e.preventDefault(); handleOpenNewTab(); }
+                }}
                 className={cn(
                   "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   isActive

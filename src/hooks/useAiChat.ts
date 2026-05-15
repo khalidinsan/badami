@@ -76,56 +76,80 @@ export function useAiChat(_conversationId: string | null) {
     }
 
     const selectedModel = model || getSetting("ai_model", "openai/gpt-4o-mini");
-    const conv = await aiQueries.getConversationById(convId);
-    const systemPrompt = conv?.system_prompt || DEFAULT_SYSTEM_PROMPT;
 
-    // Save user message
-    const userMsg = await aiQueries.createMessage({
-      conversation_id: convId,
-      role: "user",
-      content,
-    });
-    const userChatMsg: ChatMessage = { id: userMsg.id, role: "user", content };
-    setMessages((prev) => [...prev, userChatMsg]);
-
-    // Build message history for API
-    const history = await aiQueries.getMessages(convId);
-    const apiMessages: OpenRouterMessage[] = [
-      { role: "system", content: systemPrompt },
-      ...history.map((m) => ({
-        role: m.role,
-        content: m.content,
-        tool_calls: m.tool_calls ? JSON.parse(m.tool_calls) : undefined,
-        tool_call_id: m.tool_call_id ?? undefined,
-      })),
-    ];
-
+    // 1. Show user message IMMEDIATELY (optimistic)
+    const tempUserId = `user-${Date.now()}`;
+    setMessages((prev) => [...prev, { id: tempUserId, role: "user", content }]);
     setLoading(true);
     abortRef.current = new AbortController();
 
     try {
-      // First call — might return tool_calls
-      const streamingMsgId = `streaming-${Date.now()}`;
-      setMessages((prev) => [...prev, { id: streamingMsgId, role: "assistant", content: "", isStreaming: true }]);
+      // 2. Save to DB + get context (parallel, non-blocking for UI)
+      const [userMsg, conv] = await Promise.all([
+        aiQueries.createMessage({ conversation_id: convId, role: "user", content }),
+        aiQueries.getConversationById(convId),
+      ]);
+      setMessages((prev) => prev.map((m) => m.id === tempUserId ? { ...m, id: userMsg.id } : m));
 
-      const response = await callOpenRouterStreaming(
-        apiKey,
-        selectedModel,
-        apiMessages,
-        abortRef.current.signal,
-        (chunk) => {
+      const systemPrompt = conv?.system_prompt || DEFAULT_SYSTEM_PROMPT;
+      const history = await aiQueries.getMessages(convId);
+      let apiMessages: OpenRouterMessage[] = [
+        { role: "system", content: systemPrompt },
+        ...history.map((m) => ({
+          role: m.role,
+          content: m.content,
+          tool_calls: m.tool_calls ? JSON.parse(m.tool_calls) : undefined,
+          tool_call_id: m.tool_call_id ?? undefined,
+        })),
+      ];
+
+      // ── Multi-turn tool-use loop ──────────────────────────────────
+      // AI can chain multiple tool calls before final answer.
+      // We keep calling until response has no more tool_calls.
+      const MAX_TOOL_TURNS = 10;
+      let turn = 0;
+
+      while (turn < MAX_TOOL_TURNS) {
+        turn++;
+
+        const streamId = `stream-${Date.now()}-${turn}`;
+        setMessages((prev) => [...prev, { id: streamId, role: "assistant", content: "", isStreaming: true }]);
+
+        const response = await callOpenRouterStreaming(
+          apiKey, selectedModel, apiMessages, abortRef.current!.signal,
+          (chunk) => {
+            setMessages((prev) =>
+              prev.map((m) => m.id === streamId ? { ...m, content: m.content + chunk } : m),
+            );
+          },
+        );
+
+        // No tool calls — this is the final answer
+        if (!response.tool_calls || response.tool_calls.length === 0) {
           setMessages((prev) =>
-            prev.map((m) => m.id === streamingMsgId ? { ...m, content: m.content + chunk } : m),
+            prev.map((m) => m.id === streamId ? { ...m, isStreaming: false } : m),
           );
-        },
-      );
+          await aiQueries.createMessage({
+            conversation_id: convId,
+            role: "assistant",
+            content: response.content || "",
+            tokens_used: response.tokens,
+          });
+          break;
+        }
 
-      // Remove streaming placeholder
-      setMessages((prev) => prev.filter((m) => m.id !== streamingMsgId));
+        // Has tool calls — show "using tools" indicator with names, execute, then loop
+        const toolNames = response.tool_calls.map((tc) => `\`${tc.function.name}\``).join(", ");
+        const toolIndicator = response.content
+          ? `${response.content}\n\n🔧 Menggunakan tools: ${toolNames}`
+          : `🔧 Menggunakan tools: ${toolNames}`;
 
-      // Handle tool calls
-      if (response.tool_calls && response.tool_calls.length > 0) {
-        // Save assistant message with tool calls
+        setMessages((prev) =>
+          prev.map((m) => m.id === streamId
+            ? { ...m, content: toolIndicator, isStreaming: false }
+            : m),
+        );
+
         await aiQueries.createMessage({
           conversation_id: convId,
           role: "assistant",
@@ -133,9 +157,10 @@ export function useAiChat(_conversationId: string | null) {
           tool_calls: JSON.stringify(response.tool_calls),
         });
 
-        // Execute each tool call
+        // Execute all tool calls
         for (const toolCall of response.tool_calls) {
-          const args = JSON.parse(toolCall.function.arguments);
+          let args: Record<string, unknown> = {};
+          try { args = JSON.parse(toolCall.function.arguments); } catch {}
           const result = await executeTool(toolCall.function.name, args);
           await aiQueries.createMessage({
             conversation_id: convId,
@@ -145,9 +170,12 @@ export function useAiChat(_conversationId: string | null) {
           });
         }
 
-        // Second call with tool results — stream this one
+        // Remove the tool-call placeholder bubble (was just an indicator)
+        setMessages((prev) => prev.filter((m) => m.id !== streamId));
+
+        // Rebuild API messages for next turn
         const updatedHistory = await aiQueries.getMessages(convId);
-        const updatedApiMessages: OpenRouterMessage[] = [
+        apiMessages = [
           { role: "system", content: systemPrompt },
           ...updatedHistory.map((m) => ({
             role: m.role,
@@ -156,45 +184,13 @@ export function useAiChat(_conversationId: string | null) {
             tool_call_id: m.tool_call_id ?? undefined,
           })),
         ];
+      }
 
-        const finalMsgId = `streaming-final-${Date.now()}`;
-        setMessages((prev) => [...prev, { id: finalMsgId, role: "assistant", content: "", isStreaming: true }]);
-
-        const finalResponse = await callOpenRouterStreaming(
-          apiKey,
-          selectedModel,
-          updatedApiMessages,
-          abortRef.current.signal,
-          (chunk) => {
-            setMessages((prev) =>
-              prev.map((m) => m.id === finalMsgId ? { ...m, content: m.content + chunk } : m),
-            );
-          },
-        );
-
-        setMessages((prev) => prev.filter((m) => m.id !== finalMsgId));
-
-        await aiQueries.createMessage({
-          conversation_id: convId,
-          role: "assistant",
-          content: finalResponse.content || "",
-          tokens_used: finalResponse.tokens,
-        });
-
-        await loadMessages(convId);
-      } else {
-        // No tool calls — save the streamed response
-        await aiQueries.createMessage({
-          conversation_id: convId,
-          role: "assistant",
-          content: response.content || "",
-          tokens_used: response.tokens,
-        });
-
-        await loadMessages(convId);
+      if (turn >= MAX_TOOL_TURNS) {
+        console.warn("[ai] Max tool-use turns reached");
       }
     } catch (err) {
-      // Remove any streaming placeholders
+      // Remove streaming placeholders on error
       setMessages((prev) => prev.filter((m) => !m.isStreaming));
       if ((err as Error).name !== "AbortError") {
         throw err;
@@ -203,26 +199,18 @@ export function useAiChat(_conversationId: string | null) {
       setLoading(false);
       abortRef.current = null;
     }
-  }, [getSetting, loadMessages]);
+  }, [getSetting]);
 
   const stopGeneration = useCallback(() => {
     abortRef.current?.abort();
     setLoading(false);
-    // Keep whatever was streamed so far
     setMessages((prev) => prev.map((m) => m.isStreaming ? { ...m, isStreaming: false } : m));
   }, []);
 
-  return {
-    messages,
-    loading,
-    sendMessage,
-    loadMessages,
-    stopGeneration,
-    setMessages,
-  };
+  return { messages, loading, sendMessage, loadMessages, stopGeneration, setMessages };
 }
 
-// ── OpenRouter API call with streaming ──────────────────────────────
+// ── OpenRouter streaming API call ───────────────────────────────────
 
 async function callOpenRouterStreaming(
   apiKey: string,
@@ -261,13 +249,12 @@ async function callOpenRouterStreaming(
     throw new Error(`OpenRouter error (${res.status}): ${err}`);
   }
 
-  // Parse SSE stream
   const reader = res.body?.getReader();
   if (!reader) throw new Error("No response body");
 
   const decoder = new TextDecoder();
   let fullContent = "";
-  let toolCalls: ToolCall[] = [];
+  const toolCalls: ToolCall[] = [];
   let tokens: number | undefined;
   let buffer = "";
 
@@ -289,13 +276,11 @@ async function callOpenRouterStreaming(
         const delta = parsed.choices?.[0]?.delta;
         if (!delta) continue;
 
-        // Content streaming
         if (delta.content) {
           fullContent += delta.content;
           onChunk(delta.content);
         }
 
-        // Tool calls accumulation
         if (delta.tool_calls) {
           for (const tc of delta.tool_calls) {
             const idx = tc.index ?? 0;
@@ -308,12 +293,11 @@ async function callOpenRouterStreaming(
           }
         }
 
-        // Usage info (sometimes in the last chunk)
         if (parsed.usage?.total_tokens) {
           tokens = parsed.usage.total_tokens;
         }
       } catch {
-        // Skip malformed JSON lines
+        // skip malformed
       }
     }
   }

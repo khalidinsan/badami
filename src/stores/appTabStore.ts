@@ -69,7 +69,7 @@ interface AppTabState {
   tabs: AppTab[];
   activeTabId: string | null;
 
-  openTab: (tab: Omit<AppTab, "id"> & { id?: string }) => void;
+  openTab: (tab: Omit<AppTab, "id"> & { id?: string }, forceNew?: boolean) => void;
   closeTab: (tabId: string) => void;
   closeOtherTabs: (tabId: string) => void;
   closeTabsToRight: (tabId: string) => void;
@@ -111,17 +111,20 @@ export const useAppTabStore = create<AppTabState>((set, get) => ({
   tabs: initialTabs,
   activeTabId: initialActiveId,
 
-  openTab: (tabData) => {
+  openTab: (tabData, forceNew = false) => {
     const id = tabData.id ?? uuidv4();
     const tab: AppTab = { ...tabData, id };
 
     set((s) => {
-      const existing = s.tabs.find(
-        (t) => t.route === tab.route && t.contextId === tab.contextId,
-      );
-      if (existing) {
-        saveState(s.tabs, existing.id);
-        return { activeTabId: existing.id };
+      // Skip dedupe if forceNew — always create a new tab
+      if (!forceNew) {
+        const existing = s.tabs.find(
+          (t) => t.route === tab.route && t.contextId === tab.contextId,
+        );
+        if (existing) {
+          saveState(s.tabs, existing.id);
+          return { activeTabId: existing.id };
+        }
       }
       const newTabs = [...s.tabs, tab];
       saveState(newTabs, id);

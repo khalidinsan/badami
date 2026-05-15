@@ -163,7 +163,7 @@ export function AppTabBar() {
       title: option.title,
       icon: option.icon,
       route: option.route,
-    });
+    }, true);
     router.navigate({ to: option.route });
   };
 

@@ -344,16 +344,37 @@ pub async fn db_init(
                     let _ = std::fs::remove_file(&sync_wal_idx);
                     // File removed — fall through to slow-path below
                 } else {
-                    let mut b = Builder::new_remote_replica(
-                        &sync_db_path,
-                        config.url.clone(),
-                        token.clone(),
-                    );
-                    if interval > 0 {
-                        b = b.sync_interval(Duration::from_secs(interval * 60));
+                    // Handle inconsistent replica state — cleanup files first if detected.
+                    // We try to build, and if we get the specific errors, clean up + retry.
+                    let mut build_attempt = || async {
+                        let mut b = Builder::new_remote_replica(
+                            &sync_db_path,
+                            config.url.clone(),
+                            token.clone(),
+                        );
+                        if interval > 0 {
+                            b = b.sync_interval(Duration::from_secs(interval * 60));
+                        }
+                        b.build().await
+                    };
+
+                    let mut build_result = build_attempt().await;
+                    if let Err(ref e) = build_result {
+                        let msg = e.to_string();
+                        if msg.contains("metadata file exists but db file does not")
+                            || msg.contains("invalid local state")
+                        {
+                            eprintln!("[db_init] inconsistent replica state — cleaning up and retrying");
+                            let _ = std::fs::remove_file(&sync_db_path);
+                            let _ = std::fs::remove_file(app_dir.join("badami_sync.db-shm"));
+                            let _ = std::fs::remove_file(app_dir.join("badami_sync.db-wal"));
+                            let _ = std::fs::remove_file(app_dir.join("badami_sync.db-client_wal_index"));
+                            let _ = std::fs::remove_file(app_dir.join("badami_sync.db-info"));
+                            build_result = build_attempt().await;
+                        }
                     }
 
-                    match b.build().await {
+                    match build_result {
                         Ok(replica_db) => match replica_db.connect() {
                             Ok(replica_conn) => {
                                 let _ = replica_conn.execute("PRAGMA foreign_keys=ON", ()).await;
@@ -592,9 +613,16 @@ pub async fn db_init(
 
                     let replica_result =
                         match build_replica(config.url.clone(), token.clone()).await {
-                            Err(ref e) if e.to_string().contains("wal_index") => {
-                                eprintln!("[sync] wal_index on new sync db — recreating");
+                            Err(ref e) if e.to_string().contains("wal_index")
+                                || e.to_string().contains("metadata file exists but db file does not")
+                                || e.to_string().contains("invalid local state") => {
+                                eprintln!("[sync] inconsistent replica state — cleaning up");
+                                // Remove all replica-related files (db, wal, shm, metadata)
                                 let _ = std::fs::remove_file(&sync_db_path);
+                                let _ = std::fs::remove_file(format!("{}-shm", sync_db_path.display()));
+                                let _ = std::fs::remove_file(format!("{}-wal", sync_db_path.display()));
+                                let _ = std::fs::remove_file(format!("{}-client_wal_index", sync_db_path.display()));
+                                let _ = std::fs::remove_file(format!("{}-info", sync_db_path.display()));
                                 build_replica(config.url.clone(), token.clone()).await
                             }
                             other => other,
