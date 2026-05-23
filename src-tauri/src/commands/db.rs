@@ -416,6 +416,32 @@ pub async fn db_init(
                                     // Fall through to slow-path below
                                 } else {
 
+                                // ── Integrity check — detect corrupted indexes ─────────────
+                                let integrity_ok = async {
+                                    let mut rows = replica_conn
+                                        .query("PRAGMA integrity_check(1)", ())
+                                        .await
+                                        .ok()?;
+                                    let row = rows.next().await.ok()??;
+                                    let result: String = row.get::<String>(0).ok()?;
+                                    Some(result == "ok")
+                                }
+                                .await
+                                .unwrap_or(false);
+
+                                if !integrity_ok {
+                                    eprintln!(
+                                        "[db_init] replica integrity check FAILED — deleting corrupt replica for full rebuild"
+                                    );
+                                    drop(replica_conn);
+                                    drop(replica_db);
+                                    let _ = std::fs::remove_file(&sync_db_path);
+                                    let _ = std::fs::remove_file(app_dir.join("badami_sync.db-shm"));
+                                    let _ = std::fs::remove_file(app_dir.join("badami_sync.db-wal"));
+                                    let _ = std::fs::remove_file(app_dir.join("badami_sync.db-info"));
+                                    // Fall through to slow-path (will re-sync from Turso)
+                                } else {
+
                                 let replica_db = Arc::new(replica_db);
 
                                 // Set inner to replica IMMEDIATELY — app serves from local WAL
@@ -483,6 +509,7 @@ pub async fn db_init(
                                     success: true,
                                     sync_enabled: true,
                                 });
+                                } // end else (integrity_ok)
                                 } // end else (schema_ok)
                             }
                             Err(e) => {
