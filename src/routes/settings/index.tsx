@@ -18,7 +18,7 @@ import { useOpenRouterModels } from "@/hooks/useOpenRouterModels";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/settings/")({
-  component: SettingsPage,
+  component: () => null,
 });
 
 const SECTIONS = [
@@ -36,7 +36,7 @@ const SECTIONS = [
 
 type SectionId = (typeof SECTIONS)[number]["id"];
 
-function SettingsPage() {
+export function SettingsPage() {
   const { loaded, loadSettings, getSetting, setSetting } = useSettingsStore();
   const [autostartEnabled, setAutostartEnabled] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>("appearance");
@@ -322,48 +322,89 @@ function AiModelSelector() {
   const { getSetting, setSetting } = useSettingsStore();
   const { models, loading, refresh } = useOpenRouterModels();
   const [search, setSearch] = useState("");
-  const currentModel = getSetting("ai_model", "deepseek/deepseek-v4-flash");
+
+  const defaultModel = getSetting("ai_model", "deepseek/deepseek-v4-flash");
+  const activeRaw = getSetting("ai_active_models", "");
+  const activeIds = activeRaw ? activeRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+
+  // Default is always active
+  const allActive = activeIds.includes(defaultModel) ? activeIds : [defaultModel, ...activeIds];
+
+  const toggleActive = (id: string) => {
+    // Can't deactivate the default
+    if (id === defaultModel) return;
+    const updated = activeIds.includes(id)
+      ? activeIds.filter((m) => m !== id)
+      : [...activeIds, id];
+    setSetting("ai_active_models", updated.join(","));
+  };
+
+  const setDefault = (id: string) => {
+    setSetting("ai_model", id);
+    // Also ensure it's in active list
+    if (!activeIds.includes(id)) {
+      setSetting("ai_active_models", [...activeIds, id].join(","));
+    }
+  };
 
   const filtered = search
     ? models.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()) || m.id.toLowerCase().includes(search.toLowerCase()))
     : models.slice(0, 50);
 
-  const selectedModelData = models.find((m) => m.id === currentModel);
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-sm">Default model</Label>
+        <div>
+          <Label className="text-sm">Models</Label>
+          <p className="text-xs text-muted-foreground">Toggle active models for IDE agent. Set one as default.</p>
+        </div>
         <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={refresh} disabled={loading}>
           <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} /> Refresh
         </Button>
       </div>
-      <Input placeholder="Search models..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 text-xs" />
-      <div className="max-h-[240px] overflow-y-auto rounded-md border border-border/40">
-        {filtered.length === 0 && <p className="px-3 py-4 text-center text-xs text-muted-foreground">{loading ? "Loading models..." : "No models found"}</p>}
-        {filtered.map((m) => (
-          <button key={m.id} onClick={() => setSetting("ai_model", m.id)} className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/40 border-b border-border/20 last:border-0 ${currentModel === m.id ? "bg-primary/10 text-primary" : "text-foreground"}`}>
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">{m.name}</p>
-              <p className="truncate text-[10px] text-muted-foreground/60">{m.id}</p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="text-[10px] text-muted-foreground"><span className="text-green-500">{formatPrice(m.pricing?.prompt)}</span>{" / "}<span className="text-blue-500">{formatPrice(m.pricing?.completion)}</span></p>
-              <p className="text-[9px] text-muted-foreground/50">{m.context_length ? `${Math.round(m.context_length / 1000)}k ctx` : ""}</p>
-            </div>
-          </button>
-        ))}
-      </div>
-      {selectedModelData && (
-        <div className="rounded-md bg-muted/30 px-3 py-2 text-[11px]">
-          <p className="font-medium">{selectedModelData.name}</p>
-          <div className="mt-1 flex items-center gap-3 text-muted-foreground">
-            <span>Input: <span className="text-green-500 font-medium">{formatPrice(selectedModelData.pricing?.prompt)}/1M</span></span>
-            <span>Output: <span className="text-blue-500 font-medium">{formatPrice(selectedModelData.pricing?.completion)}/1M</span></span>
-            {selectedModelData.context_length && <span>Context: {Math.round(selectedModelData.context_length / 1000)}k</span>}
-          </div>
+
+      {/* Active models chips */}
+      {allActive.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {allActive.map((id) => (
+            <span key={id} className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs ${id === defaultModel ? "bg-primary/15 text-primary font-medium" : "bg-muted text-muted-foreground"}`}>
+              {id.split("/").pop()}
+              {id === defaultModel && <span className="text-[9px] opacity-60">default</span>}
+              {id !== defaultModel && <button onClick={() => toggleActive(id)} className="hover:text-destructive ml-0.5">×</button>}
+            </span>
+          ))}
         </div>
       )}
+
+      {/* Search + model list */}
+      <Input placeholder="Search models..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 text-xs" />
+      <div className="max-h-[260px] overflow-y-auto rounded-md border border-border/40">
+        {filtered.length === 0 && <p className="px-3 py-4 text-center text-xs text-muted-foreground">{loading ? "Loading..." : "No models found"}</p>}
+        {filtered.map((m) => {
+          const isActive = allActive.includes(m.id);
+          const isDefault = m.id === defaultModel;
+          return (
+            <div key={m.id} className={`flex items-center gap-2 px-3 py-1.5 text-xs border-b border-border/20 last:border-0 ${isDefault ? "bg-primary/5" : ""}`}>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">{m.name}</p>
+                <p className="truncate text-[10px] text-muted-foreground/60">{formatPrice(m.pricing?.prompt)} / {formatPrice(m.pricing?.completion)}{m.context_length ? ` · ${Math.round(m.context_length / 1000)}k` : ""}</p>
+              </div>
+              <button
+                onClick={() => toggleActive(m.id)}
+                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+              >
+                {isActive ? "Active" : "Add"}
+              </button>
+              <button
+                onClick={() => setDefault(m.id)}
+                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isDefault ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+              >
+                {isDefault ? "Default" : "Set Default"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

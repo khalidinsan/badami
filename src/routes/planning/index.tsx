@@ -19,11 +19,11 @@ import { today, formatDate } from "@/lib/dateUtils";
 import * as projectQueries from "@/db/queries/projects";
 import type { ProjectRow } from "@/types/db";
 
-export const Route = createFileRoute("/planning/")({ component: PlanningPage });
+export const Route = createFileRoute("/planning/")({ component: () => null });
 
 type PlanningViewMode = "calendar" | "agenda";
 
-function PlanningPage() {
+export function PlanningPage() {
   const {
     tasks,
     selectedDate,

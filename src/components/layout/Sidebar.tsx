@@ -1,5 +1,5 @@
-import { useRouterState, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   FolderKanban,
   CheckSquare,
@@ -71,9 +71,9 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
-  const routerState = useRouterState();
-  const currentPath = routerState.location.pathname;
-  const router = useRouter();
+  const activeTab = useAppTabStore((s) => s.tabs.find((t) => t.id === s.activeTabId));
+  const currentPath = activeTab?.route ?? "/planning";
+  const navigate = useNavigate();
   const { credentials, loadAllCredentials } = useCredentialStore();
   const { loadSmartListCounts } = useTaskStore();
 
@@ -151,7 +151,7 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => router.history.back()}
+                onClick={() => window.history.back()}
                 className="flex h-7 w-7 items-center justify-center rounded-md text-white/60 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
@@ -199,7 +199,7 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
                   route: item.to,
                 });
               }
-              router.navigate({ to: item.to });
+              navigate({ to: item.to as any });
             };
 
             const handleOpenNewTab = () => {
@@ -210,7 +210,7 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
                 icon: item.iconName,
                 route: item.to,
               }, true);
-              router.navigate({ to: item.to });
+              navigate({ to: item.to as any });
             };
 
             const linkContent = (
@@ -363,7 +363,7 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
                   route: item.to,
                 });
               }
-              router.navigate({ to: item.to });
+              navigate({ to: item.to as any });
             };
 
             const handleOpenNewTab = () => {
@@ -374,7 +374,7 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
                 icon: item.iconName,
                 route: item.to,
               }, true);
-              router.navigate({ to: item.to });
+              navigate({ to: item.to as any });
             };
 
             const linkContent = (

@@ -305,3 +305,49 @@ pub fn ssh_disconnect(
     let _ = app.emit(&format!("ssh-status-{}", session_id), "disconnected");
     Ok(())
 }
+
+/// Execute a single command on an existing SSH session and return stdout.
+/// This uses a new exec channel (separate from the PTY shell channel).
+#[tauri::command]
+pub async fn ssh_exec_command(
+    app: AppHandle,
+    session_id: String,
+    command: String,
+) -> Result<String, String> {
+    let state = app.state::<SshState>();
+    let live = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions
+            .get(&session_id)
+            .ok_or("Session not found — connect via terminal first")?
+            .clone()
+    };
+
+    let result = tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let mut live = live.lock().unwrap();
+        live.session.set_blocking(true);
+        let mut channel = live.session.channel_session()
+            .map_err(|e| format!("Channel error: {e}"))?;
+        channel.exec(&command).map_err(|e| format!("Exec error: {e}"))?;
+
+        let mut output = String::new();
+        channel.read_to_string(&mut output).map_err(|e| format!("Read error: {e}"))?;
+
+        // Also read stderr
+        let mut stderr_out = String::new();
+        channel.stderr().read_to_string(&mut stderr_out).ok();
+
+        channel.wait_close().ok();
+        live.session.set_blocking(false);
+
+        if !stderr_out.is_empty() && output.is_empty() {
+            Ok(stderr_out)
+        } else {
+            Ok(output)
+        }
+    })
+    .await
+    .map_err(|e| format!("Task error: {e}"))??;
+
+    Ok(result)
+}

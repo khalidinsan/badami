@@ -45,7 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAppTabStore, type AppTab, type AppTabType } from "@/stores/appTabStore";
-import { useRouter } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { NotificationBell } from "@/components/layout/NotificationBell";
@@ -80,7 +80,7 @@ const NEW_TAB_OPTIONS: { type: AppTabType; title: string; icon: string; route: s
 export function AppTabBar() {
   const { tabs, activeTabId, setActiveTab, closeTab, closeOtherTabs, closeTabsToRight, closeAllTabs, openTab, renameTab, reorderTabs, pinTab, unpinTab } =
     useAppTabStore();
-  const router = useRouter();
+  const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollLeft, setShowScrollLeft] = useState(false);
   const [showScrollRight, setShowScrollRight] = useState(false);
@@ -121,7 +121,7 @@ export function AppTabBar() {
   const handleTabClick = (tab: AppTab) => {
     if (renamingTabId) return;
     setActiveTab(tab.id);
-    router.navigate({ to: tab.route });
+    navigate({ to: tab.route as any });
   };
 
   const handleCloseTab = (tabId: string) => {
@@ -129,7 +129,7 @@ export function AppTabBar() {
     const state = useAppTabStore.getState();
     const newActive = state.tabs.find((t) => t.id === state.activeTabId);
     if (newActive) {
-      router.navigate({ to: newActive.route });
+      navigate({ to: newActive.route as any });
     }
   };
 
@@ -165,7 +165,7 @@ export function AppTabBar() {
       icon: option.icon,
       route: option.route,
     }, true);
-    router.navigate({ to: option.route });
+    navigate({ to: option.route as any });
   };
 
   // ── Drag & Drop (dnd-kit) ──────────────────────────────────────
@@ -208,14 +208,14 @@ export function AppTabBar() {
         if (idx < state.tabs.length) {
           const tab = state.tabs[idx];
           state.setActiveTab(tab.id);
-          router.navigate({ to: tab.route });
+          navigate({ to: tab.route as any });
         }
       }
     };
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [router]);
+  }, []);
 
   const tabIds = tabs.map((t) => t.id);
 

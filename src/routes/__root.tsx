@@ -5,9 +5,8 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { useTabRouteSync } from "@/components/layout/AppTabContent";
+import { TabContentArea } from "@/components/layout/TabContentArea";
 import { useAppTabStore } from "@/stores/appTabStore";
 import { CommandPalette } from "@/components/search/CommandPalette";
 import { Toaster } from "@/components/ui/sonner";
@@ -18,6 +17,9 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useExpiryCheck } from "@/hooks/useExpiryCheck";
 import { useReminderChecker } from "@/hooks/useReminderChecker";
 
+// Tab types rendered by the router's Outlet (e.g. project detail with nested routes)
+const ROUTER_TAB_TYPES = new Set(["project"]);
+
 export const Route = createRootRoute({
   component: RootComponent,
 });
@@ -27,20 +29,15 @@ function RootComponent() {
   const navigate = useNavigate();
   const [paletteOpen, setPaletteOpen] = useState(false);
 
-  // Sync active tab with router (main window only)
-  useTabRouteSync();
-
-  // Restore persisted tab route on initial load (main window only)
+  // On initial load, navigate router to the active tab's route (keeps router in sync)
   useEffect(() => {
-    // Skip for Today/Search windows — they have their own routes
     if (location.pathname === "/today" || location.pathname === "/search") return;
 
     const { tabs, activeTabId } = useAppTabStore.getState();
     const activeTab = tabs.find((t) => t.id === activeTabId);
-    if (activeTab && activeTab.route !== "/" && location.pathname === "/") {
+    if (activeTab) {
       navigate({ to: activeTab.route as any });
-    } else if (activeTab && !location.pathname.startsWith(activeTab.route.split("/").slice(0, 2).join("/"))) {
-      navigate({ to: activeTab.route as any });
+      window.history.replaceState(null, "", activeTab.route);
     }
   }, []);
 
@@ -130,24 +127,34 @@ function RootComponent() {
     return <Outlet />;
   }
 
+  // Is the active tab router-rendered (project detail)?
+  const activeTab = useAppTabStore((s) => s.tabs.find((t) => t.id === s.activeTabId));
+  const isRouterTab = activeTab && ROUTER_TAB_TYPES.has(activeTab.type);
+
   return (
     <MainLayout>
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={location.pathname.split("/").slice(0, 2).join("/")}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.1 }}
-          className="h-full"
-        >
-          <Outlet />
-        </motion.div>
-      </AnimatePresence>
+      {/* Keep-alive tabs */}
+      <div className={isRouterTab ? "hidden" : "h-full"}>
+        <TabContentArea />
+      </div>
+      {/* Router Outlet — project detail renders here, other routes return null */}
+      <div className={isRouterTab ? "h-full" : "hidden"}>
+        <Outlet />
+      </div>
       <CommandPalette
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
-        onNavigate={(path) => navigate({ to: path as any })}
+        onNavigate={(path) => {
+          const { tabs, setActiveTab, openTab } = useAppTabStore.getState();
+          const existing = tabs.find((t) => t.route === path);
+          if (existing) {
+            setActiveTab(existing.id);
+          } else {
+            const type = path.split("/").filter(Boolean)[0] || "planning";
+            openTab({ type: type as any, title: type.charAt(0).toUpperCase() + type.slice(1), icon: "CalendarDays", route: path });
+          }
+          navigate({ to: path as any });
+        }}
       />
       <OnboardingDialog />
       <Toaster richColors position="bottom-right" />

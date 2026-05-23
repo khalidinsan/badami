@@ -12,10 +12,10 @@ import { toast } from "sonner";
 import * as apiQueries from "@/db/queries/api";
 
 export const Route = createFileRoute("/api/")({
-  component: ApiPage,
+  component: () => null,
 });
 
-function ApiPage() {
+export function ApiPage() {
   const {
     collections,
     folders,

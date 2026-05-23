@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   Terminal,
   FolderOpen,
+  Code2,
   Pencil,
   Trash2,
   Clock,
@@ -44,6 +45,7 @@ interface ServerCardProps {
   onDelete: (id: string) => void;
   onOpenTerminal?: (server: ServerCredentialRow) => void;
   onOpenFileManager?: (server: ServerCredentialRow) => void;
+  onOpenIDE?: (server: ServerCredentialRow) => void;
 }
 
 export function ServerCard({
@@ -53,6 +55,7 @@ export function ServerCard({
   onDelete,
   onOpenTerminal,
   onOpenFileManager,
+  onOpenIDE,
 }: ServerCardProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const env = server.environment as ServerEnvironment;
@@ -135,6 +138,16 @@ export function ServerCard({
               >
                 <FolderOpen className="h-3 w-3" />
                 Files
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1.5 text-xs"
+                onClick={() => onOpenIDE?.(server)}
+                disabled={server.protocol !== "ssh"}
+              >
+                <Code2 className="h-3 w-3" />
+                Editor
               </Button>
             </div>
           </div>

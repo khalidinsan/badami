@@ -2,10 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AiChat } from "@/components/ai/AiChat";
 
 export const Route = createFileRoute("/ai/")({
-  component: AiPage,
+  component: () => null,
 });
 
-function AiPage() {
+export function AiPage() {
   return (
     <div className="h-full">
       <AiChat />

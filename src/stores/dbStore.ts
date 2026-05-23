@@ -210,7 +210,7 @@ export const useDbStore = create<DbClientState>((set, get) => ({
           t.connectionId === tab.connectionId &&
           t.type === tab.type &&
           t.tableName === tab.tableName &&
-          (t.type === "table" || t.type === "objects"),
+          (t.type === "table" || t.type === "objects" || t.type === "structure"),
       );
       if (existing) {
         return { activeTabId: existing.id };

@@ -8,19 +8,19 @@ import { DbWorkspace } from "@/components/database/DbWorkspace";
 import type { DbConnectionRow } from "@/types/db";
 
 export const Route = createFileRoute("/database/")({
-  component: DatabasePage,
+  component: () => null,
 });
 
-function DatabasePage() {
+export function DatabasePage() {
   const { loadConnections } = useDbConnection();
-  const { viewMode } = useDbStore();
+  const { viewMode, connections } = useDbStore();
   const [formOpen, setFormOpen] = useState(false);
   const [editingConnection, setEditingConnection] =
     useState<DbConnectionRow | null>(null);
 
   useEffect(() => {
-    loadConnections();
-  }, [loadConnections]);
+    if (connections.length === 0) loadConnections();
+  }, []);
 
   if (viewMode === "workspace") {
     return <DbWorkspace onBackToList={() => useDbStore.getState().setViewMode("connections")} />;

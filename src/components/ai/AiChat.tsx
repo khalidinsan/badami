@@ -14,7 +14,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useAiChat, type ChatMessage } from "@/hooks/useAiChat";
 import * as aiQueries from "@/db/queries/ai";
@@ -31,8 +30,17 @@ export function AiChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const selectedModel = getSetting("ai_model", "openai/gpt-4o-mini");
+  const selectedModel = getSetting("ai_model", "deepseek/deepseek-v4-flash");
+  const [activeModel, setActiveModel] = useState(selectedModel);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const apiKey = getSetting("openrouter_api_key", "");
+
+  const getActiveModels = () => {
+    const active = getSetting("ai_active_models", "");
+    const list = active ? active.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+    if (!list.includes(selectedModel)) list.unshift(selectedModel);
+    return list;
+  };
 
   const { messages, loading, sendMessage, loadMessages, stopGeneration, setMessages } = useAiChat(activeConvId);
 
@@ -70,7 +78,7 @@ export function AiChat() {
   }, [loading]);
 
   const handleNewConversation = async () => {
-    const conv = await aiQueries.createConversation({ model: selectedModel });
+    const conv = await aiQueries.createConversation({ model: activeModel });
     setConversations((prev) => [conv, ...prev]);
     setActiveConvId(conv.id);
     setInput("");
@@ -99,7 +107,7 @@ export function AiChat() {
 
     let convId = activeConvId;
     if (!convId) {
-      const conv = await aiQueries.createConversation({ model: selectedModel, title: msg.slice(0, 50) });
+      const conv = await aiQueries.createConversation({ model: activeModel, title: msg.slice(0, 50) });
       setConversations((prev) => [conv, ...prev]);
       setActiveConvId(conv.id);
       convId = conv.id;
@@ -112,7 +120,7 @@ export function AiChat() {
     }
 
     try {
-      await sendMessage(msg, convId, selectedModel);
+      await sendMessage(msg, convId, activeModel);
     } catch (err) {
       toast.error(String(err));
     }
@@ -136,14 +144,14 @@ export function AiChat() {
     <div className="flex h-full">
       {/* Conversation sidebar */}
       {showSidebar && (
-        <div className="flex w-[220px] shrink-0 flex-col border-r border-border/40 bg-card/30">
+        <div className="flex w-[220px] shrink-0 flex-col border-r border-border/40 bg-card/30 overflow-hidden">
           <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
             <span className="text-xs font-semibold text-muted-foreground">Chats</span>
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleNewConversation}>
               <Plus className="h-3 w-3" />
             </Button>
           </div>
-          <ScrollArea className="flex-1">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden">
             <div className="p-1.5 space-y-0.5">
               {conversations.map((conv) => (
                 <div
@@ -172,11 +180,6 @@ export function AiChat() {
                 </p>
               )}
             </div>
-          </ScrollArea>
-          <div className="border-t border-border/40 px-3 py-2">
-            <p className="truncate text-[10px] text-muted-foreground/60">
-              Model: <span className="font-medium text-muted-foreground">{selectedModel.split("/").pop()}</span>
-            </p>
           </div>
         </div>
       )}
@@ -285,6 +288,28 @@ export function AiChat() {
               >
                 <Send className="h-4 w-4" />
               </Button>
+            )}
+          </div>
+          {/* Model picker */}
+          <div className="relative mt-2">
+            <button
+              onClick={() => setModelPickerOpen(!modelPickerOpen)}
+              className="truncate text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            >
+              Model: <span className="font-medium text-muted-foreground">{activeModel.split("/").pop()}</span> ▾
+            </button>
+            {modelPickerOpen && (
+              <div className="absolute bottom-full left-0 mb-1 w-[200px] rounded-lg border border-border bg-popover shadow-lg z-50 py-1">
+                {getActiveModels().map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => { setActiveModel(m); setModelPickerOpen(false); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs truncate hover:bg-muted/40 ${m === activeModel ? "text-primary font-medium" : "text-foreground"}`}
+                  >
+                    {m.split("/").pop()}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </div>

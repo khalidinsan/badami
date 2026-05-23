@@ -1,6 +1,7 @@
 import type { ProjectRow, ProjectCategoryRow } from "@/types/db";
 import { cn } from "@/lib/utils";
-import { Link } from "@tanstack/react-router";
+import { useAppTabStore } from "@/stores/appTabStore";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Folder,
   Rocket,
@@ -89,8 +90,22 @@ export function ProjectCard({ project, categories }: ProjectCardProps) {
     }
   }
 
+  const navigate = useNavigate();
+
+  const handleClick = () => {
+    const { openTab } = useAppTabStore.getState();
+    openTab({
+      type: "project",
+      title: project.name,
+      icon: "FolderKanban",
+      route: `/projects/${project.id}`,
+      contextId: project.id,
+    });
+    navigate({ to: "/projects/$projectId", params: { projectId: project.id } });
+  };
+
   return (
-    <Link to="/projects/$projectId" params={{ projectId: project.id }}>
+    <div onClick={handleClick} className="cursor-pointer">
       <div className="group flex h-full min-h-[88px] flex-col gap-3 rounded-xl border border-border/60 bg-card p-4 transition-all hover:border-border/80 hover:shadow-sm">
         {/* Top row: icon + name + status */}
         <div className="flex items-start gap-3">
@@ -126,7 +141,7 @@ export function ProjectCard({ project, categories }: ProjectCardProps) {
           {plainText || "No description"}
         </p>
       </div>
-    </Link>
+    </div>
   );
 }
 

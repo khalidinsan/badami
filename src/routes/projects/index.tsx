@@ -35,7 +35,7 @@ import { useProjectStore } from "@/stores/projectStore";
 import type { ProjectRow, ProjectCategoryRow } from "@/types/db";
 
 export const Route = createFileRoute("/projects/")({
-  component: ProjectsPage,
+  component: () => null,
 });
 
 const STATUS_OPTIONS = [
@@ -46,7 +46,7 @@ const STATUS_OPTIONS = [
   { value: "archived", label: "Archived" },
 ];
 
-function ProjectsPage() {
+export function ProjectsPage() {
   const { projects, loading, createProject, updateProject, archiveProject, deleteProject, loadProjects } = useProjectStore();
   const [categories, setCategories] = useState<ProjectCategoryRow[]>([]);
   const [formOpen, setFormOpen] = useState(false);

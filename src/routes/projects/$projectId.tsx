@@ -130,7 +130,7 @@ const PRIORITY_CONFIG: Record<
 type ActiveTab = "content" | "tasks" | "servers" | "credentials" | "api" | "database";
 type TaskView = "list" | "board" | "calendar";
 
-function ProjectLayout() {
+export function ProjectLayout() {
   const { projectId } = Route.useParams();
   const navigate = useNavigate();
   const [project, setProject] = useState<ProjectRow | null>(null);

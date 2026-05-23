@@ -38,20 +38,20 @@ import { ENVIRONMENT_LABELS } from "@/types/server";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/servers/")({
-  component: ServersPage,
+  component: () => null,
 });
 
 type SortKey = "name" | "last_connected" | "created" | "updated";
 type GroupKey = "none" | "project" | "protocol";
 
-function ServersPage() {
+export function ServersPage() {
   const { servers, loading, loadAllServers, deleteServer } = useServerStore();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editingServer, setEditingServer] = useState<ServerCredentialRow | null>(null);
   const [sessionInit, setSessionInit] = useState<{
     server: ServerCredentialRow;
-    type: "terminal" | "files";
+    type: "terminal" | "files" | "ide";
   } | null>(null);
 
   // Filters
@@ -64,8 +64,8 @@ function ServersPage() {
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    loadAllServers();
-    projectQueries.getProjects().then(setProjects).catch(() => {});
+    if (servers.length === 0 && !loading) loadAllServers();
+    if (projects.length === 0) projectQueries.getProjects().then(setProjects).catch(() => {});
   }, []);
 
   // Focus search on printable key
@@ -204,6 +204,14 @@ function ServersPage() {
 
   const handleOpenFileManager = (server: ServerCredentialRow) => {
     setSessionInit({ server, type: "files" });
+  };
+
+  const handleOpenIDE = (server: ServerCredentialRow) => {
+    if (server.protocol !== "ssh") {
+      toast.error("Editor is only available for SSH servers");
+      return;
+    }
+    setSessionInit({ server, type: "ide" });
   };
 
   const handleFormClose = useCallback((open: boolean) => {
@@ -451,6 +459,7 @@ function ServersPage() {
                       onDelete={handleDelete}
                       onOpenTerminal={handleOpenTerminal}
                       onOpenFileManager={handleOpenFileManager}
+                      onOpenIDE={handleOpenIDE}
                     />
                   ))}
                 </div>

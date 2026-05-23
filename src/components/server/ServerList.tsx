@@ -19,7 +19,7 @@ export function ServerList({ projectId }: ServerListProps) {
   const [editingServer, setEditingServer] = useState<ServerCredentialRow | null>(null);
   const [sessionInit, setSessionInit] = useState<{
     server: ServerCredentialRow;
-    type: "terminal" | "files";
+    type: "terminal" | "files" | "ide";
   } | null>(null);
 
   const reload = () => {
@@ -59,6 +59,10 @@ export function ServerList({ projectId }: ServerListProps) {
 
   const handleOpenFileManager = (server: ServerCredentialRow) => {
     setSessionInit({ server, type: "files" });
+  };
+
+  const handleOpenIDE = (server: ServerCredentialRow) => {
+    setSessionInit({ server, type: "ide" });
   };
 
   const handleFormClose = (open: boolean) => {
@@ -152,6 +156,7 @@ export function ServerList({ projectId }: ServerListProps) {
                   onDelete={handleDelete}
                   onOpenTerminal={handleOpenTerminal}
                   onOpenFileManager={handleOpenFileManager}
+                  onOpenIDE={handleOpenIDE}
                 />
               ))}
             </div>

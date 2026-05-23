@@ -15,10 +15,10 @@ import * as pomodoroQueries from "@/db/queries/pomodoro";
 import type { PomodoroStats } from "@/db/queries/pomodoro";
 
 export const Route = createFileRoute("/stats/")({
-  component: StatsPage,
+  component: () => null,
 });
 
-function StatsPage() {
+export function StatsPage() {
   const [stats, setStats] = useState<PomodoroStats | null>(null);
   const [dailySessions, setDailySessions] = useState<
     Array<{ date: string; count: number; minutes: number }>

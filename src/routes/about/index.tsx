@@ -5,10 +5,10 @@ import { getVersion } from "@tauri-apps/api/app";
 import logoImg from "/logo.png";
 
 export const Route = createFileRoute("/about/")({
-  component: AboutPage,
+  component: () => null,
 });
 
-function AboutPage() {
+export function AboutPage() {
   const [version, setVersion] = useState<string>("");
 
   useEffect(() => {

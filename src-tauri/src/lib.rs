@@ -106,6 +106,7 @@ pub fn run() {
             commands::ssh::ssh_write,
             commands::ssh::ssh_resize,
             commands::ssh::ssh_disconnect,
+            commands::ssh::ssh_exec_command,
             commands::sftp::sftp_connect,
             commands::sftp::sftp_disconnect,
             commands::sftp::sftp_list_dir,

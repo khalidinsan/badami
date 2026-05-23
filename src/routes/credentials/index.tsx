@@ -48,13 +48,13 @@ import {
 } from "@/types/credential";
 
 export const Route = createFileRoute("/credentials/")({
-  component: CredentialsPage,
+  component: () => null,
 });
 
 type SortKey = "name" | "type" | "created" | "updated" | "expiry";
 type GroupKey = "none" | "project" | "type";
 
-function CredentialsPage() {
+export function CredentialsPage() {
   const {
     credentials,
     loading,

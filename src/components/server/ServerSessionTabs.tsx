@@ -5,6 +5,7 @@ import {
   Plus,
   Terminal,
   FolderOpen,
+  Code2,
   Loader2,
   Server,
 } from "lucide-react";
@@ -17,10 +18,11 @@ import {
 import { cn } from "@/lib/utils";
 import { SshTerminal } from "./SshTerminal";
 import { FileManager } from "./FileManager";
+import { RemoteIDE } from "./ide";
 import type { ServerCredentialRow } from "@/types/db";
 import type { SshConnectionStatus } from "@/hooks/useSshSession";
 
-type SessionType = "terminal" | "files";
+type SessionType = "terminal" | "files" | "ide";
 type SessionStatus = SshConnectionStatus;
 
 interface SessionTab {
@@ -151,6 +153,8 @@ export function ServerSessionTabs({
               <StatusDot status={tab.status} />
               {tab.type === "terminal" ? (
                 <Terminal className="h-3 w-3 shrink-0" />
+              ) : tab.type === "ide" ? (
+                <Code2 className="h-3 w-3 shrink-0" />
               ) : (
                 <FolderOpen className="h-3 w-3 shrink-0" />
               )}
@@ -221,6 +225,15 @@ export function ServerSessionTabs({
                           <FolderOpen className="h-3 w-3" />
                           Files
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 gap-1 px-1.5 text-[10px]"
+                          onClick={() => addTab(s, "ide")}
+                        >
+                          <Code2 className="h-3 w-3" />
+                          IDE
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -248,6 +261,8 @@ export function ServerSessionTabs({
                 onOpenFileManager={() => handleOpenFileManagerFromTerminal(tab.server)}
                 initialCdPath={tab.initialCdPath}
               />
+            ) : tab.type === "ide" ? (
+              <RemoteIDE server={tab.server} />
             ) : (
               <FileManager
                 server={tab.server}

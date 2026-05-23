@@ -56,14 +56,14 @@ const SMART_LIST_TITLES: Record<SmartListType, string> = {
 };
 
 export const Route = createFileRoute("/tasks/")({
-  component: TasksPage,
+  component: () => null,
   validateSearch: (search: Record<string, unknown>) => ({
     selected: typeof search.selected === "string" ? search.selected : undefined,
     list: typeof search.list === "string" ? (search.list as SmartListType) : undefined,
   }),
 });
 
-function TasksPage() {
+export function TasksPage() {
   const { selected, list } = Route.useSearch();
   const navigate = useNavigate();
   const {
