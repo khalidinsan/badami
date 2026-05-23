@@ -153,10 +153,11 @@ pub async fn dbc_query(
             // Acquire a dedicated connection so USE db + query share the same session
             let mut conn = p.acquire().await.map_err(|e| format!("Acquire connection: {e}"))?;
 
-            // Switch database context when requested
+            // Switch database context when requested (USE is not supported in prepared statements)
             if let Some(db_name) = &database {
                 if !db_name.is_empty() {
                     sqlx::query(&format!("USE `{}`", db_name.replace('`', "``")))
+                        .persistent(false)
                         .execute(&mut *conn)
                         .await
                         .map_err(|e| format!("USE database failed: {e}"))?;
