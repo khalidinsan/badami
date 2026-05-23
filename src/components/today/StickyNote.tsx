@@ -28,6 +28,7 @@ import { StickyTaskActions } from "./StickyTaskActions";
 import { StickyTaskExpand } from "./StickyTaskExpand";
 import { QuickAddTask } from "./QuickAddTask";
 import { PomodoroTimer } from "./PomodoroTimer";
+import { usePomodoro } from "@/hooks/usePomodoro";
 import * as planningQueries from "@/db/queries/planning";
 import * as taskQueries from "@/db/queries/tasks";
 import * as projectQueries from "@/db/queries/projects";
@@ -37,7 +38,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emit, listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { usePomodoroStore } from "@/stores/pomodoroStore";
 
 const emitTaskChanged = () => emit("task-changed").catch(() => {});
 
@@ -117,7 +117,7 @@ export function StickyNote() {
   const [focusDonePrompt, setFocusDonePrompt] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [filterProjectId, setFilterProjectId] = useState<string>("all");
-  const pomodoroStore = usePomodoroStore();
+  const pomodoroStore = usePomodoro();
   const { loaded, loadSettings, getSetting, setSetting } = useSettingsStore();
   const stickyColor = getSetting("sticky_note_color", "default");
   const colorConfig =
@@ -473,7 +473,7 @@ export function StickyNote() {
   return (
     <div
       className={cn(
-        "flex h-screen flex-col overflow-hidden",
+        "relative flex h-screen flex-col",
         colorConfig.body,
       )}
     >
@@ -657,9 +657,16 @@ export function StickyNote() {
         </div>
       </div>
 
-      {/* ── Task list ── */}
-      <ScrollArea className="flex-1">
-        <div className="space-y-0 px-2 py-1.5">
+      {/* ── Body: either Task list OR Pomodoro (swapped view) ── */}
+      {showPomodoro ? (
+        <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto" data-tauri-no-drag>
+          <PomodoroTimer compact={false} onBackToTasks={() => setShowPomodoro(false)} />
+        </div>
+      ) : (
+        <>
+          {/* ── Task list ── */}
+          <ScrollArea className="flex-1">
+            <div className="space-y-0 px-2 py-1.5">
           {loading ? (
             <p className="py-4 text-center text-xs text-muted-foreground">
               Loading...
@@ -736,6 +743,8 @@ export function StickyNote() {
           )}
         </div>
       </ScrollArea>
+        </>
+      )}
 
       {/* ── Quick add ── */}
       <div className="shrink-0 border-t border-black/10 px-2.5 py-1.5">
@@ -767,6 +776,15 @@ export function StickyNote() {
                 <Plus className="h-3 w-3" />
                 Add note
               </button>
+              {/* Mini pomodoro indicator when timer is active but viewing tasks */}
+              {!showPomodoro && pomodoroStore.status !== "idle" && (
+                <button
+                  onClick={() => setShowPomodoro(true)}
+                  className="flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 font-mono text-[0.625rem] tabular-nums text-primary transition-colors hover:bg-primary/20"
+                >
+                  {Math.floor(pomodoroStore.secondsLeft / 60).toString().padStart(2, "0")}:{(pomodoroStore.secondsLeft % 60).toString().padStart(2, "0")}
+                </button>
+              )}
               <button
                 onClick={() => setShowPomodoro((v) => !v)}
                 className={cn(
@@ -816,15 +834,6 @@ export function StickyNote() {
         )}
       </AnimatePresence>
 
-      {/* ── Pomodoro (toggled) — fixed height, always visible at bottom ── */}
-      {showPomodoro && (
-        <div
-          className="shrink-0 border-t border-black/10 h-[220px] overflow-y-auto"
-          data-tauri-no-drag
-        >
-          <PomodoroTimer compact={false} />
-        </div>
-      )}
     </div>
   );
 }

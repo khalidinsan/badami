@@ -13,7 +13,7 @@ use tauri::{AppHandle, Emitter, Manager};
 // All blocking SSH operations time out after this many seconds.
 const SSH_TIMEOUT_SECS: u32 = 30;
 // Send SSH keepalive every N seconds of inactivity to prevent server-side idle disconnect.
-const SSH_KEEPALIVE_SECS: u32 = 60;
+const SSH_KEEPALIVE_SECS: u32 = 15;
 
 /// A live SSH shell session with a PTY channel.
 struct LiveSshSession {
@@ -83,13 +83,6 @@ pub async fn ssh_connect(
         let addr = format!("{}:{}", host, port);
         let tcp = TcpStream::connect(&addr)
             .map_err(|e| format!("Connection failed: {}", e))?;
-
-        // Set TCP-level timeouts so operations on a dead socket fail quickly.
-        let tcp_timeout = Some(Duration::from_secs(SSH_TIMEOUT_SECS as u64));
-        tcp.set_read_timeout(tcp_timeout)
-            .map_err(|e| format!("TCP read timeout: {}", e))?;
-        tcp.set_write_timeout(tcp_timeout)
-            .map_err(|e| format!("TCP write timeout: {}", e))?;
 
         // Keep a clone for the session (ssh2 needs the stream to stay alive)
         let tcp_clone = tcp.try_clone()
@@ -252,13 +245,13 @@ pub fn ssh_write(
             .clone()
     };
     let mut live = live.lock().unwrap();
-    live.channel
+    live.session.set_blocking(true);
+    let result = live.channel
         .write_all(data.as_bytes())
-        .map_err(|e| format!("Write failed: {}", e))?;
-    live.channel
-        .flush()
-        .map_err(|e| format!("Flush failed: {}", e))?;
-    Ok(())
+        .and_then(|_| live.channel.flush())
+        .map_err(|e| format!("Write failed: {}", e));
+    live.session.set_blocking(false);
+    result
 }
 
 /// Resize the PTY window.

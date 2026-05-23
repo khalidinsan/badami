@@ -91,7 +91,8 @@ export function useAiChat(_conversationId: string | null) {
       ]);
       setMessages((prev) => prev.map((m) => m.id === tempUserId ? { ...m, id: userMsg.id } : m));
 
-      const systemPrompt = conv?.system_prompt || DEFAULT_SYSTEM_PROMPT;
+      const systemPrompt = (conv?.system_prompt || DEFAULT_SYSTEM_PROMPT)
+        + `\n\n## Konteks Waktu\nHari dan tanggal saat ini: ${new Date().toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}. Waktu: ${new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}.`;
       const history = await aiQueries.getMessages(convId);
       let apiMessages: OpenRouterMessage[] = [
         { role: "system", content: systemPrompt },

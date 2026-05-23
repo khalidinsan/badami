@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -50,13 +50,16 @@ export function AiChat() {
     }
   }, [activeConvId, loadMessages, setMessages]);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages (throttled)
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    requestAnimationFrame(() => {
+    if (scrollTimeoutRef.current) return;
+    scrollTimeoutRef.current = setTimeout(() => {
+      scrollTimeoutRef.current = null;
       if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       }
-    });
+    }, 80);
   }, [messages]);
 
   // Focus input after response completes
@@ -92,11 +95,8 @@ export function AiChat() {
 
     const msg = input.trim();
     setInput("");
-
-    // Auto-resize textarea back
     if (inputRef.current) inputRef.current.style.height = "auto";
 
-    // Create conversation if needed (but don't block UI)
     let convId = activeConvId;
     if (!convId) {
       const conv = await aiQueries.createConversation({ model: selectedModel, title: msg.slice(0, 50) });
@@ -104,7 +104,6 @@ export function AiChat() {
       setActiveConvId(conv.id);
       convId = conv.id;
     } else {
-      // Auto-rename if still "New Chat"
       const conv = conversations.find((c) => c.id === convId);
       if (conv && conv.title === "New Chat") {
         aiQueries.updateConversation(convId, { title: msg.slice(0, 50) });
@@ -232,12 +231,12 @@ export function AiChat() {
             </div>
           )}
 
-          {messages.filter((m) => m.role !== "tool" && m.role !== "system").map((msg) => (
+          {messages.filter((m) => m.role !== "tool" && m.role !== "system" && !(m.isStreaming && !m.content)).map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
 
-          {/* Typing indicator — only show when loading AND no streaming content visible */}
-          {loading && !messages.some((m) => m.isStreaming && m.content) && (
+          {/* Typing indicator — show when waiting for AI response */}
+          {loading && (messages.length === 0 || messages[messages.length - 1].role === "user" || (messages[messages.length - 1].isStreaming && !messages[messages.length - 1].content)) && (
             <div className="flex gap-3">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted/60">
                 <Bot className="h-3.5 w-3.5 text-muted-foreground" />
@@ -296,7 +295,7 @@ export function AiChat() {
 
 // ── Message Bubble ──────────────────────────────────────────────────
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
 
@@ -319,18 +318,26 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         isUser
           ? "bg-primary text-primary-foreground"
           : "bg-muted/50 text-foreground",
-        message.isStreaming && "animate-pulse-subtle",
       )}>
         {isUser ? (
           <div className="whitespace-pre-wrap break-words leading-relaxed">
             {message.content}
           </div>
         ) : message.content ? (
-          <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-2 prose-code:text-[12px] prose-pre:bg-black/20 prose-pre:rounded-lg prose-code:before:content-none prose-code:after:content-none prose-table:text-xs">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          message.isStreaming ? (
+            // During streaming: render plain text (fast, no markdown overhead)
+            <div className="whitespace-pre-wrap break-words leading-relaxed">
               {message.content}
-            </ReactMarkdown>
-          </div>
+              <span className="inline-block w-1.5 h-4 ml-0.5 bg-primary/60 animate-pulse align-middle" />
+            </div>
+          ) : (
+            // After streaming complete: render markdown
+            <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-2 prose-code:text-[12px] prose-pre:bg-black/20 prose-pre:rounded-lg prose-code:before:content-none prose-code:after:content-none prose-table:text-xs">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          )
         ) : null}
 
         {/* Copy button for assistant messages */}
@@ -346,4 +353,4 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       </div>
     </div>
   );
-}
+});

@@ -17,7 +17,6 @@ export async function createPomodoroSession(data: {
     .values({
       id,
       task_id: data.task_id ?? null,
-      daily_plan_id: null,
       duration_min: data.duration_min,
       break_min: data.break_min,
       started_at,

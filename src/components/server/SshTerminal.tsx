@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -397,16 +398,36 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
       )}
 
       {/* Terminal + Commands panel */}
-      <div className="flex flex-1 overflow-hidden">
-        <div ref={termRef} className="flex-1 overflow-hidden" />
-        {commandsPanelOpen && (
-          <SavedCommandsPanel
-            serverId={server.id}
-            projectId={server.project_id}
-            onRunCommand={(cmd) => write(cmd)}
-            onClose={() => setCommandsPanelOpen(false)}
-          />
-        )}
+      <div className="relative flex-1 overflow-hidden">
+        <div ref={termRef} className="h-full w-full overflow-hidden" />
+        <AnimatePresence>
+          {commandsPanelOpen && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0 z-10 bg-black/30"
+                onClick={() => setCommandsPanelOpen(false)}
+              />
+              <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="absolute right-0 top-0 z-20 h-full w-[280px] border-l border-border/60 bg-popover shadow-xl"
+              >
+                <SavedCommandsPanel
+                  serverId={server.id}
+                  projectId={server.project_id}
+                  onRunCommand={(cmd) => write(cmd)}
+                  onClose={() => setCommandsPanelOpen(false)}
+                />
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

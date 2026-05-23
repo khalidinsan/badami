@@ -1,6 +1,5 @@
-import { usePomodoro } from "@/hooks/usePomodoro";
+import { usePomodoroStore } from "@/stores/pomodoroStore";
 import { Play, Pause, RotateCcw, SkipForward } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -11,11 +10,13 @@ function formatTime(seconds: number): string {
 interface PomodoroTimerProps {
   taskId?: string | null;
   compact?: boolean;
+  onBackToTasks?: () => void;
 }
 
 export function PomodoroTimer({
   taskId,
   compact = false,
+  onBackToTasks,
 }: PomodoroTimerProps) {
   const {
     status,
@@ -27,7 +28,7 @@ export function PomodoroTimer({
     reset,
     skip,
     todaySessions,
-  } = usePomodoro();
+  } = usePomodoroStore();
 
   const progress =
     totalSeconds > 0 ? ((totalSeconds - secondsLeft) / totalSeconds) * 100 : 0;
@@ -35,9 +36,9 @@ export function PomodoroTimer({
   const completedToday = todaySessions.filter((s) => s.completed).length;
   const isBreak = status === "break";
 
-  const handlePlayPause = () => {
+  const handlePlayPause = async () => {
     if (status === "idle") {
-      start(taskId);
+      await start(taskId);
     } else if (status === "paused") {
       resume();
     } else {
@@ -66,7 +67,7 @@ export function PomodoroTimer({
   }
 
   return (
-    <div className="flex flex-col items-center gap-3 px-4 py-3">
+    <div className="flex flex-col items-center gap-3 px-4 py-3" data-tauri-no-drag>
       {/* Circular progress */}
       <div className="relative flex h-28 w-28 items-center justify-center">
         <svg className="h-28 w-28 -rotate-90" viewBox="0 0 100 100">
@@ -109,43 +110,49 @@ export function PomodoroTimer({
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={reset}
+      <div className="flex items-center gap-2" onMouseDown={(e) => e.stopPropagation()}>
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => reset()}
           disabled={status === "idle"}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:pointer-events-none"
         >
           <RotateCcw className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant={status === "idle" ? "default" : "outline"}
-          size="icon"
-          className="h-10 w-10 rounded-full"
+        </button>
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={handlePlayPause}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90"
         >
           {status === "working" || status === "break" ? (
             <Pause className="h-4 w-4" />
           ) : (
             <Play className="h-4 w-4 ml-0.5" />
           )}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={skip}
+        </button>
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => skip()}
           disabled={status === "idle"}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:pointer-events-none"
         >
           <SkipForward className="h-3.5 w-3.5" />
-        </Button>
+        </button>
       </div>
 
       {/* Session count */}
       <p className="text-xs text-muted-foreground">
         {completedToday} session{completedToday !== 1 ? "s" : ""} today
       </p>
+
+      {onBackToTasks && (
+        <button
+          onClick={onBackToTasks}
+          className="text-[0.625rem] text-muted-foreground/50 transition-colors hover:text-muted-foreground"
+        >
+          ← Back to tasks
+        </button>
+      )}
     </div>
   );
 }

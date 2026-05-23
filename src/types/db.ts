@@ -34,6 +34,7 @@ export interface Database {
   db_er_layouts: DbErLayoutTable;
   ai_conversations: AiConversationTable;
   ai_messages: AiMessageTable;
+  notifications: NotificationTable;
 }
 
 export interface ProjectTable {
@@ -96,7 +97,6 @@ export interface TaskLabelTable {
 export interface PomodoroSessionTable {
   id: string;
   task_id: ColumnType<string | null, string | null, string | null>;
-  daily_plan_id: ColumnType<string | null, string | null, string | null>;
   duration_min: ColumnType<number, number | undefined, number>;
   break_min: ColumnType<number, number | undefined, number>;
   started_at: string;
@@ -502,3 +502,25 @@ export interface AiMessageTable {
 
 export type AiConversationRow = Selectable<AiConversationTable>;
 export type AiMessageRow = Selectable<AiMessageTable>;
+
+// ─── Notifications (Phase 20) ───────────────────────────────────────
+
+export interface NotificationTable {
+  id: string;
+  type: string;
+  title: string;
+  body: ColumnType<string | null, string | null, string | null>;
+  ref_id: ColumnType<string | null, string | null, string | null>;
+  read: ColumnType<number, number | undefined, number>;
+  created_at: string;
+}
+
+export interface NotificationRow {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  ref_id: string | null;
+  read: number;
+  created_at: string;
+}

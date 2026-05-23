@@ -48,6 +48,7 @@ import { useAppTabStore, type AppTab, type AppTabType } from "@/stores/appTabSto
 import { useRouter } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   CalendarDays,
@@ -294,6 +295,8 @@ export function AppTabBar() {
           })}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <NotificationBell />
     </div>
   );
 }
