@@ -1,7 +1,7 @@
 use super::db_connection::{DbClientState, DbPool};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use sqlx::{Column, Row};
+use sqlx::{Column, Executor, Row};
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -150,15 +150,14 @@ pub async fn dbc_query(
 
     match pool {
         DbPool::MySQL(p) => {
-            // Acquire a dedicated connection so USE db + query share the same session
+            // Acquire a dedicated connection so USE + query share the same session
             let mut conn = p.acquire().await.map_err(|e| format!("Acquire connection: {e}"))?;
 
-            // Switch database context when requested (USE is not supported in prepared statements)
+            // Switch database context (USE not supported in prepared statements, use raw_sql)
             if let Some(db_name) = &database {
                 if !db_name.is_empty() {
-                    sqlx::query(&format!("USE `{}`", db_name.replace('`', "``")))
-                        .persistent(false)
-                        .execute(&mut *conn)
+                    let use_stmt = format!("USE `{}`", db_name.replace('`', "``"));
+                    (&mut *conn).execute(use_stmt.as_str())
                         .await
                         .map_err(|e| format!("USE database failed: {e}"))?;
                 }
