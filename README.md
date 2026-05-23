@@ -7,8 +7,12 @@
 <h1 align="center">Badami</h1>
 
 <p align="center">
-  A focused productivity desktop app — projects, tasks, daily planning, and a floating sticky note.<br/>
+  A focused productivity desktop app — projects, tasks, daily planning, and much more.<br/>
   Built with <strong>Tauri v2</strong> · <strong>React 19</strong> · <strong>TypeScript</strong> · <strong>SQLite</strong>
+</p>
+
+<p align="center">
+  <code>v1.11.0</code>
 </p>
 
 ---
@@ -16,14 +20,18 @@
 ## Features
 
 - **Projects & Pages** — Rich BlockNote editor, project overview, and nested pages
-- **Tasks** — Priorities, labels, due dates, subtasks, list & Kanban board views, drag-to-reorder
+- **Tasks** — Priorities, labels, due dates, subtasks, recurring tasks, reminders, list & Kanban board views, drag-to-reorder, bulk actions
 - **Daily Planning** — Drag tasks onto a calendar, free-form daily notes, progress bar
-- **Today Window** — Floating compact window with Pomodoro timer
-- **Server Management** — SSH terminal, SFTP/FTP file manager, PEM key manager
-- **Credential Vault** — AES-256-GCM encrypted vault, TOTP, password generator
-- **REST API Tool** — Request builder, collections, environments, Postman import
-- **Quick Search** — ⌘K command palette
-- **Sync** — Optional Turso LibSQL cloud sync
+- **Today Window** — Floating compact window with Pomodoro timer (custom durations)
+- **Server Management** — SSH terminal, SFTP/FTP file manager, PEM key manager, saved commands, remote code editor
+- **Credential Vault** — AES-256-GCM encrypted vault, TOTP authenticator, password generator
+- **REST API Tool** — Request builder, collections, environments, auth helpers, Postman import, cURL export
+- **Database Client** — MySQL/PostgreSQL/SQLite connections, query editor, table viewer, ER diagram, schema management, export/import
+- **AI Assistant** — OpenRouter integration, tool-use, streaming responses, multi-model support
+- **Notification Center** — Daily summary, task reminders, overdue alerts, LLM-generated text
+- **Quick Search** — ⌘K command palette for fast navigation
+- **Stats** — Productivity dashboard with charts
+- **Sync** — Optional Turso LibSQL cloud sync with embedded replicas
 
 ---
 
@@ -51,7 +59,7 @@ rustup update stable
 2. Follow the installer prompts (choose the default toolchain)
 3. Restart your terminal
 
-> **Windows extra requirement:** Install [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) — select **"Desktop development with C++"** during setup. Alternatively, install the full [Visual Studio Community](https://visualstudio.microsoft.com/vs/) with the C++ workload.
+> **Windows extra requirement:** Install [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) — select **"Desktop development with C++"** during setup.
 
 Verify installation:
 ```bash
@@ -114,22 +122,60 @@ Output bundles are placed in `src-tauri/target/release/bundle/`:
 
 ```
 badami/
-├── src/                   # React frontend
-│   ├── routes/            # TanStack Router pages
-│   ├── components/        # UI components
-│   ├── stores/            # Zustand stores
-│   ├── db/                # SQLite client + Kysely queries + migrations
-│   ├── hooks/             # Custom React hooks
-│   ├── lib/               # Utilities
-│   └── types/             # TypeScript types
-├── src-tauri/             # Rust / Tauri backend
+├── src/                        # React frontend
+│   ├── routes/                 # TanStack Router pages
+│   │   ├── projects/           # Projects & nested pages
+│   │   ├── tasks/              # Task management
+│   │   ├── planning/           # Daily planning
+│   │   ├── servers/            # Server management
+│   │   ├── credentials/        # Credential vault
+│   │   ├── api/                # REST API tool
+│   │   ├── database/           # Database client
+│   │   ├── ai/                 # AI assistant
+│   │   ├── stats/              # Productivity stats
+│   │   └── settings/           # App settings
+│   ├── components/             # UI components
+│   │   ├── ui/                 # shadcn/ui primitives
+│   │   ├── layout/             # App shell, sidebar, tabs
+│   │   ├── editor/             # BlockNote editor
+│   │   ├── projects/           # Project components
+│   │   ├── tasks/              # Task components
+│   │   ├── planning/           # Planning components
+│   │   ├── today/              # Today window & Pomodoro
+│   │   ├── server/             # SSH, SFTP, FTP components
+│   │   ├── credentials/        # Vault & credential components
+│   │   ├── api/                # API tool components
+│   │   ├── database/           # DB client components
+│   │   ├── ai/                 # AI chat components
+│   │   ├── sync/               # Cloud sync components
+│   │   └── search/             # Command palette
+│   ├── stores/                 # Zustand stores (per domain)
+│   ├── db/                     # SQLite client + Kysely queries + migrations
+│   ├── hooks/                  # Custom React hooks
+│   ├── lib/                    # Utilities
+│   └── types/                  # TypeScript types
+├── src-tauri/                  # Rust / Tauri backend
 │   ├── src/
 │   │   ├── main.rs
 │   │   ├── lib.rs
-│   │   └── commands/      # Tauri commands (SSH, SFTP, crypto, …)
+│   │   └── commands/           # Tauri commands
+│   │       ├── db.rs           # LibSQL database operations
+│   │       ├── ssh.rs          # SSH sessions
+│   │       ├── sftp.rs         # SFTP file operations
+│   │       ├── ftp.rs          # FTP/FTPS operations
+│   │       ├── vault.rs        # Encrypted vault
+│   │       ├── credential.rs   # Credential management
+│   │       ├── totp.rs         # TOTP generation
+│   │       ├── password_gen.rs # Password generator
+│   │       ├── api.rs          # HTTP request execution
+│   │       ├── db_connection.rs # External DB connections
+│   │       ├── db_schema.rs    # Schema introspection
+│   │       ├── db_data.rs      # Data queries
+│   │       ├── db_transfer.rs  # Data export/import
+│   │       └── file_watch.rs   # File watching
 │   ├── Cargo.toml
 │   └── tauri.conf.json
-├── public/                # Static assets
+├── public/                     # Static assets
 ├── index.html
 ├── vite.config.ts
 └── package.json
@@ -142,16 +188,21 @@ badami/
 | Layer | Technology |
 |-------|-----------|
 | Desktop shell | Tauri v2 |
-| Frontend | React 19 + TypeScript + Vite |
+| Frontend | React 19 + TypeScript + Vite 7 |
 | Styling | Tailwind CSS v4 + shadcn/ui |
 | Rich text | BlockNote |
 | Routing | TanStack Router (file-based) |
 | State | Zustand |
-| Database | SQLite via `tauri-plugin-sql` + Kysely |
+| Database | SQLite via libsql + Kysely |
 | Animations | Framer Motion |
 | Icons | Lucide React |
+| Terminal | xterm.js |
 | SSH / SFTP | Rust `ssh2` crate |
+| FTP | Rust `suppaftp` crate |
 | Crypto | Rust `aes-gcm` + `argon2` |
+| HTTP Client | Rust `reqwest` |
+| DB Client | Rust `sqlx` (MySQL / PostgreSQL) |
+| AI | OpenRouter API (streaming) |
 
 ---
 
