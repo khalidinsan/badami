@@ -4,53 +4,10 @@ applyTo: '**'
 
 # Badami — Copilot Agent Instructions
 
-## Aturan Wajib: Update Checklist
-
-Setiap kali kamu selesai mengimplementasikan sebuah fitur, komponen, query, atau task apapun dalam project ini, kamu **WAJIB** mengupdate file checklist di root project sebagai bagian dari penyelesaian task tersebut.
-
-**File checklist yang digunakan:**
-- `CHECKLIST.md` — Phase 1 sampai Phase 16
-- `CHECKLIST-2.md` — Phase 17 ke atas
-
-Gunakan file yang sesuai dengan phase yang sedang dikerjakan.
-
-### Kapan Update Checklist
-
-Update checklist segera setelah:
-- Selesai membuat file baru yang merupakan bagian dari sebuah checklist item
-- Selesai mengimplementasikan sebuah fitur end-to-end
-- Selesai memperbaiki bug yang terkait dengan item di checklist
-- Selesai melakukan konfigurasi (setup library, plugin, routing, dll)
-
-### Cara Update Checklist
-
-1. Tandai item yang sudah selesai dengan mengubah `- [ ]` menjadi `- [x]`
-2. Jika satu task mencakup beberapa checklist item, tandai **semua** yang benar-benar selesai
-3. Jangan tandai item sebagai selesai jika implementasinya belum lengkap atau belum bisa jalan
-
-### Jika Menemukan Sub-task Baru
-
-Jika selama implementasi kamu menemukan sub-task atau item yang belum ada di checklist tapi perlu dikerjakan, **tambahkan item baru** ke phase yang relevan di file checklist yang sesuai sebelum (atau sesaat setelah) mengerjakannya.
-
-### Format Penambahan Item Baru
-
-Tambahkan di bawah item terkait, dengan indentasi dan format yang konsisten:
-
-```markdown
-- [ ] Deskripsi item baru yang jelas dan actionable
-```
-
-### Aturan Tambahan
-
-- Jangan pernah hapus item dari checklist, meski sudah tidak relevan — cukup tandai sebagai selesai atau tambahkan catatan
-- Jika sebuah item di-skip atau tidak jadi dikerjakan karena keputusan desain, tandai dengan `- [x] ~~nama item~~ *(skipped: alasan)*`
-- Urutan update: **kerjakan task → verifikasi berjalan → update checklist**
-
----
 
 ## Aturan Wajib: Update Versi Aplikasi
 
-Setiap kali ada dokumen perencanaan baru (misalnya `plan-xxx.md`) yang mendefinisikan **target versi rilis baru**, kamu **WAJIB** mengupdate versi di **3 file berikut secara bersamaan**:
+Setiap kali ada dokumen perencanaan baru (misalnya `plan-xxx.md`) atau spec yang mendefinisikan **target versi rilis baru**, atau sesuai user request, kamu **WAJIB** mengupdate versi di **3 file berikut secara bersamaan**:
 
 | File | Lokasi field |
 |---|---|
@@ -81,6 +38,20 @@ Ketika membutuhkan akses langsung ke database untuk exploration, debugging, atau
 ```
 /Users/khalid/Library/Application Support/com.khalid.badami/badami.db
 ```
+```
+/Users/khalid/Library/Application Support/com.khalid.badami/badami_sync.db
+```
+
+**Arsitektur:**
+- Database dikelola oleh Rust backend via **libsql** (bukan `tauri-plugin-sql`)
+- Frontend menggunakan **Kysely** dengan custom dialect yang invoke Tauri commands (`db_query`, `db_execute`)
+- `badami.db` — database utama lokal (selalu ada)
+- `badami_sync.db` — embedded replica Turso (hanya ada jika cloud sync enabled)
+- Strategi koneksi (offline-first):
+  1. Sync enabled + `badami_sync.db` exists → buka replica langsung (instant, no network)
+  2. Sync enabled + `badami_sync.db` belum ada → buka `badami.db`, build replica di background
+  3. Sync disabled → buka `badami.db` sebagai SQLite biasa
+- Migrations dijalankan via `db_init` Tauri command, dikirim sebagai array SQL strings dari frontend
 
 **Cara mengakses:**
 1. Aktivasi MCP SQLite Server tool (sudah tersedia di Copilot)

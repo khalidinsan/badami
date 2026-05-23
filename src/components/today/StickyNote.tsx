@@ -816,22 +816,15 @@ export function StickyNote() {
         )}
       </AnimatePresence>
 
-      {/* ── Pomodoro (toggled) ── */}
-      <AnimatePresence initial={false}>
-        {showPomodoro && (
-          <motion.div
-            key="pomodoro"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="shrink-0 overflow-hidden border-t border-black/10"
-            data-tauri-no-drag
-          >
-            <PomodoroTimer compact={false} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* ── Pomodoro (toggled) — fixed height, always visible at bottom ── */}
+      {showPomodoro && (
+        <div
+          className="shrink-0 border-t border-black/10 h-[220px] overflow-y-auto"
+          data-tauri-no-drag
+        >
+          <PomodoroTimer compact={false} />
+        </div>
+      )}
     </div>
   );
 }
