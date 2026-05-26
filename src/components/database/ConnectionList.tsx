@@ -4,6 +4,7 @@ import {
   Search,
   Database,
   Plug,
+  Unplug,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -73,6 +74,7 @@ export function ConnectionList({
     loading,
     connecting,
     connect,
+    disconnect,
     isConnected,
     deleteConnection,
   } = useDbConnection();
@@ -244,6 +246,7 @@ export function ConnectionList({
                       isConnected={isConnected(conn.id)}
                       isConnecting={connecting === conn.id}
                       onConnect={() => handleConnect(conn)}
+                      onDisconnect={() => disconnect(conn.id)}
                       onEdit={() => onEditConnection(conn)}
                       onDuplicate={() => handleDuplicate(conn)}
                       onDelete={() => handleDelete(conn.id)}
@@ -268,6 +271,7 @@ export function ConnectionList({
                       isConnected={isConnected(conn.id)}
                       isConnecting={connecting === conn.id}
                       onConnect={() => handleConnect(conn)}
+                      onDisconnect={() => disconnect(conn.id)}
                       onEdit={() => onEditConnection(conn)}
                       onDuplicate={() => handleDuplicate(conn)}
                       onDelete={() => handleDelete(conn.id)}
@@ -355,6 +359,7 @@ interface ConnectionCardProps {
   isConnected: boolean;
   isConnecting: boolean;
   onConnect: () => void;
+  onDisconnect: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -365,6 +370,7 @@ function ConnectionCard({
   isConnected,
   isConnecting,
   onConnect,
+  onDisconnect,
   onEdit,
   onDuplicate,
   onDelete,
@@ -439,6 +445,13 @@ function ConnectionCard({
             </>
           )}
         </Button>
+
+        {isConnected && (
+          <Button size="sm" variant="outline" className="text-red-500 hover:text-red-600" onClick={onDisconnect}>
+            <Unplug className="mr-1.5 h-3.5 w-3.5" />
+            Close
+          </Button>
+        )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

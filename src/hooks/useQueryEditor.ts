@@ -59,6 +59,7 @@ export function useQueryEditor() {
             const result = await invoke<ExecuteResult>("dbc_execute", {
               poolId,
               sql: stmt,
+              database: databaseName ?? null,
             });
             newResults.push({ sql: stmt, type: "execute", executeResult: result });
           }

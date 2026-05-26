@@ -288,6 +288,7 @@ pub async fn dbc_execute(
     state: tauri::State<'_, DbClientState>,
     pool_id: String,
     sql: String,
+    database: Option<String>,
 ) -> Result<ExecuteResult, String> {
     let start = std::time::Instant::now();
     let pools = state.pools.lock().await;
@@ -295,13 +296,28 @@ pub async fn dbc_execute(
 
     let affected = match pool {
         DbPool::MySQL(p) => {
+            let mut conn = p.acquire().await.map_err(|e| format!("Acquire connection: {e}"))?;
+            if let Some(ref db_name) = database {
+                if !db_name.is_empty() {
+                    let use_stmt = format!("USE `{}`", db_name.replace('`', "``"));
+                    (&mut *conn).execute(use_stmt.as_str())
+                        .await
+                        .map_err(|e| format!("USE database failed: {e}"))?;
+                }
+            }
             sqlx::query(&sql)
-                .execute(p)
+                .execute(&mut *conn)
                 .await
                 .map_err(|e| format!("{e}"))?
                 .rows_affected()
         }
         DbPool::Postgres(p) => {
+            if let Some(ref db_name) = database {
+                if !db_name.is_empty() {
+                    let set_stmt = format!("SET search_path TO {}", db_name);
+                    sqlx::query(&set_stmt).execute(p).await.ok();
+                }
+            }
             sqlx::query(&sql)
                 .execute(p)
                 .await
