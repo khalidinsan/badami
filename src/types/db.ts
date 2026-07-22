@@ -616,3 +616,7 @@ export type NewLocalDevService = Insertable<LocalDevServiceTable>;
 export type LocalDevServiceUpdate = Updateable<LocalDevServiceTable>;
 export type NewLocalDevSite = Insertable<LocalDevSiteTable>;
 export type LocalDevSiteUpdate = Updateable<LocalDevSiteTable>;
+export type NewLocalDevParkPath = Insertable<LocalDevParkPathTable>;
+export type LocalDevParkPathUpdate = Updateable<LocalDevParkPathTable>;
+export type NewLocalDevEvent = Insertable<LocalDevEventTable>;
+export type LocalDevEventUpdate = Updateable<LocalDevEventTable>;

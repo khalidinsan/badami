@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS local_dev_services (
   port            INTEGER,
   socket_path     TEXT,
   extra_json      TEXT,
+  -- telemetry only (runtime truth is supervisor):
   last_status     TEXT,
   last_error      TEXT,
   last_started_at TEXT,
@@ -78,8 +79,8 @@ INSERT OR IGNORE INTO local_dev_settings (key, value) VALUES
   ('loopback', '127.0.0.1'),
   ('http_port', '8080'),
   ('http_mode', 'unprivileged'),
-  ('dns_mode', 'auto'),
-  ('dns_port', '53'),
+  ('dns_mode', 'auto'),              -- auto | adopt | badami_dnsmasq_53 | high_port | degraded
+  ('dns_port', '53'),                -- 53 or high port e.g. 53535 for D2
   ('default_php_version', '8.4'),
   ('adopt_existing_processes', 'true'),
   ('mariadb_datadir_policy', 'reuse_herd'),
@@ -88,4 +89,5 @@ INSERT OR IGNORE INTO local_dev_settings (key, value) VALUES
   ('herd_import_path', ''),
   ('mariadb_connection_id', '');
 
+-- Feature flag SoT (Key Decision 25): only in global settings, not local_dev_settings
 INSERT OR IGNORE INTO settings (key, value) VALUES ('local_dev_enabled', 'true');

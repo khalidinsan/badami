@@ -9,11 +9,25 @@ import type {
   LocalDevSiteRow,
   LocalDevEventRow,
 } from "@/types/db";
+import type {
+  BinaryRole,
+  BinarySource,
+  EventLevel,
+  LocalDevSettingKey,
+  ServiceKind,
+  SiteKind,
+} from "@/types/localDev";
+
+/** Strip trailing slashes for park-path uniqueness (Herd config.json duplicates). */
+function normalizeParkPath(path: string): string {
+  const stripped = path.replace(/\/+$/, "");
+  return stripped === "" ? "/" : stripped;
+}
 
 // ─── Settings ───────────────────────────────────────────────────────
 
 export async function getLocalDevSetting(
-  key: string,
+  key: LocalDevSettingKey,
 ): Promise<string | null> {
   const row = await db
     .selectFrom("local_dev_settings")
@@ -24,7 +38,7 @@ export async function getLocalDevSetting(
 }
 
 export async function setLocalDevSetting(
-  key: string,
+  key: LocalDevSettingKey,
   value: string,
 ): Promise<void> {
   const existing = await getLocalDevSetting(key);
@@ -43,7 +57,7 @@ export async function setLocalDevSetting(
 }
 
 export async function getLocalDevSettings(
-  keys?: string[],
+  keys?: LocalDevSettingKey[],
 ): Promise<Record<string, string>> {
   let query = db.selectFrom("local_dev_settings").select(["key", "value"]);
   if (keys && keys.length > 0) {
@@ -64,7 +78,7 @@ export async function getAllLocalDevSettings(): Promise<LocalDevSettingRow[]> {
 // ─── Binaries ───────────────────────────────────────────────────────
 
 export async function getBinaries(
-  role?: string,
+  role?: BinaryRole,
 ): Promise<LocalDevBinaryRow[]> {
   let query = db
     .selectFrom("local_dev_binaries")
@@ -90,7 +104,7 @@ export async function getBinaryById(
 }
 
 export async function getSelectedBinary(
-  role: string,
+  role: BinaryRole,
 ): Promise<LocalDevBinaryRow | undefined> {
   return db
     .selectFrom("local_dev_binaries")
@@ -100,13 +114,16 @@ export async function getSelectedBinary(
     .executeTakeFirst();
 }
 
+/**
+ * Insert a binary. Always stores is_selected=0; call selectBinary to select.
+ * (Avoids multiple selected rows for the same role.)
+ */
 export async function createBinary(data: {
-  role: string;
+  role: BinaryRole;
   path: string;
-  source: string;
+  source: BinarySource;
   version?: string | null;
   arch?: string | null;
-  is_selected?: number;
   meta_json?: string | null;
 }): Promise<LocalDevBinaryRow> {
   const id = uuidv4();
@@ -121,7 +138,7 @@ export async function createBinary(data: {
       source: data.source,
       version: data.version ?? null,
       arch: data.arch ?? null,
-      is_selected: data.is_selected ?? 0,
+      is_selected: 0,
       meta_json: data.meta_json ?? null,
       created_at: timestamp,
       updated_at: timestamp,
@@ -134,12 +151,11 @@ export async function createBinary(data: {
 export async function updateBinary(
   id: string,
   data: Partial<{
-    role: string;
+    role: BinaryRole;
     path: string;
-    source: string;
+    source: BinarySource;
     version: string | null;
     arch: string | null;
-    is_selected: number;
     meta_json: string | null;
   }>,
 ): Promise<LocalDevBinaryRow | undefined> {
@@ -152,10 +168,20 @@ export async function updateBinary(
   return getBinaryById(id);
 }
 
+/**
+ * Select one binary for a role (clears other selections for that role).
+ * No-ops if binaryId does not belong to role (avoids clearing selection on bad id).
+ * If the second update fails after clear, callers should treat as "none selected" and re-run.
+ */
 export async function selectBinary(
-  role: string,
+  role: BinaryRole,
   binaryId: string,
 ): Promise<void> {
+  const binary = await getBinaryById(binaryId);
+  if (!binary || binary.role !== role) {
+    return;
+  }
+
   await db
     .updateTable("local_dev_binaries")
     .set({ is_selected: 0, updated_at: now() })
@@ -195,7 +221,7 @@ export async function getServiceById(
 }
 
 export async function getServiceByKind(
-  kind: string,
+  kind: ServiceKind,
 ): Promise<LocalDevServiceRow | undefined> {
   return db
     .selectFrom("local_dev_services")
@@ -206,7 +232,7 @@ export async function getServiceByKind(
 
 export async function createService(data: {
   id?: string;
-  kind: string;
+  kind: ServiceKind;
   display_name: string;
   enabled?: number;
   auto_start?: number;
@@ -254,7 +280,7 @@ export async function createService(data: {
 export async function updateService(
   id: string,
   data: Partial<{
-    kind: string;
+    kind: ServiceKind;
     display_name: string;
     enabled: number;
     auto_start: number;
@@ -309,6 +335,7 @@ export async function getParkPathById(
 export async function createParkPath(path: string): Promise<LocalDevParkPathRow> {
   const id = uuidv4();
   const timestamp = now();
+  const normalized = normalizeParkPath(path);
 
   const maxOrder = await db
     .selectFrom("local_dev_park_paths")
@@ -321,7 +348,7 @@ export async function createParkPath(path: string): Promise<LocalDevParkPathRow>
     .insertInto("local_dev_park_paths")
     .values({
       id,
-      path,
+      path: normalized,
       sort_order: sortOrder,
       created_at: timestamp,
     })
@@ -392,7 +419,7 @@ export async function getSitesByProject(
 export async function createSite(data: {
   name: string;
   path: string;
-  kind: string;
+  kind: SiteKind;
   tld?: string;
   php_version?: string | null;
   secured?: number;
@@ -438,7 +465,7 @@ export async function updateSite(
     name: string;
     tld: string;
     path: string;
-    kind: string;
+    kind: SiteKind;
     php_version: string | null;
     secured: number;
     project_id: string | null;
@@ -484,7 +511,7 @@ export async function getEvents(
 
 export async function addEvent(data: {
   service_id?: string | null;
-  level: string;
+  level: EventLevel;
   message: string;
 }): Promise<LocalDevEventRow> {
   const id = uuidv4();
