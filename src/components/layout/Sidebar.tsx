@@ -17,6 +17,7 @@ import {
   Info,
   Database,
   Bot,
+  HardDrive,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ import { useCredentialStore } from "@/stores/credentialStore";
 import { getExpiryBadgeCount } from "@/hooks/useExpiryCheck";
 import { SyncStatusIndicator } from "@/components/sync/SyncStatusIndicator";
 import { useAppTabStore, type AppTabType } from "@/stores/appTabStore";
+import { isMacOS } from "@/lib/platform";
 
 interface NavItem {
   to: string;
@@ -46,6 +48,8 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   iconName: string;
   tabType: AppTabType;
+  /** When true, only show on macOS (Local Dev stack). */
+  macOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -53,6 +57,8 @@ const navItems: NavItem[] = [
   { to: "/projects", label: "Projects", icon: FolderKanban, iconName: "FolderKanban", tabType: "projects" },
   { to: "/tasks", label: "Tasks", icon: CheckSquare, iconName: "CheckSquare", tabType: "tasks" },
   { to: "/servers", label: "Servers", icon: Server, iconName: "Server", tabType: "servers" },
+  // Local stack (macOS) — distinct from remote Servers above
+  { to: "/local-dev", label: "Local Dev", icon: HardDrive, iconName: "HardDrive", tabType: "local-dev", macOnly: true },
   { to: "/credentials", label: "Credentials", icon: KeyRound, iconName: "KeyRound", tabType: "credentials" },
   { to: "/api", label: "API", icon: Globe, iconName: "Globe", tabType: "api" },
   { to: "/database", label: "Database", icon: Database, iconName: "Database", tabType: "database" },
@@ -176,7 +182,7 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
 
         {/* Main nav */}
         <nav className="flex-1 space-y-0.5 px-2 py-3">
-          {navItems.map((item) => {
+          {navItems.filter((item) => !item.macOnly || isMacOS()).map((item) => {
             const isActive = currentPath.startsWith(item.to);
 
             const handleClick = (e: React.MouseEvent) => {

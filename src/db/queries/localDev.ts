@@ -14,7 +14,7 @@ import type {
   BinarySource,
   EventLevel,
   LocalDevSettingKey,
-  ServiceKind,
+  LocalDevServiceKind,
   SiteKind,
 } from "@/types/localDev";
 
@@ -221,7 +221,7 @@ export async function getServiceById(
 }
 
 export async function getServiceByKind(
-  kind: ServiceKind,
+  kind: LocalDevServiceKind,
 ): Promise<LocalDevServiceRow | undefined> {
   return db
     .selectFrom("local_dev_services")
@@ -232,7 +232,7 @@ export async function getServiceByKind(
 
 export async function createService(data: {
   id?: string;
-  kind: ServiceKind;
+  kind: LocalDevServiceKind;
   display_name: string;
   enabled?: number;
   auto_start?: number;
@@ -280,7 +280,7 @@ export async function createService(data: {
 export async function updateService(
   id: string,
   data: Partial<{
-    kind: ServiceKind;
+    kind: LocalDevServiceKind;
     display_name: string;
     enabled: number;
     auto_start: number;
