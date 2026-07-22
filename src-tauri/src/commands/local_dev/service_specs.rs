@@ -201,6 +201,53 @@ fn first_candidate(report: &DiscoveryReport, role: &str) -> Option<PathBuf> {
         .map(|c| PathBuf::from(&c.path))
 }
 
+/// Parse Mode A listen port from generated nginx confs (default 8080).
+///
+/// Looks for `listen 127.0.0.1:PORT` / `listen PORT` in `badami.conf` then `nginx.conf`.
+pub fn parse_nginx_http_port(paths: &RuntimePaths) -> u16 {
+    for name in ["badami.conf", "nginx.conf"] {
+        let p = PathBuf::from(&paths.nginx).join(name);
+        if let Some(port) = parse_listen_port_from_file(&p) {
+            return port;
+        }
+    }
+    8080
+}
+
+fn parse_listen_port_from_file(path: &Path) -> Option<u16> {
+    let content = std::fs::read_to_string(path).ok()?;
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.starts_with('#') {
+            continue;
+        }
+        // listen 127.0.0.1:8080 …;  or  listen 8080 …;
+        let Some(rest) = line
+            .strip_prefix("listen")
+            .map(str::trim_start)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        // First token before space or semicolon
+        let token = rest
+            .split(|c: char| c.is_whitespace() || c == ';')
+            .next()
+            .unwrap_or("");
+        if token.is_empty() {
+            continue;
+        }
+        // host:port or bare port
+        let port_str = token.rsplit_once(':').map(|(_, p)| p).unwrap_or(token);
+        if let Ok(port) = port_str.parse::<u16>() {
+            if port > 0 {
+                return Some(port);
+            }
+        }
+    }
+    None
+}
+
 fn build_nginx_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> ServiceSpec {
     let binary = report
         .herd
@@ -214,13 +261,14 @@ fn build_nginx_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> ServiceSp
     let log_file = PathBuf::from(&paths.logs).join("nginx-error.log");
     let binary_present = binary.is_file();
 
-    // Mode A: 127.0.0.1:8080
+    // Health port follows generated conf (not hardcoded 8080).
+    let http_port = parse_nginx_http_port(paths);
     let health = HealthCheck::Composite {
         checks: vec![
             HealthCheck::PidAlive,
             HealthCheck::Tcp {
                 host: "127.0.0.1".into(),
-                port: 8080,
+                port: http_port,
             },
         ],
     };
@@ -428,7 +476,8 @@ fn build_redis_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> ServiceSp
     let pid_file = PathBuf::from(&paths.pids).join("redis.pid");
     let log_file = PathBuf::from(&paths.logs).join("redis.log");
 
-    // Prefer Herd redis.conf when discovered; else daemonize with Badami paths.
+    // Always use Badami-owned pid/log paths. Optional Herd conf is included first
+    // but CLI flags after conf override pidfile/logfile/bind/port so we own lifecycle.
     let mut args = Vec::new();
     if let Some(conf) = report
         .herd
@@ -439,24 +488,21 @@ fn build_redis_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> ServiceSp
         let conf_pb = PathBuf::from(conf);
         if conf_pb.is_file() {
             args.push(conf.clone());
-            // Don't require Herd conf for gate — redis can start without it.
         }
     }
-    if args.is_empty() {
-        // Minimal flags — no shell, argv only.
-        args.extend([
-            "--port".into(),
-            "6379".into(),
-            "--bind".into(),
-            "127.0.0.1".into(),
-            "--daemonize".into(),
-            "yes".into(),
-            "--pidfile".into(),
-            pid_file.to_string_lossy().into_owned(),
-            "--logfile".into(),
-            log_file.to_string_lossy().into_owned(),
-        ]);
-    }
+    // argv-only overrides — no shell. These win over conf for redis-server.
+    args.extend([
+        "--port".into(),
+        "6379".into(),
+        "--bind".into(),
+        "127.0.0.1".into(),
+        "--daemonize".into(),
+        "yes".into(),
+        "--pidfile".into(),
+        pid_file.to_string_lossy().into_owned(),
+        "--logfile".into(),
+        log_file.to_string_lossy().into_owned(),
+    ]);
 
     let health = HealthCheck::Composite {
         checks: vec![
@@ -629,5 +675,44 @@ mod tests {
         };
         let err = check_requires_config(&spec).unwrap_err();
         assert!(err.contains("requires_config"));
+    }
+
+    #[test]
+    fn parse_listen_port_from_badami_style() {
+        let dir = std::env::temp_dir().join(format!("badami-ngx-port-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let conf = dir.join("badami.conf");
+        std::fs::write(
+            &conf,
+            "server {\n    listen 127.0.0.1:9080 default_server;\n}\n",
+        )
+        .unwrap();
+        assert_eq!(parse_listen_port_from_file(&conf), Some(9080));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn mariadb_spec_auto_restart_is_false() {
+        // Spec builder hardcodes auto_restart: false for MariaDB (kind-level safety).
+        let paths = RuntimePaths {
+            local_dev_root: "/tmp/ld".into(),
+            config_valet: "/tmp/ld/config/valet".into(),
+            nginx: "/tmp/ld/nginx".into(),
+            fpm: "/tmp/ld/fpm".into(),
+            socks: "/tmp/ld/socks".into(),
+            mariadb: "/tmp/ld/mariadb".into(),
+            valet_server: "/tmp/ld/valet-server".into(),
+            pids: "/tmp/ld/pids".into(),
+            logs: "/tmp/ld/logs".into(),
+            import: "/tmp/ld/import".into(),
+        };
+        // Use live discovery when available; empty-ish herd still emits a mariadb spec.
+        let report = crate::commands::local_dev::discovery::discover()
+            .expect("discover returns Ok even without Herd");
+        let specs = build_specs_from_discovery(&paths, &report);
+        let maria = specs.iter().find(|s| s.id == "mariadb").expect("mariadb");
+        assert!(!maria.auto_restart, "MariaDB must never auto_restart");
+        assert!(matches!(maria.kind, ServiceKind::MariaDb));
     }
 }
