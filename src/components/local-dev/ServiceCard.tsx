@@ -19,6 +19,7 @@ import {
   serviceStatusDetail,
   serviceStatusLabel,
 } from "@/types/localDev";
+import { RegisterMariaDbButton } from "@/components/local-dev/RegisterMariaDbButton";
 
 interface ServiceCardProps {
   service: ServiceStatusReport;
@@ -83,6 +84,16 @@ export function ServiceCard({
     service.status.status !== "unavailable" &&
     service.binary_present;
   const canStop = !transitional && (running || service.status.status === "unhealthy");
+  const isMariaDb =
+    service.kind.kind === "maria_db" ||
+    service.id === "mariadb" ||
+    service.id === "maria_db";
+  /** Offer register when healthy/running (or adopt/unhealthy still listening). */
+  const showRegister =
+    isMariaDb &&
+    (running ||
+      service.status.status === "unhealthy" ||
+      service.status.status === "running");
 
   return (
     <div
@@ -130,7 +141,7 @@ export function ServiceCard({
         <p className="mb-3 text-[11px] text-muted-foreground">Binary not found</p>
       )}
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <Button
           size="sm"
           variant="outline"
@@ -159,6 +170,9 @@ export function ServiceCard({
           )}
           Stop
         </Button>
+        {showRegister && (
+          <RegisterMariaDbButton compact disabled={transitional} />
+        )}
       </div>
     </div>
   );

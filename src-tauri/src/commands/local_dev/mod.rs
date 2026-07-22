@@ -25,7 +25,10 @@ use config_gen::{
 use discovery::{build_runtime_paths, discover, DiscoveryReport, RuntimePaths};
 use import_herd::{import_herd, ImportHerdRequest, ImportResult};
 use doctor::{run_dns_probe, run_doctor, DnsProbeResult, DoctorReport, DoctorRequest};
-use mariadb_guard::{run_preflight, MariadbPreflightReport, MariadbPreflightRequest};
+use mariadb_guard::{
+    probe_mariadb_auth_async, run_preflight, MariadbAuthProbe, MariadbAuthProbeRequest,
+    MariadbPreflightReport, MariadbPreflightRequest,
+};
 use resources::{install_runtime_resources, InstallResourcesResult};
 
 /// Discover Herd leftovers, PHP versions, MariaDB datadir candidates, ports, etc.
@@ -98,6 +101,19 @@ pub async fn ld_mariadb_preflight(
     tokio::task::spawn_blocking(move || run_preflight(req))
         .await
         .map_err(|e| format!("ld_mariadb_preflight task failed: {e}"))?
+}
+
+/// Lightweight TCP/socket + empty-password auth probe for Database registration.
+///
+/// Returns `{ ok, needs_password, … }`. Does **not** create `db_connections` rows
+/// or write keychain — registration stays in TypeScript (`createConnection` +
+/// conditional `save_db_password`). Never mutates Herd datadir.
+#[tauri::command]
+pub async fn ld_probe_mariadb_auth(
+    request: Option<MariadbAuthProbeRequest>,
+) -> Result<MariadbAuthProbe, String> {
+    let req = request.unwrap_or_default();
+    Ok(probe_mariadb_auth_async(req).await)
 }
 
 /// Import parks, isolates, and service config from an existing Herd install.

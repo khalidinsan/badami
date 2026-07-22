@@ -189,6 +189,152 @@ pub fn unix_socket_accepting(_socket: &Path) -> bool {
     false
 }
 
+/// Result of a lightweight MariaDB auth probe (registration stays in TS).
+///
+/// - `ok`: empty-password `root` auth succeeded (or non-empty password if provided).
+/// - `needs_password`: server is accepting connections but empty-password auth failed
+///   with an access-denied style error — UI should prompt the user.
+/// - Never mutates data; never touches Herd datadir.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MariadbAuthProbe {
+    pub ok: bool,
+    pub needs_password: bool,
+    pub message: String,
+    pub host: String,
+    pub port: u16,
+    /// True when TCP (or optional Unix socket) accepted a connection attempt.
+    pub tcp_accepting: bool,
+    pub socket_accepting: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MariadbAuthProbeRequest {
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub username: Option<String>,
+    /// Optional password; default empty (probe empty root first).
+    pub password: Option<String>,
+    /// Optional Unix socket path for a connect attempt (not used for sqlx URL).
+    pub socket: Option<String>,
+    /// Skip live probes (unit tests).
+    pub skip_live: Option<bool>,
+}
+
+/// Synchronous connectivity check only (TCP + optional Unix socket).
+/// Auth is done async in `probe_mariadb_auth_async` / the Tauri command.
+pub fn probe_mariadb_connectivity(
+    host: &str,
+    port: u16,
+    socket: Option<&str>,
+) -> (bool, bool) {
+    let tcp_ok = tcp_accepting(host, port);
+    let socket_ok = socket
+        .map(|s| {
+            let p = Path::new(s);
+            socket_path_present(p) && unix_socket_accepting(p)
+        })
+        .unwrap_or(false);
+    (tcp_ok, socket_ok)
+}
+
+/// Probe whether local MariaDB accepts auth as `root` (empty password first).
+///
+/// Used before TS `createConnection` + conditional `save_db_password`.
+/// Does not register a DB connection and never writes keychain.
+pub async fn probe_mariadb_auth_async(req: MariadbAuthProbeRequest) -> MariadbAuthProbe {
+    let host = req.host.unwrap_or_else(|| "127.0.0.1".into());
+    let port = req.port.unwrap_or(3306);
+    let username = req.username.unwrap_or_else(|| "root".into());
+    let password = req.password.unwrap_or_default();
+    let skip = req.skip_live.unwrap_or(false);
+    let socket = req.socket.clone();
+
+    if skip {
+        return MariadbAuthProbe {
+            ok: false,
+            needs_password: false,
+            message: "skipped live probe".into(),
+            host,
+            port,
+            tcp_accepting: false,
+            socket_accepting: false,
+        };
+    }
+
+    let socket_for_block = socket.clone();
+    let host_for_block = host.clone();
+    let (tcp_ok, socket_ok) = tokio::task::spawn_blocking(move || {
+        probe_mariadb_connectivity(&host_for_block, port, socket_for_block.as_deref())
+    })
+    .await
+    .unwrap_or((false, false));
+
+    if !tcp_ok && !socket_ok {
+        return MariadbAuthProbe {
+            ok: false,
+            needs_password: false,
+            message: format!(
+                "MariaDB not accepting connections on {host}:{port}{}",
+                if socket.is_some() {
+                    " (socket also not accepting)"
+                } else {
+                    ""
+                }
+            ),
+            host,
+            port,
+            tcp_accepting: tcp_ok,
+            socket_accepting: socket_ok,
+        };
+    }
+
+    // Attempt auth via mysql protocol over TCP (same path as dbc_test_connection).
+    // Empty password is intentional for Herd-style local root.
+    let url = format!("mysql://{username}:{password}@{host}:{port}/");
+
+    let connect_result = sqlx::mysql::MySqlPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_secs(3))
+        .connect(&url)
+        .await;
+
+    match connect_result {
+        Ok(p) => {
+            p.close().await;
+            MariadbAuthProbe {
+                ok: true,
+                needs_password: false,
+                message: if password.is_empty() {
+                    "Authenticated as root with empty password".into()
+                } else {
+                    "Authenticated with provided password".into()
+                },
+                host,
+                port,
+                tcp_accepting: tcp_ok,
+                socket_accepting: socket_ok,
+            }
+        }
+        Err(err) => {
+            let err_s = format!("{err}");
+            let lower = err_s.to_lowercase();
+            let access_denied = lower.contains("access denied")
+                || lower.contains("password")
+                || lower.contains("1045")
+                || lower.contains("using password");
+            MariadbAuthProbe {
+                ok: false,
+                needs_password: access_denied && password.is_empty(),
+                message: err_s,
+                host,
+                port,
+                tcp_accepting: tcp_ok,
+                socket_accepting: socket_ok,
+            }
+        }
+    }
+}
+
 // ── PID heuristics (scoped deletes only) ────────────────────────────
 
 const KNOWN_DATADIR_PID_NAMES: &[&str] = &["mysqld.pid", "mariadbd.pid", "mysql.pid"];

@@ -198,6 +198,7 @@ pub fn run() {
             commands::local_dev::ld_generate_configs,
             commands::local_dev::ld_generate_isolated_site,
             commands::local_dev::ld_mariadb_preflight,
+            commands::local_dev::ld_probe_mariadb_auth,
             commands::local_dev::ld_import_herd,
             // Local Dev (Phase A — sites: park / link / isolate / open / nginx reload)
             commands::local_dev::sites::ld_list_sites,

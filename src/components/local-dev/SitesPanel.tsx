@@ -9,6 +9,7 @@ import {
   Unlink,
   Globe,
   Code2,
+  FolderKanban,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,8 @@ import {
 } from "@/components/ui/select";
 import { useLocalDevStore } from "@/stores/localDevStore";
 import type { SiteInfo } from "@/types/localDev";
+import * as projectQueries from "@/db/queries/projects";
+import type { ProjectRow } from "@/types/db";
 
 export function SitesPanel() {
   const sitesResult = useLocalDevStore((s) => s.sitesResult);
@@ -45,10 +48,14 @@ export function SitesPanel() {
   const unisolatePhp = useLocalDevStore((s) => s.unisolatePhp);
   const openSiteUrl = useLocalDevStore((s) => s.openSiteUrl);
   const reloadNginx = useLocalDevStore((s) => s.reloadNginx);
+  const linkSiteToProject = useLocalDevStore((s) => s.linkSiteToProject);
 
   const [parkOpen, setParkOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [isolateSite, setIsolateSite] = useState<SiteInfo | null>(null);
+  const [projectLinkSite, setProjectLinkSite] = useState<SiteInfo | null>(null);
+  const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [parkInput, setParkInput] = useState("");
   const [linkName, setLinkName] = useState("");
   const [linkPath, setLinkPath] = useState("");
@@ -57,6 +64,15 @@ export function SitesPanel() {
   useEffect(() => {
     void listSites();
   }, [listSites]);
+
+  useEffect(() => {
+    if (projectLinkSite) {
+      projectQueries
+        .getProjects("active")
+        .then(setProjects)
+        .catch(() => setProjects([]));
+    }
+  }, [projectLinkSite]);
 
   const phpOptions = useMemo(() => {
     const fromDiscovery =
@@ -252,6 +268,19 @@ export function SitesPanel() {
                             Unisolate
                           </Button>
                         )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 px-2 text-[11px]"
+                          disabled={sitesBusy}
+                          onClick={() => {
+                            setProjectLinkSite(site);
+                            setSelectedProjectId("");
+                          }}
+                        >
+                          <FolderKanban className="h-3 w-3" />
+                          Project
+                        </Button>
                         {site.kind === "linked" && (
                           <Button
                             size="sm"
@@ -418,6 +447,62 @@ export function SitesPanel() {
               }}
             >
               Isolate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Link site → Badami project (local_dev_sites.project_id) */}
+      <Dialog
+        open={!!projectLinkSite}
+        onOpenChange={(o) => !o && setProjectLinkSite(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Link to project · {projectLinkSite?.name}</DialogTitle>
+            <DialogDescription>
+              Sets <span className="font-mono text-[11px]">local_dev_sites.project_id</span> so
+              the site appears on the project&apos;s Local sites tab. Does not modify Herd.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label className="text-xs">Project</Label>
+            <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+              <SelectTrigger className="w-full text-xs">
+                <SelectValue placeholder="Choose a project…" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!projectLinkSite || sitesBusy}
+              onClick={async () => {
+                if (!projectLinkSite) return;
+                await linkSiteToProject(projectLinkSite, null);
+                setProjectLinkSite(null);
+              }}
+            >
+              Clear link
+            </Button>
+            <Button
+              size="sm"
+              disabled={!projectLinkSite || !selectedProjectId || sitesBusy}
+              onClick={async () => {
+                if (!projectLinkSite || !selectedProjectId) return;
+                await linkSiteToProject(projectLinkSite, selectedProjectId);
+                setProjectLinkSite(null);
+              }}
+            >
+              Link to project
             </Button>
           </DialogFooter>
         </DialogContent>

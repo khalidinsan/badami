@@ -475,6 +475,38 @@ export type MariadbPreflight =
   | { kind: "adopt"; pid?: number | null; reason: string }
   | { kind: "hard_fail"; reason: string };
 
+/** Stable display name for the auto-registered local MariaDB connection. */
+export const LOCAL_DEV_MARIADB_CONNECTION_NAME = "Local MariaDB (Badami)";
+
+/** Result of `ld_probe_mariadb_auth` (registration stays in TS). */
+export interface MariadbAuthProbe {
+  ok: boolean;
+  needs_password: boolean;
+  message: string;
+  host: string;
+  port: number;
+  tcp_accepting: boolean;
+  socket_accepting: boolean;
+}
+
+export interface MariadbAuthProbeRequest {
+  host?: string | null;
+  port?: number | null;
+  username?: string | null;
+  password?: string | null;
+  socket?: string | null;
+  skip_live?: boolean | null;
+}
+
+/** Result of TS registration (`createConnection` + optional keychain). */
+export interface RegisterMariaDbResult {
+  connectionId: string;
+  created: boolean;
+  passwordSaved: boolean;
+  needsPassword: boolean;
+  message: string;
+}
+
 export interface MariadbPreflightReport {
   result: MariadbPreflight;
   wrapper_mycnf: string | null;

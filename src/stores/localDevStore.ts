@@ -16,6 +16,7 @@ import type {
   OpenSiteUrlResult,
   ParkResult,
   ReloadNginxResult,
+  RegisterMariaDbResult,
   ServiceStatusReport,
   StackActionResult,
   ServiceActionResult,
@@ -24,6 +25,7 @@ import type {
   BinarySource,
   LocalDevServiceKind,
   SiteKind,
+  SiteInfo,
 } from "@/types/localDev";
 import { isDnsDegraded } from "@/types/localDev";
 import {
@@ -37,12 +39,15 @@ import {
   getParkPaths,
   getServiceByKind,
   getSiteByNameTld,
+  getSitesByProject,
   selectBinary,
   setLocalDevSetting,
   updateService,
   updateSite,
 } from "@/db/queries/localDev";
+import { registerLocalMariaDbConnection } from "@/lib/localDevMariaDb";
 import { openInOS } from "@/lib/osOpen";
+import type { LocalDevSiteRow } from "@/types/db";
 
 const POLL_MS = 2500;
 
@@ -63,6 +68,7 @@ interface LocalDevState {
   doctorBusy: boolean;
   bootstrapBusy: boolean;
   settingsBusy: boolean;
+  registerBusy: boolean;
   dnsDegraded: boolean;
   loading: boolean;
   error: string | null;
@@ -102,6 +108,16 @@ interface LocalDevState {
   // Settings
   loadSettings: () => Promise<void>;
   saveSetting: (key: LocalDevSettingKey, value: string) => Promise<void>;
+
+  // MariaDB → Database module registration
+  registerMariaDb: (password?: string) => Promise<RegisterMariaDbResult | null>;
+
+  // Site ↔ project link (local_dev_sites.project_id)
+  linkSiteToProject: (
+    site: SiteInfo,
+    projectId: string | null,
+  ) => Promise<LocalDevSiteRow | null>;
+  getProjectSites: (projectId: string) => Promise<LocalDevSiteRow[]>;
 }
 
 function serviceLabel(serviceId: string): string {
@@ -143,6 +159,7 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
   doctorBusy: false,
   bootstrapBusy: false,
   settingsBusy: false,
+  registerBusy: false,
   dnsDegraded: false,
   loading: false,
   error: null,
@@ -697,6 +714,86 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
       toast.success("Setting saved");
     } catch (err) {
       toast.error("Failed to save setting", { description: errMessage(err) });
+    }
+  },
+
+  // ── MariaDB registration (Database module + keychain) ────────────
+
+  registerMariaDb: async (password = "") => {
+    set({ registerBusy: true });
+    try {
+      const result = await registerLocalMariaDbConnection(password);
+      set({ registerBusy: false });
+      if (result.connectionId) {
+        set((s) => ({
+          settings: { ...s.settings, mariadb_connection_id: result.connectionId },
+        }));
+        toast.success(result.message, {
+          description: result.passwordSaved
+            ? "Password saved to keychain"
+            : "Empty root password — keychain left empty",
+        });
+      } else if (result.needsPassword) {
+        toast.message("MariaDB requires a password", {
+          description: result.message,
+        });
+      } else {
+        toast.error("Could not register MariaDB", {
+          description: result.message,
+        });
+      }
+      return result;
+    } catch (err) {
+      set({ registerBusy: false });
+      toast.error("Register MariaDB failed", { description: errMessage(err) });
+      return null;
+    }
+  },
+
+  // ── Site ↔ project link ──────────────────────────────────────────
+
+  linkSiteToProject: async (site, projectId) => {
+    try {
+      const tld = site.tld || get().sitesResult?.tld || "test";
+      const kind: SiteKind =
+        site.kind === "linked" || site.kind === "parked" ? site.kind : "parked";
+      let existing = await getSiteByNameTld(site.name, tld);
+      if (!existing) {
+        if (!site.path) {
+          toast.error("Cannot link site without a path");
+          return null;
+        }
+        existing = await createSite({
+          name: site.name,
+          path: site.path,
+          kind,
+          tld,
+          php_version: site.php_version,
+          secured: site.secured ? 1 : 0,
+          project_id: projectId,
+        });
+      } else {
+        existing =
+          (await updateSite(existing.id, { project_id: projectId })) ?? existing;
+      }
+      toast.success(
+        projectId
+          ? `Linked ${site.name} to project`
+          : `Unlinked ${site.name} from project`,
+      );
+      return existing;
+    } catch (err) {
+      toast.error("Site project link failed", { description: errMessage(err) });
+      return null;
+    }
+  },
+
+  getProjectSites: async (projectId) => {
+    try {
+      return await getSitesByProject(projectId);
+    } catch (err) {
+      console.error(err);
+      return [];
     }
   },
 }));

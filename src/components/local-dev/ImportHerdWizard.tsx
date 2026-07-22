@@ -15,7 +15,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useLocalDevStore } from "@/stores/localDevStore";
-import { formatBytes } from "@/types/localDev";
+import { formatBytes, isServiceRunning } from "@/types/localDev";
+import { RegisterMariaDbButton } from "@/components/local-dev/RegisterMariaDbButton";
 
 type Step = "discover" | "review" | "confirm" | "done";
 
@@ -27,6 +28,7 @@ export function ImportHerdWizard() {
   const discover = useLocalDevStore((s) => s.discover);
   const importHerd = useLocalDevStore((s) => s.importHerd);
   const settings = useLocalDevStore((s) => s.settings);
+  const services = useLocalDevStore((s) => s.services);
 
   const [step, setStep] = useState<Step>("discover");
   const [installResources, setInstallResources] = useState(true);
@@ -313,6 +315,30 @@ export function ImportHerdWizard() {
                     <li key={i}>{n}</li>
                   ))}
                 </ul>
+              )}
+
+              {/* After import: offer Database registration when MariaDB is up (or always available) */}
+              {!importResult.notes.some((n) => /dry.?run/i.test(n)) && (
+                <div className="mt-3 rounded-md border border-border/60 bg-muted/30 p-3">
+                  <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+                    <Database className="h-3.5 w-3.5" />
+                    Register local MariaDB in Database
+                  </p>
+                  <p className="mb-2 text-[11px] text-muted-foreground">
+                    Creates{" "}
+                    <span className="font-mono">Local MariaDB (Badami)</span> via{" "}
+                    <span className="font-mono">createConnection</span>. Empty root password
+                    first; keychain only if non-empty. Never writes a password column.
+                    {services.some(
+                      (s) =>
+                        (s.kind.kind === "maria_db" || s.id === "mariadb") &&
+                        isServiceRunning(s.status),
+                    )
+                      ? " MariaDB reports running."
+                      : " Start MariaDB (or use Herd’s) if probe fails."}
+                  </p>
+                  <RegisterMariaDbButton />
+                </div>
               )}
             </CardContent>
           </Card>
