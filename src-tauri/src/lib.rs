@@ -217,6 +217,11 @@ pub fn run() {
             commands::local_dev::supervisor::ld_stack_start,
             commands::local_dev::supervisor::ld_stack_stop,
             commands::local_dev::supervisor::ld_log_tail,
+            // Local Dev (Phase A — doctor + Mode B / DNS bootstrap scaffolds)
+            commands::local_dev::ld_doctor,
+            commands::local_dev::ld_dns_probe,
+            commands::local_dev::ld_bootstrap_status,
+            commands::local_dev::ld_bootstrap_install,
         ])
         .manage(commands::ssh::SshState::new())
         .manage(commands::sftp::SftpState::new())
