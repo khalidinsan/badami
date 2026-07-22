@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bot,
+  HardDrive,
 } from "lucide-react";
 import {
   DndContext,
@@ -55,6 +56,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   FolderKanban,
   CheckSquare,
   Server,
+  HardDrive,
   KeyRound,
   Globe,
   Database,
@@ -69,6 +71,7 @@ const NEW_TAB_OPTIONS: { type: AppTabType; title: string; icon: string; route: s
   { type: "projects", title: "Projects", icon: "FolderKanban", route: "/projects" },
   { type: "tasks", title: "Tasks", icon: "CheckSquare", route: "/tasks" },
   { type: "servers", title: "Servers", icon: "Server", route: "/servers" },
+  { type: "local-dev", title: "Local Dev", icon: "HardDrive", route: "/local-dev" },
   { type: "credentials", title: "Credentials", icon: "KeyRound", route: "/credentials" },
   { type: "api", title: "API", icon: "Globe", route: "/api" },
   { type: "database", title: "Database", icon: "Database", route: "/database" },

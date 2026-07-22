@@ -9,6 +9,7 @@ const ServersPage = lazy(() => import("@/routes/servers/index").then((m) => ({ d
 const CredentialsPage = lazy(() => import("@/routes/credentials/index").then((m) => ({ default: m.CredentialsPage })));
 const ApiPage = lazy(() => import("@/routes/api/index").then((m) => ({ default: m.ApiPage })));
 const DatabasePage = lazy(() => import("@/routes/database/index").then((m) => ({ default: m.DatabasePage })));
+const LocalDevPage = lazy(() => import("@/routes/local-dev/index").then((m) => ({ default: m.LocalDevPage })));
 const AiPage = lazy(() => import("@/routes/ai/index").then((m) => ({ default: m.AiPage })));
 const StatsPage = lazy(() => import("@/routes/stats/index").then((m) => ({ default: m.StatsPage })));
 const SettingsPage = lazy(() => import("@/routes/settings/index").then((m) => ({ default: m.SettingsPage })));
@@ -22,6 +23,7 @@ const TAB_COMPONENT_MAP: Partial<Record<AppTabType, SimplePageComponent>> = {
   tasks: TasksPage,
   servers: ServersPage,
   server: ServersPage,
+  "local-dev": LocalDevPage,
   credentials: CredentialsPage,
   api: ApiPage,
   database: DatabasePage,
