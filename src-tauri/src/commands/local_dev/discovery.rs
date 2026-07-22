@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -139,7 +139,9 @@ pub struct BinaryCandidate {
 pub struct PortInUse {
     pub port: u16,
     pub listening: bool,
+    /// Reserved for future PID resolution (e.g. `lsof`); always `None` in Phase A.
     pub pid: Option<u32>,
+    /// Reserved for future process name resolution; always `None` in Phase A.
     pub process: Option<String>,
 }
 
@@ -226,23 +228,66 @@ fn path_if_exists(p: impl AsRef<Path>) -> Option<String> {
     }
 }
 
-fn dir_size_bytes(path: &Path) -> u64 {
+/// Coarse datadir size for scoring/UI — **not** a full recursive tree sum.
+///
+/// Safety/performance:
+/// - never follows symlinks (avoids cycles and escapes)
+/// - depth at most 2 (datadir → DB schema dirs → table files)
+/// - caps number of subdirs and files scanned
+fn estimate_datadir_bytes(path: &Path) -> u64 {
+    const MAX_SUBDIRS: usize = 128;
+    const MAX_FILES_PER_SUBDIR: usize = 4_000;
+
     let mut total = 0u64;
-    let mut stack = vec![path.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&dir) else {
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+
+    let mut subdirs: Vec<PathBuf> = Vec::new();
+    for entry in entries.flatten() {
+        let Ok(ft) = entry.file_type() else {
             continue;
         };
-        for entry in entries.flatten() {
-            let p = entry.path();
-            let Ok(meta) = entry.metadata() else {
-                continue;
-            };
-            if meta.is_dir() {
-                stack.push(p);
-            } else {
+        // Never follow symlinks — prevents cycles and walks outside the datadir.
+        if ft.is_symlink() {
+            continue;
+        }
+        if ft.is_file() {
+            if let Ok(meta) = entry.metadata() {
                 total = total.saturating_add(meta.len());
             }
+        } else if ft.is_dir() {
+            subdirs.push(entry.path());
+        }
+    }
+
+    subdirs.truncate(MAX_SUBDIRS);
+    for sub in subdirs {
+        total = total.saturating_add(sum_regular_files_shallow(&sub, MAX_FILES_PER_SUBDIR));
+    }
+    total
+}
+
+/// Sum regular file sizes directly under `dir` (non-recursive). Skips symlinks.
+fn sum_regular_files_shallow(dir: &Path, max_files: usize) -> u64 {
+    let mut total = 0u64;
+    let mut n = 0usize;
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    for entry in entries.flatten() {
+        if n >= max_files {
+            break;
+        }
+        let Ok(ft) = entry.file_type() else {
+            continue;
+        };
+        if ft.is_symlink() || !ft.is_file() {
+            continue;
+        }
+        n += 1;
+        if let Ok(meta) = entry.metadata() {
+            total = total.saturating_add(meta.len());
         }
     }
     total
@@ -317,15 +362,18 @@ fn score_mariadb_candidate(dir: &Path, uuid: &str) -> MariadbCandidate {
         None
     };
 
-    let bytes = dir_size_bytes(dir);
+    // Cheap size estimate (no deep recursive walk — see estimate_datadir_bytes).
+    let bytes = estimate_datadir_bytes(dir);
     let modified = modified_secs_ago(dir);
 
-    // Score: size (GiB * 100) + schema/ibdata bonuses + my.cnf + recency
-    let mut score: i64 = (bytes / (1024 * 1024 * 1024)) as i64 * 100;
-    // Also give credit for megabytes so tiny dirs sort above empty
-    score += (bytes / (1024 * 1024)) as i64;
+    // Score primarily by structural signals; size is a tie-breaker only.
+    let mut score: i64 = 0;
     if has_ibdata1 {
         score += 10_000;
+        // Prefer larger system tablespace when present (cheap single-file size).
+        if let Ok(meta) = fs::metadata(&ibdata1) {
+            score += (meta.len() / (1024 * 1024)) as i64; // MiB of ibdata1
+        }
     }
     if has_mysql_schema {
         score += 20_000;
@@ -333,6 +381,9 @@ fn score_mariadb_candidate(dir: &Path, uuid: &str) -> MariadbCandidate {
     if my_cnf.is_some() {
         score += 5_000;
     }
+    // Coarse size as secondary signal (GiB + MiB fractions from shallow estimate)
+    score += (bytes / (1024 * 1024 * 1024)) as i64 * 100;
+    score += (bytes / (1024 * 1024)) as i64;
     // Prefer recently modified (decay over ~30 days)
     if let Some(secs) = modified {
         let days = (secs / 86_400) as i64;
@@ -369,23 +420,18 @@ fn looks_like_mariadb_datadir(dir: &Path) -> bool {
         return false;
     }
     // Empty / near-empty UUID shells may be unused MariaDB slots — keep for inventory.
+    // Any non-dot entry means this is not an empty shell (and not already matched above).
     let Ok(entries) = fs::read_dir(dir) else {
         return false;
     };
-    let mut non_meta = 0u32;
     for entry in entries.flatten() {
-        let n = entry.file_name();
-        let s = n.to_string_lossy();
+        let s = entry.file_name().to_string_lossy().into_owned();
         if s == ".DS_Store" || s.starts_with('.') {
             continue;
         }
-        non_meta += 1;
-        if non_meta > 0 {
-            // Has content that isn't redis — still uncertain; only keep if empty.
-            return false;
-        }
+        return false;
     }
-    true // empty shell
+    true
 }
 
 fn discover_mariadb_candidates(services_dir: &Path) -> Vec<MariadbCandidate> {
@@ -459,6 +505,19 @@ fn discover_php_versions(
 
     if let Ok(entries) = fs::read_dir(bin_dir) {
         for entry in entries.flatten() {
+            let path = entry.path();
+            // Accept regular files and symlinks that resolve to files; reject dirs.
+            let Ok(ft) = entry.file_type() else {
+                continue;
+            };
+            if ft.is_dir() {
+                continue;
+            }
+            // `is_file()` follows one symlink level; rejects broken links and dirs.
+            if !path.is_file() {
+                continue;
+            }
+
             let name = entry.file_name().to_string_lossy().into_owned();
             if !name.starts_with("php") {
                 continue;
@@ -471,11 +530,11 @@ fn discover_php_versions(
                 if let Some(tag) = rest.strip_suffix("-fpm") {
                     if tag.chars().all(|c| c.is_ascii_digit()) {
                         tags.insert(tag.to_string());
-                        fpm.insert(tag.to_string(), entry.path());
+                        fpm.insert(tag.to_string(), path);
                     }
                 } else if rest.chars().all(|c| c.is_ascii_digit()) {
                     tags.insert(rest.to_string());
-                    cli.insert(rest.to_string(), entry.path());
+                    cli.insert(rest.to_string(), path);
                 }
             }
         }
@@ -686,22 +745,47 @@ fn discover_redis(herd_bin: Option<&Path>) -> Option<RedisInfo> {
         }
     }
 
-    let dump_rdb = herd_bin.and_then(|b| path_if_exists(b.join("dump.rdb")));
-
     // Redis service conf under Herd config/services UUID
-    let service_conf = herd_home().and_then(|home| {
+    let mut service_conf = None;
+    let mut dump_from_service = None;
+    if let Some(home) = herd_home() {
         let services = home.join("config").join("services");
-        let Ok(entries) = fs::read_dir(services) else {
-            return None;
-        };
-        for entry in entries.flatten() {
-            let conf = entry.path().join("redis.conf");
-            if conf.is_file() {
-                return Some(conf.to_string_lossy().into_owned());
+        if let Ok(entries) = fs::read_dir(services) {
+            for entry in entries.flatten() {
+                let dir = entry.path();
+                let conf = dir.join("redis.conf");
+                if conf.is_file() {
+                    service_conf = Some(conf.to_string_lossy().into_owned());
+                    // dump.rdb may live beside redis.conf in the service UUID dir
+                    if dump_from_service.is_none() {
+                        dump_from_service = path_if_exists(dir.join("dump.rdb"));
+                    }
+                }
             }
         }
-        None
-    });
+    }
+
+    // dump.rdb: service UUID → Shared redis tree → Herd bin (Herd sometimes keeps it in bin/)
+    let dump_rdb = dump_from_service
+        .or_else(|| {
+            version.as_ref().and_then(|ver| {
+                path_if_exists(
+                    Path::new(SHARED_HERD_SERVICES)
+                        .join("redis")
+                        .join(ver)
+                        .join("dump.rdb"),
+                )
+            })
+        })
+        .or_else(|| {
+            // Common data dirs under shared redis version root
+            version.as_ref().and_then(|ver| {
+                let base = Path::new(SHARED_HERD_SERVICES).join("redis").join(ver);
+                path_if_exists(base.join("var").join("dump.rdb"))
+                    .or_else(|| path_if_exists(base.join("data").join("dump.rdb")))
+            })
+        })
+        .or_else(|| herd_bin.and_then(|b| path_if_exists(b.join("dump.rdb"))));
 
     Some(RedisInfo {
         shared_path,
@@ -715,20 +799,10 @@ fn discover_redis(herd_bin: Option<&Path>) -> Option<RedisInfo> {
 
 // ── Ports (read-only TCP connect) ───────────────────────────────────
 
+/// Probe whether something accepts TCP on loopback. IPv4 only; no `0.0.0.0` connect.
 fn port_listening(port: u16) -> bool {
-    let addr = format!("127.0.0.1:{port}");
-    let Ok(mut addrs) = addr.to_socket_addrs() else {
-        return false;
-    };
-    let Some(addr) = addrs.next() else {
-        return false;
-    };
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
-        || TcpStream::connect_timeout(
-            &SocketAddr::from(([0, 0, 0, 0], port)),
-            Duration::from_millis(200),
-        )
-        .is_ok()
 }
 
 fn scan_ports() -> Vec<PortInUse> {
@@ -739,6 +813,7 @@ fn scan_ports() -> Vec<PortInUse> {
             PortInUse {
                 port,
                 listening,
+                // PID/process deferred — require platform tooling; not resolved in Phase A.
                 pid: None,
                 process: None,
             }
