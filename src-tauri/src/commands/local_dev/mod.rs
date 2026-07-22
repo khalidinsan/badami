@@ -99,11 +99,13 @@ pub async fn ld_mariadb_preflight(
 
 // ── Doctor / DNS probe (PR7) ────────────────────────────────────────
 
-/// Full Local Dev diagnostics: binaries, ports, MariaDB preflight, datadir
-/// locks, DNS resolve probe (not resolver-file-only), nginx -t, FPM sockets /
-/// chdir, Herd helper presence (report only), log sizes, DNS modes D0–D3.
+/// Full Local Dev diagnostics: binaries, ports, MariaDB preflight (inspect-only
+/// — no stale pid/socket unlink), datadir locks, DNS resolve probe (not
+/// resolver-file-only), nginx -t, FPM sockets / chdir, Herd helper presence
+/// (report only), log sizes, DNS modes D0–D3.
 ///
-/// Never deletes Herd datadir. Never invokes Herd helper.
+/// Never deletes Herd datadir. Never invokes Herd helper. Never mutates disk
+/// beyond optional `nginx -t` subprocess.
 #[tauri::command]
 pub async fn ld_doctor(request: Option<DoctorRequest>) -> Result<DoctorReport, String> {
     let req = request.unwrap_or_default();
@@ -147,8 +149,12 @@ pub async fn ld_bootstrap_status(tld: Option<String>) -> Result<BootstrapStatus,
 }
 
 /// Scaffold LaunchDaemon plists (and optional D2 resolver draft) under
-/// local-dev/launchd. Default is dry-run / write-plist only — actual install
-/// into `/Library/LaunchDaemons` needs user admin auth (osascript).
+/// local-dev/launchd.
+///
+/// **`dry_run` (default true)** still **writes** plists/scripts under Application
+/// Support — it only skips privileged install into `/Library/LaunchDaemons`.
+/// System install needs user admin auth (osascript) via
+/// `attempt_privileged_install` when `dry_run=false`.
 ///
 /// Packages: `dns_only` | `dns_high_port` | `http_80` | `full`.
 ///

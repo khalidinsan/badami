@@ -1,7 +1,9 @@
 //! Local Dev doctor diagnostics (`ld_doctor`, `ld_dns_probe`).
 //!
-//! Pure read-only checks (plus optional `nginx -t` subprocess). Never starts
-//! services, never deletes Herd datadir, never invokes the Herd privileged helper.
+//! Read-only diagnostics (plus optional `nginx -t` subprocess). MariaDB
+//! preflight is called with `allow_mutate: false` so stale pid/socket files are
+//! reported but never unlinked. Never starts services, never deletes Herd
+//! datadir, never invokes the Herd privileged helper.
 
 use super::discovery::{build_runtime_paths, discover, DiscoveryReport, RuntimePaths};
 use super::mariadb_guard::{
@@ -319,30 +321,45 @@ pub fn run_dns_probe(
 fn classify_dns_mode(
     healthy: bool,
     resolver_port: u16,
-    port_53_listening: bool,
+    _port_53_listening: bool,
     badami_d1_unit: bool,
 ) -> DnsMode {
     if !healthy {
         return DnsMode::D3Degraded;
     }
-    // Healthy resolve:
+    // Healthy resolve (port_53_listening is reported in probe notes only —
+    // UDP-only DNS may not show TCP :53).
     if resolver_port != 53 && resolver_port != 0 {
         return DnsMode::D2HighPort;
     }
     if badami_d1_unit {
         return DnsMode::D1BLite;
     }
-    // Prefer D0 when something is already answering (Herd dnsmasq, etc.).
-    if port_53_listening || healthy {
-        return DnsMode::D0Adopt;
-    }
-    DnsMode::D3Degraded
+    // Existing working resolver answer → D0 adopt (do not spawn a second dnsmasq).
+    DnsMode::D0Adopt
+}
+
+/// True when any resolved address is the expected loopback (IPv4/IPv6 equivalent).
+///
+/// Pure helper — used by the live probe and unit tests. Resolver-file presence
+/// is intentionally not an input; it alone never makes DNS healthy (KD23).
+pub fn addrs_match_loopback(resolved: &[String], expected_loopback: &str) -> bool {
+    let expected_is_loopback = is_loopback_addr(expected_loopback);
+    resolved.iter().any(|a| {
+        a == expected_loopback || (expected_is_loopback && is_loopback_addr(a))
+    })
+}
+
+fn is_loopback_addr(a: &str) -> bool {
+    matches!(a, "127.0.0.1" | "::1" | "0:0:0:0:0:0:0:1")
 }
 
 fn resolve_hostname(hostname: &str, expected_loopback: &str) -> (Vec<String>, bool, Option<String>) {
     // ToSocketAddrs uses getaddrinfo / system resolver (honours /etc/resolver/* on macOS).
     let query = format!("{hostname}:0");
     // Soft timeout via thread — getaddrinfo can block on broken DNS.
+    // MVP: on timeout the worker is not joined/cancelled and may linger until
+    // getaddrinfo returns; repeated probes under broken DNS can accumulate threads.
     let (tx, rx) = std::sync::mpsc::channel();
     let query_owned = query.clone();
     std::thread::spawn(move || {
@@ -361,9 +378,7 @@ fn resolve_hostname(hostname: &str, expected_loopback: &str) -> (Vec<String>, bo
                     resolved.push(a);
                 }
             }
-            let healthy = resolved.iter().any(|a| a == expected_loopback)
-                || resolved.iter().any(|a| a == "::1" && expected_loopback == "127.0.0.1");
-            // Also accept IPv4-mapped if we ever see it — keep simple for MVP.
+            let healthy = addrs_match_loopback(&resolved, expected_loopback);
             let err = if healthy {
                 None
             } else if resolved.is_empty() {
@@ -474,14 +489,8 @@ pub fn run_doctor(req: DoctorRequest) -> Result<DoctorReport, String> {
     let binaries = collect_binary_checks(&specs);
     for b in &binaries {
         if !b.present {
-            // DNS binary missing is warn (best-effort); core services error-ish warn.
-            let severity = if b.service_id == "dnsmasq" {
-                FindingSeverity::Warn
-            } else if b.service_id.starts_with("php-fpm-") {
-                FindingSeverity::Warn
-            } else {
-                FindingSeverity::Warn
-            };
+            // Core plane: Error. Optional DNS / redis: Warn. php-fpm per-version: Error.
+            let severity = binary_missing_severity(&b.service_id);
             findings.push(DoctorFinding {
                 id: format!("binary.{}.missing", b.service_id),
                 severity,
@@ -529,9 +538,11 @@ pub fn run_doctor(req: DoctorRequest) -> Result<DoctorReport, String> {
         }
     }
 
-    // ── MariaDB preflight + datadir locks ───────────────────────────
+    // ── MariaDB preflight + datadir locks (inspect-only — no mutate) ─
     let mariadb = run_preflight(MariadbPreflightRequest {
         skip_live_probes: Some(skip_live),
+        // Doctor must not clear stale pid/socket files as a side effect of diagnostics.
+        allow_mutate: Some(false),
         ..Default::default()
     })
     .unwrap_or_else(|e| MariadbPreflightReport {
@@ -835,6 +846,16 @@ fn overall_from_findings(findings: &[DoctorFinding]) -> String {
     }
 }
 
+/// Missing binary severity: core services Error; optional best-effort Warn.
+fn binary_missing_severity(service_id: &str) -> FindingSeverity {
+    match service_id {
+        "dnsmasq" | "redis" => FindingSeverity::Warn,
+        "nginx" | "mariadb" | "mysql" => FindingSeverity::Error,
+        s if s.starts_with("php-fpm-") => FindingSeverity::Error,
+        _ => FindingSeverity::Warn,
+    }
+}
+
 fn collect_binary_checks(specs: &[ServiceSpec]) -> Vec<BinaryCheck> {
     specs
         .iter()
@@ -1107,23 +1128,49 @@ fn collect_log_sizes(paths: &RuntimePaths) -> LogSizeReport {
     let mut total_bytes = 0u64;
     let mut large_files = Vec::new();
 
+    // Top-level files + one level of subdirs (not a full recursive tree walk).
     if let Ok(rd) = fs::read_dir(&dir) {
+        let mut subdirs = Vec::new();
         for e in rd.flatten() {
             let p = e.path();
-            if !p.is_file() {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
+            if ft.is_dir() {
+                subdirs.push(p);
+                continue;
+            }
+            if !ft.is_file() {
                 continue;
             }
             let bytes = e.metadata().map(|m| m.len()).unwrap_or(0);
             total_bytes = total_bytes.saturating_add(bytes);
-            let warn = bytes > LOG_FILE_WARN_BYTES;
-            if warn || bytes > 0 {
-                // Only list large ones in large_files for UI noise control.
-                if warn {
-                    large_files.push(LogFileSize {
-                        path: p.to_string_lossy().into_owned(),
-                        bytes,
-                        warn,
-                    });
+            if bytes > LOG_FILE_WARN_BYTES {
+                large_files.push(LogFileSize {
+                    path: p.to_string_lossy().into_owned(),
+                    bytes,
+                    warn: true,
+                });
+            }
+        }
+        for sub in subdirs {
+            if let Ok(rd) = fs::read_dir(&sub) {
+                for e in rd.flatten() {
+                    let p = e.path();
+                    let Ok(ft) = e.file_type() else { continue };
+                    if ft.is_symlink() || !ft.is_file() {
+                        continue;
+                    }
+                    let bytes = e.metadata().map(|m| m.len()).unwrap_or(0);
+                    total_bytes = total_bytes.saturating_add(bytes);
+                    if bytes > LOG_FILE_WARN_BYTES {
+                        large_files.push(LogFileSize {
+                            path: p.to_string_lossy().into_owned(),
+                            bytes,
+                            warn: true,
+                        });
+                    }
                 }
             }
         }
@@ -1209,6 +1256,64 @@ mod tests {
         assert_eq!(
             classify_dns_mode(true, 53, true, false),
             DnsMode::D0Adopt
+        );
+        // Healthy without TCP :53 still D0 (UDP-only DNS)
+        assert_eq!(
+            classify_dns_mode(true, 53, false, false),
+            DnsMode::D0Adopt
+        );
+    }
+
+    #[test]
+    fn resolver_file_alone_never_makes_dns_healthy() {
+        // Pure: empty resolved addrs → not healthy regardless of "resolver present"
+        // (resolver_present is not an input to addrs_match_loopback — KD23).
+        assert!(!addrs_match_loopback(&[], "127.0.0.1"));
+        assert!(!addrs_match_loopback(
+            &["8.8.8.8".into()],
+            "127.0.0.1"
+        ));
+        assert!(addrs_match_loopback(
+            &["127.0.0.1".into()],
+            "127.0.0.1"
+        ));
+        // IPv6 ↔ IPv4 loopback equivalence (both directions)
+        assert!(addrs_match_loopback(&["::1".into()], "127.0.0.1"));
+        assert!(addrs_match_loopback(&["127.0.0.1".into()], "::1"));
+    }
+
+    #[test]
+    fn binary_severity_core_vs_optional() {
+        assert_eq!(binary_missing_severity("nginx"), FindingSeverity::Error);
+        assert_eq!(binary_missing_severity("mariadb"), FindingSeverity::Error);
+        assert_eq!(
+            binary_missing_severity("php-fpm-8.4"),
+            FindingSeverity::Error
+        );
+        assert_eq!(binary_missing_severity("dnsmasq"), FindingSeverity::Warn);
+        assert_eq!(binary_missing_severity("redis"), FindingSeverity::Warn);
+    }
+
+    #[test]
+    fn doctor_uses_inspect_only_preflight() {
+        let report = run_doctor(DoctorRequest {
+            skip_live_probes: Some(true),
+            skip_nginx_test: Some(true),
+            dns_probe_label: Some("inspect-only".into()),
+            tld: Some("test".into()),
+            loopback: Some("127.0.0.1".into()),
+        })
+        .expect("doctor");
+        // When wrapper exists, checks include mutate disabled; when missing,
+        // hard-fail still has no "cleared" side effects.
+        assert!(
+            !report
+                .mariadb
+                .checks
+                .iter()
+                .any(|c| c.contains("cleared")),
+            "doctor must not clear pid/socket; checks={:?}",
+            report.mariadb.checks
         );
     }
 

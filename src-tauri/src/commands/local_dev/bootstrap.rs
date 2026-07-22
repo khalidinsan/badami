@@ -75,8 +75,12 @@ impl BootstrapPackage {
 pub struct BootstrapInstallRequest {
     /// `dns_only` | `dns_high_port` | `http_80` | `full`
     pub package: String,
-    /// When true (default), only write plists/scripts under local-dev — do not
-    /// attempt privileged install into `/Library/LaunchDaemons`.
+    /// When true (default): write LaunchDaemon scaffolds under local-dev/launchd
+    /// only — do **not** elevate or copy into `/Library/LaunchDaemons`.
+    ///
+    /// **Not zero-disk:** dry_run still creates/overwrites plists and helper
+    /// scripts under Application Support (write-plist / scaffold mode). Use
+    /// `attempt_privileged_install` separately for system install.
     pub dry_run: Option<bool>,
     /// TLD for resolver / dnsmasq (default `test`).
     pub tld: Option<String>,
@@ -391,29 +395,31 @@ pub fn bootstrap_install(req: BootstrapInstallRequest) -> Result<BootstrapInstal
     }
 
     // Unified install.sh for units that need system LaunchDaemons
-    let install_command = if !units.is_empty() {
+    // Paths under Application Support contain spaces — always shell-quote.
+    let install_script_path: Option<PathBuf> = if !units.is_empty() {
         let script_path = write_install_script(&launchd_dir, &units, &mut written)?;
         notes.push(format!("Wrote install helper script: {script_path}"));
         install_instructions.push(format!(
-            "Run with admin prompt: bash {script_path}"
+            "Run with admin prompt: bash {}",
+            shell_single_quote(&script_path)
         ));
         install_instructions.push(
-            "Or dry-run only: plists are already under local-dev/launchd/ — review before install"
+            "dry_run still writes scaffolds under local-dev/launchd/ — review before privileged install"
                 .into(),
         );
-        Some(format!("bash {script_path}"))
+        Some(PathBuf::from(script_path))
     } else if matches!(package, BootstrapPackage::DnsHighPort) {
-        let script = launchd_dir
-            .join("install-resolver.sh")
-            .to_string_lossy()
-            .into_owned();
-        Some(format!("bash {script}"))
+        Some(launchd_dir.join("install-resolver.sh"))
     } else {
         None
     };
 
+    let install_command = install_script_path
+        .as_ref()
+        .map(|p| format!("bash {}", shell_single_quote(&p.to_string_lossy())));
+
     notes.push(format!(
-        "package={} dry_run={} — privileged system install is {} by default",
+        "package={} dry_run={} — dry_run writes scaffolds under local-dev only; privileged system install is {}",
         package.as_str(),
         dry_run,
         if dry_run {
@@ -425,9 +431,10 @@ pub fn bootstrap_install(req: BootstrapInstallRequest) -> Result<BootstrapInstal
 
     let mut privileged_ok = false;
     if attempt_priv {
-        if let Some(ref cmd) = install_command {
+        if let Some(ref script) = install_script_path {
             notes.push("Attempting privileged install via install script (osascript)…".into());
-            match Command::new("bash").arg("-c").arg(cmd).output() {
+            // argv-only: no bash -c, so Application Support spaces are safe.
+            match Command::new("bash").arg(script).output() {
                 Ok(out) => {
                     privileged_ok = out.status.success();
                     if !out.stdout.is_empty() {
@@ -682,6 +689,25 @@ fn validate_tld(tld: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Single-quote a path for POSIX shells (`'foo'\''bar'` style).
+pub fn shell_single_quote(s: &str) -> String {
+    if s.is_empty() {
+        return "''".into();
+    }
+    // Wrap in single quotes; replace each ' with '\'' sequence.
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
+}
+
 fn validate_loopback(loopback: &str) -> Result<(), String> {
     if loopback != "127.0.0.1" && loopback != "::1" {
         // Allow only loopback for bootstrap safety.
@@ -716,6 +742,45 @@ mod tests {
         assert_eq!(launchd_label("dnsmasq"), LD_DNSMASQ_LABEL);
         assert_eq!(launchd_label("nginx"), LD_NGINX_LABEL);
         assert!(launchd_label("dnsmasq").starts_with(BUNDLE_ID));
+    }
+
+    #[test]
+    fn shell_quote_handles_application_support_spaces() {
+        let p = "/Users/me/Library/Application Support/Badami/local-dev/launchd/install.sh";
+        let q = shell_single_quote(p);
+        assert_eq!(
+            q,
+            "'/Users/me/Library/Application Support/Badami/local-dev/launchd/install.sh'"
+        );
+        assert!(q.contains("Application Support"));
+        // Embedded single quote
+        assert_eq!(shell_single_quote("a'b"), "'a'\\''b'");
+    }
+
+    #[test]
+    fn install_command_quotes_spaces() {
+        let res = bootstrap_install(BootstrapInstallRequest {
+            package: "dns_only".into(),
+            dry_run: Some(true),
+            tld: Some("test".into()),
+            loopback: Some("127.0.0.1".into()),
+            dns_port: None,
+            nginx_binary: None,
+            dnsmasq_binary: Some("/usr/bin/true".into()),
+            attempt_privileged_install: Some(false),
+        })
+        .expect("install");
+        let cmd = res.install_command.expect("install_command");
+        assert!(
+            cmd.starts_with("bash '") && cmd.ends_with('\''),
+            "expected quoted path, got {cmd}"
+        );
+        assert!(
+            cmd.contains("Application Support") || cmd.contains("local-dev"),
+            "cmd={cmd}"
+        );
+        // No unquoted space between bash and path
+        assert!(!cmd.starts_with("bash /"), "unquoted path: {cmd}");
     }
 
     #[test]

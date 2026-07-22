@@ -54,6 +54,10 @@ pub struct MariadbPreflightRequest {
     pub tcp_host: Option<String>,
     /// Skip live probes (unit tests).
     pub skip_live_probes: Option<bool>,
+    /// When `false`, inspect only — never `remove_file` stale pid/socket inodes.
+    /// Doctor uses this so diagnostics stay read-only. Default `true` (supervisor
+    /// start may clear known-stale pid/socket under allowed roots only).
+    pub allow_mutate: Option<bool>,
 }
 
 // ── Config gate ─────────────────────────────────────────────────────
@@ -416,7 +420,12 @@ pub fn run_preflight(req: MariadbPreflightRequest) -> Result<MariadbPreflightRep
     }
 
     let skip_live = req.skip_live_probes.unwrap_or(false);
+    // Default true for supervisor start; doctor passes false for read-only inspect.
+    let allow_mutate = req.allow_mutate.unwrap_or(true);
     let host = req.tcp_host.as_deref().unwrap_or("127.0.0.1");
+    if !allow_mutate {
+        checks.push("mutate: disabled (inspect-only — no pid/socket unlink)".into());
+    }
 
     // 3/4. Socket + TCP probes → adopt vs hard-fail vs clear stale socket
     if !skip_live {
@@ -473,69 +482,101 @@ pub fn run_preflight(req: MariadbPreflightRequest) -> Result<MariadbPreflightRep
             });
         }
 
-        // Dead socket file (exists but not accepting) + TCP down + no live PID → clear stale.
+        // Dead socket file (exists but not accepting) + TCP down + no live PID.
         if sock_present && !sock_live && !tcp_up && live_pid.is_none() {
-            match clear_stale_socket(&cfg.socket, &socks_dir) {
-                Ok(true) => {
-                    checks.push(format!(
-                        "stale_socket: cleared dead socket {} (no live PID, TCP down)",
-                        cfg.socket.display()
-                    ));
+            if allow_mutate {
+                match clear_stale_socket(&cfg.socket, &socks_dir) {
+                    Ok(true) => {
+                        checks.push(format!(
+                            "stale_socket: cleared dead socket {} (no live PID, TCP down)",
+                            cfg.socket.display()
+                        ));
+                    }
+                    Ok(false) => {
+                        checks.push("stale_socket: path gone after recheck".into());
+                    }
+                    Err(e) => {
+                        // Outside safe roots — HardFail with explicit reason (not permanent Adopt).
+                        let sock = cfg.socket.display().to_string();
+                        checks.push(format!("stale_socket: {e}"));
+                        return Ok(report_fail(
+                            cfg,
+                            checks,
+                            format!(
+                                "stale_socket: dead socket at {sock} with no live process — remove manually or relocate socket under local-dev/socks"
+                            ),
+                        ));
+                    }
                 }
-                Ok(false) => {
-                    checks.push("stale_socket: path gone after recheck".into());
-                }
-                Err(e) => {
-                    // Outside safe roots — HardFail with explicit reason (not permanent Adopt).
-                    let sock = cfg.socket.display().to_string();
-                    checks.push(format!("stale_socket: {e}"));
-                    return Ok(report_fail(
-                        cfg,
-                        checks,
-                        format!(
-                            "stale_socket: dead socket at {sock} with no live process — remove manually or relocate socket under local-dev/socks"
-                        ),
-                    ));
-                }
+            } else {
+                checks.push(format!(
+                    "stale_socket: dead socket {} noted (inspect-only — not unlinked)",
+                    cfg.socket.display()
+                ));
             }
         }
     } else {
         checks.push("live_probes: skipped".into());
     }
 
-    // 5. PID file heuristics — clear stale only under allowed roots
+    // 5. PID file heuristics — clear stale only under allowed roots when mutating
     if let Some(ref pf) = cfg.pid_file {
-        match clear_stale_pid_file(pf, &pids_dir, &cfg.datadir) {
-            Ok(true) => checks.push(format!("pid_file: cleared stale {}", pf.display())),
-            Ok(false) => {
-                if let Some(pid) = read_pid_file(pf) {
-                    if pid_is_alive(pid) {
-                        let reason = format!(
-                            "pid file {} points to live PID {pid} — refuse start (possible datadir lock)",
+        if allow_mutate {
+            match clear_stale_pid_file(pf, &pids_dir, &cfg.datadir) {
+                Ok(true) => checks.push(format!("pid_file: cleared stale {}", pf.display())),
+                Ok(false) => {
+                    if let Some(pid) = read_pid_file(pf) {
+                        if pid_is_alive(pid) {
+                            let reason = format!(
+                                "pid file {} points to live PID {pid} — refuse start (possible datadir lock)",
+                                pf.display()
+                            );
+                            checks.push(format!("pid_file: hard-fail — {reason}"));
+                            return Ok(report_fail(cfg, checks, reason));
+                        }
+                    }
+                    if pf.is_file() && !pid_file_deletion_allowed(pf, &pids_dir, &cfg.datadir) {
+                        checks.push(format!(
+                            "pid_file: {} not under safe roots — left untouched",
                             pf.display()
-                        );
-                        checks.push(format!("pid_file: hard-fail — {reason}"));
-                        return Ok(report_fail(cfg, checks, reason));
+                        ));
+                    } else {
+                        checks.push(format!("pid_file: {} absent or not live", pf.display()));
                     }
                 }
-                if pf.is_file() && !pid_file_deletion_allowed(pf, &pids_dir, &cfg.datadir) {
-                    checks.push(format!(
-                        "pid_file: {} not under safe roots — left untouched",
-                        pf.display()
-                    ));
-                } else {
-                    checks.push(format!("pid_file: {} absent or not live", pf.display()));
+                Err(e) => {
+                    checks.push(format!("pid_file: error {e}"));
+                    return Ok(report_fail(cfg, checks, e));
                 }
             }
-            Err(e) => {
-                checks.push(format!("pid_file: error {e}"));
-                return Ok(report_fail(cfg, checks, e));
+        } else {
+            // Inspect-only: report live lock / stale presence without unlinking.
+            if let Some(pid) = read_pid_file(pf) {
+                if pid_is_alive(pid) {
+                    let reason = format!(
+                        "pid file {} points to live PID {pid} — refuse start (possible datadir lock)",
+                        pf.display()
+                    );
+                    checks.push(format!("pid_file: hard-fail — {reason}"));
+                    return Ok(report_fail(cfg, checks, reason));
+                }
+                checks.push(format!(
+                    "pid_file: {} has dead/stale PID {pid} (inspect-only — not cleared)",
+                    pf.display()
+                ));
+            } else if pf.is_file() {
+                checks.push(format!(
+                    "pid_file: {} present (inspect-only — not cleared)",
+                    pf.display()
+                ));
+            } else {
+                checks.push(format!("pid_file: {} absent", pf.display()));
             }
         }
     }
 
-    // Datadir-internal pid files: if live foreign → hard-fail; if stale → clear pid only.
-    match scan_datadir_pids(&cfg.datadir, &pids_dir, &mut checks) {
+    // Datadir-internal pid files: if live foreign → hard-fail; if stale → clear only when mutating.
+    match scan_datadir_pids(&cfg.datadir, &pids_dir, &mut checks, allow_mutate) {
         DatadirPidScan::LiveForeign { pid, path } => {
             let reason = format!(
                 "MariaDB datadir already in use by PID {pid} (pid file {}) — stop that instance or adopt it",
@@ -603,6 +644,7 @@ fn scan_datadir_pids(
     datadir: &Path,
     pids_dir: &Path,
     checks: &mut Vec<String>,
+    allow_mutate: bool,
 ) -> DatadirPidScan {
     if !datadir.is_dir() {
         return DatadirPidScan::Clean;
@@ -616,16 +658,23 @@ fn scan_datadir_pids(
             if pid_is_alive(pid) {
                 return DatadirPidScan::LiveForeign { pid, path: p };
             }
-            match clear_stale_pid_file(&p, pids_dir, datadir) {
-                Ok(true) => checks.push(format!(
-                    "datadir_pid: cleared stale {} (data files untouched)",
+            if allow_mutate {
+                match clear_stale_pid_file(&p, pids_dir, datadir) {
+                    Ok(true) => checks.push(format!(
+                        "datadir_pid: cleared stale {} (data files untouched)",
+                        p.display()
+                    )),
+                    Ok(false) => {}
+                    Err(e) => checks.push(format!("datadir_pid: clear error {e}")),
+                }
+            } else {
+                checks.push(format!(
+                    "datadir_pid: stale {} noted (inspect-only — not cleared; data files untouched)",
                     p.display()
-                )),
-                Ok(false) => {}
-                Err(e) => checks.push(format!("datadir_pid: clear error {e}")),
+                ));
             }
-        } else {
-            // Unparseable under datadir + known basename — safe to clear.
+        } else if allow_mutate {
+            // Unparseable under datadir + known basename — safe to clear when mutating.
             match clear_stale_pid_file(&p, pids_dir, datadir) {
                 Ok(true) => checks.push(format!(
                     "datadir_pid: cleared unparseable stale {} (data files untouched)",
@@ -634,6 +683,11 @@ fn scan_datadir_pids(
                 Ok(false) => {}
                 Err(e) => checks.push(format!("datadir_pid: clear error {e}")),
             }
+        } else {
+            checks.push(format!(
+                "datadir_pid: unparseable {} noted (inspect-only — not cleared)",
+                p.display()
+            ));
         }
     }
     DatadirPidScan::Clean
@@ -694,6 +748,73 @@ mod tests {
         .unwrap();
         assert!(matches!(report.result, MariadbPreflight::HardFail { .. }));
         assert!(!report.ready_for_mariadb_start);
+    }
+
+    #[test]
+    fn preflight_inspect_only_does_not_clear_stale_pid() {
+        let tmp = std::env::temp_dir().join(format!(
+            "badami-ld-inspect-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        let data = tmp.join("data");
+        let pids = tmp.join("pids");
+        let mariadb = tmp.join("mariadb");
+        fs::create_dir_all(&data).unwrap();
+        fs::create_dir_all(&pids).unwrap();
+        fs::create_dir_all(&mariadb).unwrap();
+        // Non-empty datadir markers so install_db gate notes something
+        fs::write(data.join("ibdata1"), b"x").unwrap();
+        let stale = data.join("mysqld.pid");
+        fs::write(&stale, b"1\n").unwrap(); // pid 1 may be alive on Unix — use impossible high pid
+        fs::write(&stale, b"2147483646\n").unwrap();
+
+        let mycnf = mariadb.join("my.cnf");
+        fs::write(
+            &mycnf,
+            format!(
+                "[mysqld]\nbasedir=\"{b}\"\ndatadir=\"{d}\"\nsocket=\"{s}\"\nport=3306\npid-file=\"{p}\"\n",
+                b = tmp.join("basedir").display(),
+                d = data.display(),
+                s = tmp.join("mysql.sock").display(),
+                p = pids.join("mariadb.pid").display(),
+            ),
+        )
+        .unwrap();
+        // Also leave a stale wrapper pid under pids
+        fs::write(pids.join("mariadb.pid"), b"2147483645\n").unwrap();
+
+        let report = run_preflight(MariadbPreflightRequest {
+            wrapper_mycnf: Some(mycnf.to_string_lossy().into_owned()),
+            skip_live_probes: Some(true),
+            allow_mutate: Some(false),
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(
+            report.checks.iter().any(|c| c.contains("inspect-only") || c.contains("mutate: disabled")),
+            "checks={:?}",
+            report.checks
+        );
+        assert!(
+            stale.is_file(),
+            "inspect-only must not unlink datadir pid files"
+        );
+        assert!(
+            pids.join("mariadb.pid").is_file(),
+            "inspect-only must not unlink wrapper pid"
+        );
+        // No successful clear actions when mutate disabled ("not cleared" notes are OK)
+        assert!(
+            !report.checks.iter().any(|c| {
+                c.contains("cleared stale")
+                    || c.contains("cleared unparseable")
+                    || c.contains("cleared dead")
+            }),
+            "must not clear when allow_mutate=false; checks={:?}",
+            report.checks
+        );
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
