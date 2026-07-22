@@ -1,10 +1,11 @@
 //! Local Dev Tauri commands (MVP Phase A).
 //!
-//! Prefix: `ld_`. PR4 adds process supervisor (start/stop/status/stack/logs)
-//! with config gates, MariaDB preflight, and detach semantics.
+//! Prefix: `ld_`. Discovery, resource install, config generators, MariaDB
+//! preflight, Herd import, and process supervisor (start/stop/status/stack/logs).
 
 pub mod config_gen;
 pub mod discovery;
+pub mod import_herd;
 pub mod mariadb_guard;
 pub mod resources;
 pub mod service_specs;
@@ -15,6 +16,7 @@ use config_gen::{
     IsolatedSiteRequest,
 };
 use discovery::{build_runtime_paths, discover, DiscoveryReport, RuntimePaths};
+use import_herd::{import_herd, ImportHerdRequest, ImportResult};
 use mariadb_guard::{run_preflight, MariadbPreflightReport, MariadbPreflightRequest};
 use resources::{install_runtime_resources, InstallResourcesResult};
 
@@ -88,4 +90,23 @@ pub async fn ld_mariadb_preflight(
     tokio::task::spawn_blocking(move || run_preflight(req))
         .await
         .map_err(|e| format!("ld_mariadb_preflight task failed: {e}"))?
+}
+
+/// Import parks, isolates, and service config from an existing Herd install.
+///
+/// Read-only against Herd (no kill, no datadir copy/delete). Writes Badami
+/// snapshot + optional configs under `local-dev/`. Does **not** persist to the
+/// app SQLite DB — returns `ImportResult` for the frontend (PR9) to store.
+/// Never starts services.
+#[tauri::command]
+pub async fn ld_import_herd(
+    app: tauri::AppHandle,
+    request: Option<ImportHerdRequest>,
+) -> Result<ImportResult, String> {
+    use tauri::Manager;
+    let req = request.unwrap_or_default();
+    let resource_dir = app.path().resource_dir().ok();
+    tokio::task::spawn_blocking(move || import_herd(req, resource_dir))
+        .await
+        .map_err(|e| format!("ld_import_herd task failed: {e}"))?
 }

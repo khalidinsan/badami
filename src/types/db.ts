@@ -35,6 +35,12 @@ export interface Database {
   ai_conversations: AiConversationTable;
   ai_messages: AiMessageTable;
   notifications: NotificationTable;
+  local_dev_settings: LocalDevSettingTable;
+  local_dev_binaries: LocalDevBinaryTable;
+  local_dev_services: LocalDevServiceTable;
+  local_dev_park_paths: LocalDevParkPathTable;
+  local_dev_sites: LocalDevSiteTable;
+  local_dev_events: LocalDevEventTable;
 }
 
 export interface ProjectTable {
@@ -524,3 +530,93 @@ export interface NotificationRow {
   read: number;
   created_at: string;
 }
+
+// ─── Local Dev Module (Phase 21) ────────────────────────────────────
+
+export interface LocalDevSettingTable {
+  key: string;
+  value: string;
+}
+
+export interface LocalDevBinaryTable {
+  id: string;
+  role: string;
+  version: ColumnType<string | null, string | null, string | null>;
+  path: string;
+  source: string;
+  arch: ColumnType<string | null, string | null, string | null>;
+  is_selected: ColumnType<number, number | undefined, number>;
+  meta_json: ColumnType<string | null, string | null, string | null>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LocalDevServiceTable {
+  id: string;
+  kind: string;
+  display_name: string;
+  enabled: ColumnType<number, number | undefined, number>;
+  auto_start: ColumnType<number, number | undefined, number>;
+  auto_restart: ColumnType<number, number | undefined, number>;
+  binary_id: ColumnType<string | null, string | null, string | null>;
+  config_path: ColumnType<string | null, string | null, string | null>;
+  pid_file: ColumnType<string | null, string | null, string | null>;
+  log_file: ColumnType<string | null, string | null, string | null>;
+  data_dir: ColumnType<string | null, string | null, string | null>;
+  port: ColumnType<number | null, number | null, number | null>;
+  socket_path: ColumnType<string | null, string | null, string | null>;
+  extra_json: ColumnType<string | null, string | null, string | null>;
+  last_status: ColumnType<string | null, string | null, string | null>;
+  last_error: ColumnType<string | null, string | null, string | null>;
+  last_started_at: ColumnType<string | null, string | null, string | null>;
+  updated_at: string;
+}
+
+export interface LocalDevParkPathTable {
+  id: string;
+  path: string;
+  sort_order: ColumnType<number, number | undefined, number>;
+  created_at: string;
+}
+
+export interface LocalDevSiteTable {
+  id: string;
+  name: string;
+  tld: ColumnType<string, string | undefined, string>;
+  path: string;
+  kind: string;
+  php_version: ColumnType<string | null, string | null, string | null>;
+  secured: ColumnType<number, number | undefined, number>;
+  project_id: ColumnType<string | null, string | null, string | null>;
+  driver: ColumnType<string | null, string | null, string | null>;
+  notes: ColumnType<string | null, string | null, string | null>;
+  sort_order: ColumnType<number, number | undefined, number>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LocalDevEventTable {
+  id: string;
+  service_id: ColumnType<string | null, string | null, string | null>;
+  level: string;
+  message: string;
+  created_at: string;
+}
+
+export type LocalDevSettingRow = Selectable<LocalDevSettingTable>;
+export type LocalDevBinaryRow = Selectable<LocalDevBinaryTable>;
+export type LocalDevServiceRow = Selectable<LocalDevServiceTable>;
+export type LocalDevParkPathRow = Selectable<LocalDevParkPathTable>;
+export type LocalDevSiteRow = Selectable<LocalDevSiteTable>;
+export type LocalDevEventRow = Selectable<LocalDevEventTable>;
+
+export type NewLocalDevBinary = Insertable<LocalDevBinaryTable>;
+export type LocalDevBinaryUpdate = Updateable<LocalDevBinaryTable>;
+export type NewLocalDevService = Insertable<LocalDevServiceTable>;
+export type LocalDevServiceUpdate = Updateable<LocalDevServiceTable>;
+export type NewLocalDevSite = Insertable<LocalDevSiteTable>;
+export type LocalDevSiteUpdate = Updateable<LocalDevSiteTable>;
+export type NewLocalDevParkPath = Insertable<LocalDevParkPathTable>;
+export type LocalDevParkPathUpdate = Updateable<LocalDevParkPathTable>;
+export type NewLocalDevEvent = Insertable<LocalDevEventTable>;
+export type LocalDevEventUpdate = Updateable<LocalDevEventTable>;
