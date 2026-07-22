@@ -190,10 +190,14 @@ pub fn run() {
             commands::db_transfer::dbc_import_csv,
             commands::db_transfer::dbc_import_sql,
             commands::db_transfer::dbc_preview_csv,
-            // Local Dev (Phase A — discovery, read-only)
+            // Local Dev (Phase A — discovery, resources, config gen, guards)
             commands::local_dev::ld_discover,
             commands::local_dev::ld_get_runtime_paths,
             commands::local_dev::ld_get_paths,
+            commands::local_dev::ld_install_runtime_resources,
+            commands::local_dev::ld_generate_configs,
+            commands::local_dev::ld_generate_isolated_site,
+            commands::local_dev::ld_mariadb_preflight,
         ])
         .manage(commands::ssh::SshState::new())
         .manage(commands::sftp::SftpState::new())
