@@ -1,12 +1,14 @@
 //! Local Dev Tauri commands (MVP Phase A).
 //!
-//! Prefix: `ld_`. PR3 adds runtime resource install, config generators, and
-//! MariaDB preflight guards. Process start/stop remains PR4.
+//! Prefix: `ld_`. PR4 adds process supervisor (start/stop/status/stack/logs)
+//! with config gates, MariaDB preflight, and detach semantics.
 
 pub mod config_gen;
 pub mod discovery;
 pub mod mariadb_guard;
 pub mod resources;
+pub mod service_specs;
+pub mod supervisor;
 
 use config_gen::{
     generate_configs, generate_isolated_site, GenerateConfigsRequest, GenerateConfigsResult,
@@ -75,7 +77,7 @@ pub async fn ld_generate_isolated_site(
         .map_err(|e| format!("ld_generate_isolated_site task failed: {e}"))?
 }
 
-/// MariaDB pre-start checklist only. Does **not** start mariadbd (PR4).
+/// MariaDB pre-start checklist. Also used by supervisor before spawn.
 ///
 /// Returns OkToStart | Adopt { pid } | HardFail { reason }.
 #[tauri::command]

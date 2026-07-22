@@ -198,6 +198,14 @@ pub fn run() {
             commands::local_dev::ld_generate_configs,
             commands::local_dev::ld_generate_isolated_site,
             commands::local_dev::ld_mariadb_preflight,
+            // Local Dev (Phase A — process supervisor)
+            commands::local_dev::supervisor::ld_service_start,
+            commands::local_dev::supervisor::ld_service_stop,
+            commands::local_dev::supervisor::ld_service_restart,
+            commands::local_dev::supervisor::ld_service_status,
+            commands::local_dev::supervisor::ld_stack_start,
+            commands::local_dev::supervisor::ld_stack_stop,
+            commands::local_dev::supervisor::ld_log_tail,
         ])
         .manage(commands::ssh::SshState::new())
         .manage(commands::sftp::SftpState::new())
@@ -205,7 +213,8 @@ pub fn run() {
         .manage(commands::vault::VaultState::new())
         .manage(commands::db::DbState::new())
         .manage(commands::file_watch::FileWatchState::new())
-        .manage(commands::db_connection::DbClientState::new());
+        .manage(commands::db_connection::DbClientState::new())
+        .manage(commands::local_dev::supervisor::LocalDevState::new());
 
     #[cfg(debug_assertions)]
     {
