@@ -42,12 +42,10 @@ pub fn ensure_layout(root: &Path) -> Result<Vec<String>, String> {
     let mut created = Vec::new();
     for rel in LAYOUT_SUBDIRS {
         let p = root.join(rel);
-        if !p.exists() {
-            fs::create_dir_all(&p).map_err(|e| format!("mkdir {}: {e}", p.display()))?;
+        let existed = p.exists();
+        fs::create_dir_all(&p).map_err(|e| format!("mkdir {}: {e}", p.display()))?;
+        if !existed {
             created.push(p.to_string_lossy().into_owned());
-        } else {
-            // still ensure (no-op if exists)
-            fs::create_dir_all(&p).map_err(|e| format!("mkdir {}: {e}", p.display()))?;
         }
     }
     Ok(created)

@@ -3,7 +3,8 @@
 //! Hard rules (plan + KD18):
 //! - Never open the same datadir with two mysqld/mariadbd processes.
 //! - Never run install_db against a non-empty datadir.
-//! - Never delete/mutate datadir files (pid file inside datadir may be cleared if stale).
+//! - Never delete/mutate datadir **data** files (only known stale `*.pid` under
+//!   local-dev/pids or the configured datadir; never arbitrary paths).
 //! - Start itself is PR4 — this module only classifies OkToStart | Adopt | HardFail.
 
 use super::config_gen::parse_mycnf_values;
@@ -125,14 +126,12 @@ pub fn datadir_is_nonempty(datadir: &Path) -> bool {
     if !datadir.is_dir() {
         return false;
     }
-    // Classic InnoDB / system schema markers.
     if datadir.join("ibdata1").is_file() {
         return true;
     }
     if datadir.join("mysql").is_dir() {
         return true;
     }
-    // Any regular file or subdir (besides `.` / `..`) counts as non-empty.
     fs::read_dir(datadir)
         .map(|rd| {
             rd.flatten().any(|e| {
@@ -144,7 +143,6 @@ pub fn datadir_is_nonempty(datadir: &Path) -> bool {
 }
 
 /// Explicit API: refuse install_db on non-empty datadir.
-/// Used by future supervisor start path and unit tests.
 pub fn may_run_install_db(datadir: &Path) -> Result<(), String> {
     if datadir_is_nonempty(datadir) {
         Err(format!(
@@ -170,12 +168,26 @@ pub fn tcp_accepting(host: &str, port: u16) -> bool {
     TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
 }
 
-/// True if a Unix socket path exists (connectable check is best-effort without extra crates).
+/// True if a Unix socket path exists on disk (may be a stale inode).
 pub fn socket_path_present(socket: &Path) -> bool {
     socket.exists()
 }
 
-// ── PID heuristics ──────────────────────────────────────────────────
+/// True if a process accepts connections on the Unix socket.
+#[cfg(unix)]
+pub fn unix_socket_accepting(socket: &Path) -> bool {
+    use std::os::unix::net::UnixStream;
+    UnixStream::connect(socket).is_ok()
+}
+
+#[cfg(not(unix))]
+pub fn unix_socket_accepting(_socket: &Path) -> bool {
+    false
+}
+
+// ── PID heuristics (scoped deletes only) ────────────────────────────
+
+const KNOWN_DATADIR_PID_NAMES: &[&str] = &["mysqld.pid", "mariadbd.pid", "mysql.pid"];
 
 /// Read a pid file; `None` if missing/unparseable.
 pub fn read_pid_file(path: &Path) -> Option<u32> {
@@ -201,14 +213,92 @@ pub fn pid_is_alive(_pid: u32) -> bool {
     false
 }
 
-/// If `path` holds a stale PID (dead process), remove **only** that pid file.
-/// Never touches data files. Returns whether a stale file was removed.
-pub fn clear_stale_pid_file(path: &Path) -> Result<bool, String> {
+/// Whether `path` is under `root` (string prefix with path boundary, then canonical).
+fn path_is_under(root: &Path, path: &Path) -> bool {
+    let lexical = |r: &Path, p: &Path| -> bool {
+        let rs = r.to_string_lossy();
+        let ps = p.to_string_lossy();
+        if ps == rs {
+            return true;
+        }
+        let prefix = if rs.ends_with('/') {
+            rs.to_string()
+        } else {
+            format!("{rs}/")
+        };
+        ps.starts_with(&prefix)
+    };
+
+    if lexical(root, path) {
+        return true;
+    }
+
+    let root_c = match root.canonicalize() {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let path_c = path
+        .canonicalize()
+        .or_else(|_| {
+            path.parent()
+                .and_then(|p| p.canonicalize().ok())
+                .map(|parent| parent.join(path.file_name().unwrap_or_default()))
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "no parent"))
+        })
+        .unwrap_or_else(|_| path.to_path_buf());
+
+    path_c.starts_with(&root_c) || lexical(&root_c, &path_c)
+}
+
+fn pid_basename_allowed(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+        return false;
+    };
+    if KNOWN_DATADIR_PID_NAMES.contains(&name) {
+        return true;
+    }
+    name.ends_with(".pid")
+}
+
+/// Deletion is allowed only when **all** of:
+/// 1. basename is a known pid name or ends with `.pid`
+/// 2. path is under `local-dev/pids` **or** under the configured datadir
+pub fn pid_file_deletion_allowed(path: &Path, pids_dir: &Path, datadir: &Path) -> bool {
+    if !pid_basename_allowed(path) {
+        return false;
+    }
+    path_is_under(pids_dir, path) || path_is_under(datadir, path)
+}
+
+/// If `path` holds a stale PID (dead process), remove **only** that pid file —
+/// and only when under allowed roots. Never touches data files.
+///
+/// Returns:
+/// - `Ok(true)` — stale file removed
+/// - `Ok(false)` — nothing removed (missing, live, or not allowed)
+/// - `Err` — live refuse / unsafe path with unparseable content
+pub fn clear_stale_pid_file(
+    path: &Path,
+    pids_dir: &Path,
+    datadir: &Path,
+) -> Result<bool, String> {
     if !path.is_file() {
         return Ok(false);
     }
+    if !pid_file_deletion_allowed(path, pids_dir, datadir) {
+        // Do not delete arbitrary files. Unparseable content outside safe roots is HardFail territory.
+        if read_pid_file(path).is_none() {
+            return Err(format!(
+                "refusing to clear non-safe pid path {} (not under local-dev/pids or datadir)",
+                path.display()
+            ));
+        }
+        // Live or dead but outside roots: never delete.
+        return Ok(false);
+    }
+
     let Some(pid) = read_pid_file(path) else {
-        // Unparseable pid file — treat as stale and remove.
+        // Unparseable but under safe root — treat as stale and remove pid file only.
         fs::remove_file(path).map_err(|e| format!("remove stale pid {}: {e}", path.display()))?;
         return Ok(true);
     };
@@ -219,16 +309,65 @@ pub fn clear_stale_pid_file(path: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
+/// Safe unlink for a **stale** Unix socket (dead inode, no listener).
+/// Only under local-dev/socks or `/tmp`, and only if path is a socket inode (or plain file under socks).
+pub fn clear_stale_socket(socket: &Path, socks_dir: &Path) -> Result<bool, String> {
+    if !socket.exists() {
+        return Ok(false);
+    }
+    let under_socks = path_is_under(socks_dir, socket);
+    let under_tmp = socket.starts_with("/tmp/")
+        || socket
+            .to_string_lossy()
+            .starts_with("/tmp/");
+    if !under_socks && !under_tmp {
+        return Err(format!(
+            "stale_socket: refusing to unlink {} (not under local-dev/socks or /tmp)",
+            socket.display()
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileTypeExt;
+        if let Ok(meta) = fs::symlink_metadata(socket) {
+            let ft = meta.file_type();
+            if !ft.is_socket() && !ft.is_file() {
+                return Err(format!(
+                    "stale_socket: {} is not a socket/file inode",
+                    socket.display()
+                ));
+            }
+        }
+    }
+
+    fs::remove_file(socket).map_err(|e| format!("unlink stale socket {}: {e}", socket.display()))?;
+    Ok(true)
+}
+
 // ── Full preflight ──────────────────────────────────────────────────
 
 pub fn run_preflight(req: MariadbPreflightRequest) -> Result<MariadbPreflightReport, String> {
     let mut checks = Vec::new();
     let paths = build_runtime_paths()?;
+    let pids_dir = PathBuf::from(&paths.pids);
+    let socks_dir = PathBuf::from(&paths.socks);
 
+    let wrapper_override = req.wrapper_mycnf.is_some();
     let wrapper_path = req
         .wrapper_mycnf
+        .as_ref()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(&paths.mariadb).join("my.cnf"));
+
+    // Prefer wrapper under local-dev/mariadb (warn if override is elsewhere).
+    let mariadb_cfg_dir = PathBuf::from(&paths.mariadb);
+    if wrapper_override && !path_is_under(&mariadb_cfg_dir, &wrapper_path) {
+        checks.push(format!(
+            "wrapper_path: note — {} is outside local-dev/mariadb (override)",
+            wrapper_path.display()
+        ));
+    }
 
     // 1. Config gate
     let cfg = match load_wrapper_config(&wrapper_path) {
@@ -279,45 +418,49 @@ pub fn run_preflight(req: MariadbPreflightRequest) -> Result<MariadbPreflightRep
     let skip_live = req.skip_live_probes.unwrap_or(false);
     let host = req.tcp_host.as_deref().unwrap_or("127.0.0.1");
 
-    // 3/4. Socket + TCP probes → adopt vs hard-fail
+    // 3/4. Socket + TCP probes → adopt vs hard-fail vs clear stale socket
     if !skip_live {
         let sock_present = socket_path_present(&cfg.socket);
+        let sock_live = sock_present && unix_socket_accepting(&cfg.socket);
         let tcp_up = tcp_accepting(host, cfg.port);
         checks.push(format!(
-            "socket_probe: path={} present={sock_present}",
+            "socket_probe: path={} present={sock_present} accepting={sock_live}",
             cfg.socket.display()
         ));
         checks.push(format!("tcp_probe: {host}:{} accepting={tcp_up}", cfg.port));
 
-        if sock_present || tcp_up {
-            // Try to find a PID from wrapper pid-file or datadir *.pid
-            let mut adopt_pid = None;
-            if let Some(ref pf) = cfg.pid_file {
-                if let Some(pid) = read_pid_file(pf) {
-                    if pid_is_alive(pid) {
-                        adopt_pid = Some(pid);
-                    }
+        // Resolve live PID early (wrapper pid + datadir).
+        let mut live_pid = None;
+        if let Some(ref pf) = cfg.pid_file {
+            if let Some(pid) = read_pid_file(pf) {
+                if pid_is_alive(pid) {
+                    live_pid = Some(pid);
                 }
             }
-            // Datadir mysql.pid / *.pid heuristic (read only).
-            if adopt_pid.is_none() {
-                adopt_pid = find_live_pid_in_datadir(&cfg.datadir);
-            }
+        }
+        if live_pid.is_none() {
+            live_pid = find_live_pid_in_datadir(&cfg.datadir);
+        }
 
-            let reason = if sock_present && tcp_up {
-                "socket and TCP 3306 already accepting — adopt, do not spawn second process".into()
-            } else if sock_present {
-                "MariaDB socket present — treat as running; adopt or hard-fail start".into()
+        if sock_live || tcp_up {
+            let reason = if sock_live && tcp_up {
+                format!(
+                    "socket and TCP {} already accepting — adopt, do not spawn second process",
+                    cfg.port
+                )
+            } else if sock_live {
+                "MariaDB Unix socket accepting connections — adopt, do not spawn second process"
+                    .into()
             } else {
                 format!(
                     "TCP {host}:{} accepting — adopt existing instance, do not double-open datadir",
                     cfg.port
                 )
             };
-            checks.push(format!("classification: adopt (pid={adopt_pid:?})"));
+            checks.push(format!("classification: adopt (pid={live_pid:?})"));
             return Ok(MariadbPreflightReport {
                 result: MariadbPreflight::Adopt {
-                    pid: adopt_pid,
+                    pid: live_pid,
                     reason,
                 },
                 wrapper_mycnf: Some(cfg.path.to_string_lossy().into_owned()),
@@ -329,18 +472,44 @@ pub fn run_preflight(req: MariadbPreflightRequest) -> Result<MariadbPreflightRep
                 ready_for_mariadb_start: false,
             });
         }
+
+        // Dead socket file (exists but not accepting) + TCP down + no live PID → clear stale.
+        if sock_present && !sock_live && !tcp_up && live_pid.is_none() {
+            match clear_stale_socket(&cfg.socket, &socks_dir) {
+                Ok(true) => {
+                    checks.push(format!(
+                        "stale_socket: cleared dead socket {} (no live PID, TCP down)",
+                        cfg.socket.display()
+                    ));
+                }
+                Ok(false) => {
+                    checks.push("stale_socket: path gone after recheck".into());
+                }
+                Err(e) => {
+                    // Outside safe roots — HardFail with explicit reason (not permanent Adopt).
+                    let sock = cfg.socket.display().to_string();
+                    checks.push(format!("stale_socket: {e}"));
+                    return Ok(report_fail(
+                        cfg,
+                        checks,
+                        format!(
+                            "stale_socket: dead socket at {sock} with no live process — remove manually or relocate socket under local-dev/socks"
+                        ),
+                    ));
+                }
+            }
+        }
     } else {
         checks.push("live_probes: skipped".into());
     }
 
-    // 5. PID file heuristics — clear stale only
+    // 5. PID file heuristics — clear stale only under allowed roots
     if let Some(ref pf) = cfg.pid_file {
-        match clear_stale_pid_file(pf) {
+        match clear_stale_pid_file(pf, &pids_dir, &cfg.datadir) {
             Ok(true) => checks.push(format!("pid_file: cleared stale {}", pf.display())),
             Ok(false) => {
                 if let Some(pid) = read_pid_file(pf) {
                     if pid_is_alive(pid) {
-                        // Live pid but probes said down — still refuse double start.
                         let reason = format!(
                             "pid file {} points to live PID {pid} — refuse start (possible datadir lock)",
                             pf.display()
@@ -349,7 +518,14 @@ pub fn run_preflight(req: MariadbPreflightRequest) -> Result<MariadbPreflightRep
                         return Ok(report_fail(cfg, checks, reason));
                     }
                 }
-                checks.push(format!("pid_file: {} absent or not live", pf.display()));
+                if pf.is_file() && !pid_file_deletion_allowed(pf, &pids_dir, &cfg.datadir) {
+                    checks.push(format!(
+                        "pid_file: {} not under safe roots — left untouched",
+                        pf.display()
+                    ));
+                } else {
+                    checks.push(format!("pid_file: {} absent or not live", pf.display()));
+                }
             }
             Err(e) => {
                 checks.push(format!("pid_file: error {e}"));
@@ -359,7 +535,7 @@ pub fn run_preflight(req: MariadbPreflightRequest) -> Result<MariadbPreflightRep
     }
 
     // Datadir-internal pid files: if live foreign → hard-fail; if stale → clear pid only.
-    match scan_datadir_pids(&cfg.datadir, &mut checks) {
+    match scan_datadir_pids(&cfg.datadir, &pids_dir, &mut checks) {
         DatadirPidScan::LiveForeign { pid, path } => {
             let reason = format!(
                 "MariaDB datadir already in use by PID {pid} (pid file {}) — stop that instance or adopt it",
@@ -373,7 +549,6 @@ pub fn run_preflight(req: MariadbPreflightRequest) -> Result<MariadbPreflightRep
         }
     }
 
-    // Ensure local-dev root is not confused with Herd (note only).
     if let Ok(root) = local_dev_root() {
         checks.push(format!(
             "local_dev_root: {} (wrapper only; datadir remains Herd path)",
@@ -413,7 +588,7 @@ enum DatadirPidScan {
 }
 
 fn find_live_pid_in_datadir(datadir: &Path) -> Option<u32> {
-    for name in ["mysqld.pid", "mariadbd.pid", "mysql.pid"] {
+    for name in KNOWN_DATADIR_PID_NAMES {
         let p = datadir.join(name);
         if let Some(pid) = read_pid_file(&p) {
             if pid_is_alive(pid) {
@@ -424,27 +599,36 @@ fn find_live_pid_in_datadir(datadir: &Path) -> Option<u32> {
     None
 }
 
-fn scan_datadir_pids(datadir: &Path, checks: &mut Vec<String>) -> DatadirPidScan {
+fn scan_datadir_pids(
+    datadir: &Path,
+    pids_dir: &Path,
+    checks: &mut Vec<String>,
+) -> DatadirPidScan {
     if !datadir.is_dir() {
         return DatadirPidScan::Clean;
     }
-    let candidates = ["mysqld.pid", "mariadbd.pid", "mysql.pid"];
-    for name in candidates {
+    for name in KNOWN_DATADIR_PID_NAMES {
         let p = datadir.join(name);
         if !p.is_file() {
             continue;
         }
         if let Some(pid) = read_pid_file(&p) {
             if pid_is_alive(pid) {
-                return DatadirPidScan::LiveForeign {
-                    pid,
-                    path: p,
-                };
+                return DatadirPidScan::LiveForeign { pid, path: p };
             }
-            // Stale — remove pid file only.
-            match clear_stale_pid_file(&p) {
+            match clear_stale_pid_file(&p, pids_dir, datadir) {
                 Ok(true) => checks.push(format!(
                     "datadir_pid: cleared stale {} (data files untouched)",
+                    p.display()
+                )),
+                Ok(false) => {}
+                Err(e) => checks.push(format!("datadir_pid: clear error {e}")),
+            }
+        } else {
+            // Unparseable under datadir + known basename — safe to clear.
+            match clear_stale_pid_file(&p, pids_dir, datadir) {
+                Ok(true) => checks.push(format!(
+                    "datadir_pid: cleared unparseable stale {} (data files untouched)",
                     p.display()
                 )),
                 Ok(false) => {}
@@ -462,10 +646,7 @@ mod tests {
 
     #[test]
     fn nonempty_datadir_forbids_install_db() {
-        let dir = std::env::temp_dir().join(format!(
-            "badami-ld-guard-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("badami-ld-guard-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("ibdata1"), b"x").unwrap();
@@ -476,10 +657,8 @@ mod tests {
 
     #[test]
     fn empty_datadir_allows_install_db_gate() {
-        let dir = std::env::temp_dir().join(format!(
-            "badami-ld-guard-empty-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("badami-ld-guard-empty-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         assert!(!datadir_is_nonempty(&dir));
@@ -489,17 +668,14 @@ mod tests {
 
     #[test]
     fn load_wrapper_requires_keys() {
-        let dir = std::env::temp_dir().join(format!(
-            "badami-ld-mycnf-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("badami-ld-mycnf-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let p = dir.join("my.cnf");
         let mut f = fs::File::create(&p).unwrap();
         writeln!(
             f,
-            "[mysqld]\nbasedir=/opt/basedir\ndatadir=/opt/datadir\nsocket=/tmp/t.sock\nport=3306\n"
+            "[mysqld]\nbasedir=\"/opt/basedir\"\ndatadir=\"/opt/datadir\"\nsocket=\"/tmp/t.sock\"\nport=3306\n"
         )
         .unwrap();
         let cfg = load_wrapper_config(&p).unwrap();
@@ -518,5 +694,44 @@ mod tests {
         .unwrap();
         assert!(matches!(report.result, MariadbPreflight::HardFail { .. }));
         assert!(!report.ready_for_mariadb_start);
+    }
+
+    #[test]
+    fn clear_stale_pid_refuses_outside_roots() {
+        let tmp = std::env::temp_dir().join(format!("badami-pid-scope-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let evil = tmp.join("not-a-safe.pid");
+        fs::write(&evil, b"not-a-pid\n").unwrap();
+        let pids = tmp.join("pids");
+        let data = tmp.join("data");
+        fs::create_dir_all(&pids).unwrap();
+        fs::create_dir_all(&data).unwrap();
+        // Outside both roots → Err for unparseable
+        let err = clear_stale_pid_file(&evil, &pids, &data).unwrap_err();
+        assert!(err.contains("refusing") || err.contains("non-safe"));
+        assert!(evil.is_file(), "must not delete outside roots");
+
+        // Under pids, unparseable → delete ok
+        let safe = pids.join("mariadb.pid");
+        fs::write(&safe, b"garbage\n").unwrap();
+        assert!(clear_stale_pid_file(&safe, &pids, &data).unwrap());
+        assert!(!safe.exists());
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn pid_deletion_allows_datadir_known_names() {
+        let tmp = std::env::temp_dir().join(format!("badami-pid-data-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let pids = tmp.join("pids");
+        let data = tmp.join("data");
+        fs::create_dir_all(&pids).unwrap();
+        fs::create_dir_all(&data).unwrap();
+        let p = data.join("mysqld.pid");
+        fs::write(&p, b"999999999\n").unwrap(); // almost certainly dead
+        assert!(pid_file_deletion_allowed(&p, &pids, &data));
+        let _ = clear_stale_pid_file(&p, &pids, &data);
+        let _ = fs::remove_dir_all(&tmp);
     }
 }

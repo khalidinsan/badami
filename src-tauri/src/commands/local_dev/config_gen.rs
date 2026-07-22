@@ -8,7 +8,7 @@
 use super::discovery::{build_runtime_paths, local_dev_root, RuntimePaths};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 // ── Public types ────────────────────────────────────────────────────
 
@@ -48,6 +48,9 @@ pub struct MariadbWrapperInput {
     pub socket: Option<String>,
     /// TCP port (default 3306).
     pub port: Option<u16>,
+    /// Allow absolute datadir/basedir that are not under Herd/Shared Herd paths
+    /// (tests / advanced). Default false → soft-warn note only unless missing markers.
+    pub allow_unverified_datadir: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,27 +71,178 @@ pub struct IsolatedSiteRequest {
     pub http_port: Option<u16>,
 }
 
-// ── Path helpers ────────────────────────────────────────────────────
+// ── Validation (path traversal + conf injection) ────────────────────
 
-fn runtime_username(override_user: Option<&str>) -> String {
-    if let Some(u) = override_user {
-        if !u.is_empty() {
-            return u.to_string();
-        }
-    }
-    std::env::var("USER")
-        .or_else(|_| std::env::var("LOGNAME"))
-        .unwrap_or_else(|_| "nobody".to_string())
+fn has_control_or_meta(s: &str) -> bool {
+    s.chars().any(|c| {
+        c.is_control() || c == '\n' || c == '\r' || c == '#' || c == ';' || c == '"' || c == '\''
+    })
 }
 
-fn runtime_group(override_group: Option<&str>) -> String {
-    if let Some(g) = override_group {
-        if !g.is_empty() {
-            return g.to_string();
+/// DNS-ish label; allows underscore for Laravel park folders (`office_sumedang`).
+pub fn validate_site_name(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.len() > 63 {
+        return Err("site_name must be 1–63 characters".into());
+    }
+    if name.contains("..") || name.contains('/') || name.contains('\\') {
+        return Err("site_name must not contain path separators or ..".into());
+    }
+    if has_control_or_meta(name) {
+        return Err("site_name contains forbidden characters".into());
+    }
+    let bytes = name.as_bytes();
+    let first = bytes[0];
+    let last = bytes[bytes.len() - 1];
+    if !first.is_ascii_alphanumeric() || !last.is_ascii_alphanumeric() {
+        return Err("site_name must start and end with alphanumeric".into());
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err("site_name may only contain [A-Za-z0-9_-]".into());
+    }
+    Ok(())
+}
+
+pub fn validate_tld(tld: &str) -> Result<(), String> {
+    if tld.is_empty() || tld.len() > 63 {
+        return Err("tld must be 1–63 characters".into());
+    }
+    if tld.contains("..") || tld.contains('/') || tld.contains('\\') || has_control_or_meta(tld)
+    {
+        return Err("tld contains forbidden characters".into());
+    }
+    if !tld
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return Err("tld may only contain [A-Za-z0-9-]".into());
+    }
+    if tld.starts_with('-') || tld.ends_with('-') {
+        return Err("tld must not start or end with '-'".into());
+    }
+    Ok(())
+}
+
+/// Compact PHP tag used in binary/socket names: exactly two digits (`74`, `84`).
+pub fn validate_php_tag(tag: &str) -> Result<(), String> {
+    if tag.len() == 2 && tag.chars().all(|c| c.is_ascii_digit()) {
+        Ok(())
+    } else {
+        Err(format!(
+            "php_tag must be exactly two digits (e.g. \"74\", \"84\"); got {tag:?}"
+        ))
+    }
+}
+
+pub fn validate_unix_identity(name: &str, field: &str) -> Result<(), String> {
+    if name.is_empty() || name.len() > 64 {
+        return Err(format!("{field} must be 1–64 characters"));
+    }
+    if has_control_or_meta(name) {
+        return Err(format!("{field} contains forbidden characters"));
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+    {
+        return Err(format!("{field} may only contain [A-Za-z0-9._-]"));
+    }
+    Ok(())
+}
+
+pub fn validate_loopback(addr: &str) -> Result<(), String> {
+    if addr.is_empty() || has_control_or_meta(addr) || addr.contains('/') || addr.contains('\\')
+    {
+        return Err("loopback address is invalid".into());
+    }
+    // IPv4 dotted or simple hostname chars only.
+    if !addr
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == ':')
+    {
+        return Err("loopback address contains forbidden characters".into());
+    }
+    Ok(())
+}
+
+/// Display PHP version like `7.4` / `8.4` (for isolation comment only).
+pub fn validate_php_version_display(v: &str) -> Result<(), String> {
+    if has_control_or_meta(v) || v.contains('/') || v.contains('\\') {
+        return Err("php_version contains forbidden characters".into());
+    }
+    let parts: Vec<&str> = v.split('.').collect();
+    if parts.len() == 2
+        && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+    {
+        Ok(())
+    } else {
+        Err(format!("php_version must look like \"7.4\" or \"8.4\"; got {v:?}"))
+    }
+}
+
+/// Ensure `candidate` has no `..` components and, once joined under `root`, stays under `root`.
+pub fn ensure_path_under_root(root: &Path, candidate: &Path) -> Result<PathBuf, String> {
+    for c in candidate.components() {
+        if matches!(c, Component::ParentDir | Component::RootDir | Component::Prefix(_)) {
+            return Err(format!(
+                "path must be a relative name without .. or absolute segments: {}",
+                candidate.display()
+            ));
         }
     }
-    // Primary group on macOS developer machines is typically `staff`.
-    "staff".to_string()
+    let joined = root.join(candidate);
+    // Compare lexical: root must be a prefix of joined after normalize-lite.
+    let root_s = root.to_string_lossy();
+    let joined_s = joined.to_string_lossy();
+    if !joined_s.starts_with(root_s.as_ref()) {
+        return Err(format!(
+            "refusing write outside local-dev root: {}",
+            joined.display()
+        ));
+    }
+    // Extra: file name only for confs under sites.
+    Ok(joined)
+}
+
+fn looks_like_herd_path(p: &Path) -> bool {
+    let s = p.to_string_lossy();
+    s.contains("/Herd/") || s.contains("/Herd") || s.contains("/Users/Shared/Herd/")
+}
+
+// ── Path helpers ────────────────────────────────────────────────────
+
+fn runtime_username(override_user: Option<&str>) -> Result<String, String> {
+    let u = if let Some(u) = override_user {
+        if !u.is_empty() {
+            u.to_string()
+        } else {
+            std::env::var("USER")
+                .or_else(|_| std::env::var("LOGNAME"))
+                .unwrap_or_else(|_| "nobody".to_string())
+        }
+    } else {
+        std::env::var("USER")
+            .or_else(|_| std::env::var("LOGNAME"))
+            .unwrap_or_else(|_| "nobody".to_string())
+    };
+    validate_unix_identity(&u, "username")?;
+    Ok(u)
+}
+
+fn runtime_group(override_group: Option<&str>) -> Result<String, String> {
+    let g = if let Some(g) = override_group {
+        if !g.is_empty() {
+            g.to_string()
+        } else {
+            "staff".to_string()
+        }
+    } else {
+        "staff".to_string()
+    };
+    validate_unix_identity(&g, "group")?;
+    Ok(g)
 }
 
 fn ensure_dir(path: &Path) -> Result<(), String> {
@@ -112,15 +266,11 @@ fn replace_all(mut s: String, pairs: &[(&str, &str)]) -> String {
 }
 
 fn version_from_tag(tag: &str) -> String {
-    // "74" → "7.4", "84" → "8.4", "82" → "8.2"
-    if tag.len() == 2 && tag.chars().all(|c| c.is_ascii_digit()) {
-        let mut chars = tag.chars();
-        let major = chars.next().unwrap();
-        let minor = chars.next().unwrap();
-        format!("{major}.{minor}")
-    } else {
-        tag.to_string()
-    }
+    // "74" → "7.4", "84" → "8.4" — only valid after validate_php_tag
+    let mut chars = tag.chars();
+    let major = chars.next().unwrap_or('0');
+    let minor = chars.next().unwrap_or('0');
+    format!("{major}.{minor}")
 }
 
 // ── Generators (pure-ish: only write under local-dev) ────────────────
@@ -133,6 +283,9 @@ pub fn write_valet_config(
     loopback: &str,
     written: &mut Vec<String>,
 ) -> Result<(), String> {
+    validate_tld(tld)?;
+    validate_loopback(loopback)?;
+
     let dir = PathBuf::from(&paths.config_valet);
     ensure_dir(&dir)?;
     ensure_dir(&dir.join("Sites"))?;
@@ -159,6 +312,10 @@ pub fn write_nginx_configs(
     nginx_as_root: bool,
     written: &mut Vec<String>,
 ) -> Result<(), String> {
+    validate_php_tag(default_php_tag)?;
+    validate_unix_identity(username, "username")?;
+    validate_unix_identity(group, "group")?;
+
     let nginx_dir = PathBuf::from(&paths.nginx);
     ensure_dir(&nginx_dir)?;
     ensure_dir(&nginx_dir.join("sites"))?;
@@ -221,7 +378,12 @@ pub fn write_isolated_site_conf(
     req: &IsolatedSiteRequest,
     written: &mut Vec<String>,
 ) -> Result<(), String> {
+    validate_site_name(&req.site_name)?;
+    validate_php_tag(&req.php_tag)?;
+    validate_php_version_display(&req.php_version)?;
     let tld = req.tld.as_deref().unwrap_or("test");
+    validate_tld(tld)?;
+
     let http_port = req.http_port.unwrap_or(8080);
     let http_listen = format!("127.0.0.1:{http_port}");
     let sock = format!("{}/php{}.sock", paths.socks, req.php_tag);
@@ -241,9 +403,17 @@ pub fn write_isolated_site_conf(
         ],
     );
 
-    let out = PathBuf::from(&paths.nginx)
-        .join("sites")
-        .join(format!("{}.conf", req.site_name));
+    let sites_dir = PathBuf::from(&paths.nginx).join("sites");
+    ensure_dir(&sites_dir)?;
+    // Filename is only the validated site_name + .conf — no user path segments.
+    let out = ensure_path_under_root(
+        &sites_dir,
+        Path::new(&format!("{}.conf", req.site_name)),
+    )?;
+    // Belt-and-suspenders: basename must equal site_name.conf
+    if out.file_name().and_then(|s| s.to_str()) != Some(&format!("{}.conf", req.site_name)) {
+        return Err("refusing isolated site path traversal".into());
+    }
     write_file(&out, &body, written)
 }
 
@@ -255,11 +425,15 @@ pub fn write_fpm_pools(
     group: &str,
     written: &mut Vec<String>,
 ) -> Result<(), String> {
+    validate_unix_identity(username, "username")?;
+    validate_unix_identity(group, "group")?;
+
     let fpm_dir = PathBuf::from(&paths.fpm);
     ensure_dir(&fpm_dir)?;
     let tpl = include_str!("../../../resources/local-dev/templates/fpm/pool.conf.tpl");
 
     for tag in php_tags {
+        validate_php_tag(tag)?;
         let version = version_from_tag(tag);
         let body = replace_all(
             tpl.to_string(),
@@ -274,8 +448,10 @@ pub fn write_fpm_pools(
                 ("{{VALET_SERVER_DIR}}", &paths.valet_server),
             ],
         );
+        // version is digits+dot only from validated tag — safe filename.
         let filename = format!("{version}-fpm.conf");
-        write_file(&fpm_dir.join(filename), &body, written)?;
+        let out = ensure_path_under_root(&fpm_dir, Path::new(&filename))?;
+        write_file(&out, &body, written)?;
     }
     Ok(())
 }
@@ -288,6 +464,9 @@ pub fn write_dnsmasq_conf(
     dns_port: u16,
     written: &mut Vec<String>,
 ) -> Result<(), String> {
+    validate_tld(tld)?;
+    validate_loopback(loopback)?;
+
     let dir = PathBuf::from(&paths.local_dev_root).join("dnsmasq");
     ensure_dir(&dir)?;
     let port_s = dns_port.to_string();
@@ -320,6 +499,32 @@ pub fn write_mariadb_wrapper(
     let basedir = PathBuf::from(&input.basedir);
     if !datadir.is_absolute() || !basedir.is_absolute() {
         return Err("mariadb datadir and basedir must be absolute paths".into());
+    }
+    if has_control_or_meta(&input.datadir) || has_control_or_meta(&input.basedir) {
+        return Err("mariadb datadir/basedir contain forbidden characters".into());
+    }
+
+    let allow_unverified = input.allow_unverified_datadir.unwrap_or(false);
+    if !looks_like_herd_path(&datadir) || !looks_like_herd_path(&basedir) {
+        if allow_unverified {
+            notes.push(
+                "mariadb wrapper: datadir/basedir not under Herd/Shared paths (allow_unverified_datadir=true)"
+                    .into(),
+            );
+        } else {
+            notes.push(
+                "warning: mariadb datadir/basedir do not look like Herd paths — set allow_unverified_datadir if intentional"
+                    .into(),
+            );
+            // Soft-validate only (do not hard-fail): still write, so import flows work.
+            // PR4 can require discovery match before start.
+        }
+    }
+
+    if let Some(ref sock) = input.socket {
+        if has_control_or_meta(sock) || !Path::new(sock).is_absolute() {
+            return Err("mariadb socket must be an absolute path without control chars".into());
+        }
     }
 
     let mariadb_dir = PathBuf::from(&paths.mariadb);
@@ -381,14 +586,22 @@ pub fn generate_configs(req: GenerateConfigsRequest) -> Result<GenerateConfigsRe
 
     let tld = req.tld.as_deref().unwrap_or("test");
     let loopback = req.loopback.as_deref().unwrap_or("127.0.0.1");
+    validate_tld(tld)?;
+    validate_loopback(loopback)?;
+
     let http_port = req.http_port.unwrap_or(8080);
     let default_php_tag = req.default_php_tag.as_deref().unwrap_or("84");
+    validate_php_tag(default_php_tag)?;
     let php_tags = req
         .php_tags
         .clone()
         .unwrap_or_else(|| vec!["74".into(), "84".into()]);
-    let username = runtime_username(req.username.as_deref());
-    let group = runtime_group(req.group.as_deref());
+    for t in &php_tags {
+        validate_php_tag(t)?;
+    }
+
+    let username = runtime_username(req.username.as_deref())?;
+    let group = runtime_group(req.group.as_deref())?;
     let nginx_as_root = req.nginx_as_root.unwrap_or(false);
     let dns_port = req.dns_port.unwrap_or(53);
     let park_paths = req.park_paths.unwrap_or_default();
@@ -449,6 +662,7 @@ pub fn generate_isolated_site(req: IsolatedSiteRequest) -> Result<GenerateConfig
 // ── Parse helpers used by guards ────────────────────────────────────
 
 /// Parse key=value pairs from a simple my.cnf (`[mysqld]` section, plus pre-section keys).
+/// Surrounding quotes on values are stripped.
 pub fn parse_mycnf_values(contents: &str) -> std::collections::HashMap<String, String> {
     let mut map = std::collections::HashMap::new();
     let mut section = String::new();
@@ -490,14 +704,14 @@ mod tests {
         let c = r#"
 # comment
 [mysqld]
-basedir = /Users/Shared/Herd/services/mariadb/10.11.6
-datadir = /tmp/fake-datadir
-socket = /tmp/x.sock
+basedir = "/Users/Shared/Herd/services/mariadb/10.11.6"
+datadir = "/tmp/fake-datadir"
+socket = "/tmp/x.sock"
 port = 3306
-log-error = /tmp/err.log
+log-error = "/tmp/err.log"
 
 [client]
-socket = /tmp/x.sock
+socket = "/tmp/x.sock"
 "#;
         let m = parse_mycnf_values(c);
         assert_eq!(
@@ -516,6 +730,30 @@ socket = /tmp/x.sock
     fn replace_all_works() {
         let s = replace_all("a={{X}} b={{Y}}".into(), &[("{{X}}", "1"), ("{{Y}}", "2")]);
         assert_eq!(s, "a=1 b=2");
+    }
+
+    #[test]
+    fn validate_site_name_rejects_traversal() {
+        assert!(validate_site_name("../etc").is_err());
+        assert!(validate_site_name("foo/bar").is_err());
+        assert!(validate_site_name("office_sumedang").is_ok());
+        assert!(validate_site_name("office").is_ok());
+        assert!(validate_site_name("bad\nname").is_err());
+    }
+
+    #[test]
+    fn validate_php_tag_strict() {
+        assert!(validate_php_tag("74").is_ok());
+        assert!(validate_php_tag("8.4").is_err());
+        assert!(validate_php_tag("../").is_err());
+    }
+
+    #[test]
+    fn validate_identity() {
+        assert!(validate_unix_identity("khalid", "username").is_ok());
+        assert!(validate_unix_identity("staff", "group").is_ok());
+        assert!(validate_unix_identity("a;b", "username").is_err());
+        assert!(validate_unix_identity("a\nb", "group").is_err());
     }
 }
 
@@ -544,6 +782,7 @@ mod smoke_write {
                 basedir: "/tmp/fake-badami-basedir-smoke".into(),
                 socket: Some("/tmp/badami-mariadb-smoke.sock".into()),
                 port: Some(3306),
+                allow_unverified_datadir: Some(true),
             }),
             username: Some("testuser".into()),
             group: Some("staff".into()),
@@ -557,17 +796,25 @@ mod smoke_write {
         assert!(nginx.contains("127.0.0.1:8080"));
         assert!(nginx.contains("HERD_HOME"));
         assert!(!nginx.contains("js_import"));
-        // Config body must use static unix: sockets (comment text may mention variable maps).
         assert!(nginx.contains("fastcgi_pass unix:"));
         assert!(!nginx.contains("fastcgi_pass $"));
         let fpm = std::fs::read_to_string(root.join("fpm/8.4-fpm.conf")).unwrap();
         assert!(fpm.contains("chdir ="));
         assert!(fpm.contains("valet-server"));
+        // Quoted paths for Application Support spaces
+        assert!(fpm.contains("chdir = \""));
         let my = std::fs::read_to_string(root.join("mariadb/my.cnf")).unwrap();
         assert!(my.contains("/tmp/fake-badami-datadir-smoke"));
         assert!(my.contains("/tmp/fake-badami-basedir-smoke"));
-        // log/pid paths live under Application Support (HOME-derived at runtime — not hardcoded in source).
         assert!(my.contains("log-error"));
+        // Quoted path values (Issue 1)
+        assert!(my.contains("pid-file = \""));
+        assert!(my.contains("log-error = \""));
+        assert!(my.contains("datadir = \""));
+        // Round-trip quotes via parser
+        let parsed = parse_mycnf_values(&my);
+        assert!(parsed.get("pid-file").unwrap().contains("mariadb.pid"));
+        assert!(!parsed.get("pid-file").unwrap().starts_with('"'));
 
         let site = generate_isolated_site(IsolatedSiteRequest {
             site_name: "office".into(),
@@ -579,7 +826,16 @@ mod smoke_write {
         .expect("site");
         assert!(!site.written.is_empty());
 
-        // Preflight against wrapper with skip live; datadir empty path may hard-fail only on missing keys
+        // Traversal must fail
+        assert!(generate_isolated_site(IsolatedSiteRequest {
+            site_name: "../pwned".into(),
+            tld: Some("test".into()),
+            php_version: "7.4".into(),
+            php_tag: "74".into(),
+            http_port: Some(8080),
+        })
+        .is_err());
+
         let report = crate::commands::local_dev::mariadb_guard::run_preflight(
             crate::commands::local_dev::mariadb_guard::MariadbPreflightRequest {
                 skip_live_probes: Some(true),
@@ -587,7 +843,6 @@ mod smoke_write {
             },
         )
         .expect("preflight");
-        // Should be OkToStart (no live server, no live pid) or HardFail only if unexpected
         match report.result {
             crate::commands::local_dev::mariadb_guard::MariadbPreflight::OkToStart => {}
             crate::commands::local_dev::mariadb_guard::MariadbPreflight::Adopt { .. } => {}
@@ -595,6 +850,12 @@ mod smoke_write {
                 panic!("unexpected hard fail: {reason:?} checks={:?}", report.checks);
             }
         }
-        assert!(report.ready_for_mariadb_start || matches!(report.result, crate::commands::local_dev::mariadb_guard::MariadbPreflight::Adopt { .. }));
+        assert!(
+            report.ready_for_mariadb_start
+                || matches!(
+                    report.result,
+                    crate::commands::local_dev::mariadb_guard::MariadbPreflight::Adopt { .. }
+                )
+        );
     }
 }
