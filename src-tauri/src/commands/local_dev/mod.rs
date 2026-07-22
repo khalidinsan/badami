@@ -1,7 +1,8 @@
 //! Local Dev Tauri commands (MVP Phase A).
 //!
 //! Prefix: `ld_`. Discovery, resource install, config generators, MariaDB
-//! preflight, Herd import, and process supervisor (start/stop/status/stack/logs).
+//! preflight, Herd import, site park/link/isolate, nginx reload, and process
+//! supervisor (start/stop/status/stack/logs).
 
 pub mod config_gen;
 pub mod discovery;
@@ -9,6 +10,7 @@ pub mod import_herd;
 pub mod mariadb_guard;
 pub mod resources;
 pub mod service_specs;
+pub mod sites;
 pub mod supervisor;
 
 use config_gen::{
@@ -110,3 +112,7 @@ pub async fn ld_import_herd(
         .await
         .map_err(|e| format!("ld_import_herd task failed: {e}"))?
 }
+
+// Site park / link / isolate / open / nginx reload — see `sites` module
+// (`ld_list_sites`, `ld_park`, `ld_unpark`, `ld_link`, `ld_unlink`,
+// `ld_isolate_php`, `ld_unisolate`, `ld_open_site_url`, `ld_reload_nginx`).

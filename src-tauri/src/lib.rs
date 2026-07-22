@@ -199,6 +199,16 @@ pub fn run() {
             commands::local_dev::ld_generate_isolated_site,
             commands::local_dev::ld_mariadb_preflight,
             commands::local_dev::ld_import_herd,
+            // Local Dev (Phase A — sites: park / link / isolate / open / nginx reload)
+            commands::local_dev::sites::ld_list_sites,
+            commands::local_dev::sites::ld_park,
+            commands::local_dev::sites::ld_unpark,
+            commands::local_dev::sites::ld_link,
+            commands::local_dev::sites::ld_unlink,
+            commands::local_dev::sites::ld_isolate_php,
+            commands::local_dev::sites::ld_unisolate,
+            commands::local_dev::sites::ld_open_site_url,
+            commands::local_dev::sites::ld_reload_nginx,
             // Local Dev (Phase A — process supervisor)
             commands::local_dev::supervisor::ld_service_start,
             commands::local_dev::supervisor::ld_service_stop,
