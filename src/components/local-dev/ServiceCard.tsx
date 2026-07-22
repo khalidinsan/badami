@@ -86,15 +86,6 @@ export function ServiceCard({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onSelect(service.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect(service.id);
-        }
-      }}
       className={cn(
         "group relative rounded-xl border bg-card p-4 text-left transition-all hover:shadow-sm",
         selected
@@ -102,7 +93,14 @@ export function ServiceCard({
           : "border-border/60 hover:border-border",
       )}
     >
-      <div className="mb-3 flex items-start justify-between gap-2">
+      {/* Selectable header — not a nested button around Start/Stop */}
+      <button
+        type="button"
+        onClick={() => onSelect(service.id)}
+        className="mb-3 flex w-full items-start justify-between gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-pressed={selected}
+        aria-label={`Select ${service.label} for logs`}
+      >
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
             <Icon className="h-4 w-4 text-primary" />
@@ -119,7 +117,7 @@ export function ServiceCard({
           {transitional && <Loader2 className="mr-0.5 h-2.5 w-2.5 animate-spin" />}
           {serviceStatusLabel(service.status)}
         </Badge>
-      </div>
+      </button>
 
       {detail && (
         <p className="mb-3 flex items-start gap-1.5 text-[11px] leading-snug text-muted-foreground">
@@ -138,10 +136,7 @@ export function ServiceCard({
           variant="outline"
           className="h-7 gap-1 px-2 text-[11px]"
           disabled={!canStart}
-          onClick={(e) => {
-            e.stopPropagation();
-            onStart(service.id);
-          }}
+          onClick={() => onStart(service.id)}
         >
           {busy && !running ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -155,10 +150,7 @@ export function ServiceCard({
           variant="outline"
           className="h-7 gap-1 px-2 text-[11px]"
           disabled={!canStop}
-          onClick={(e) => {
-            e.stopPropagation();
-            onStop(service.id);
-          }}
+          onClick={() => onStop(service.id)}
         >
           {busy && running ? (
             <Loader2 className="h-3 w-3 animate-spin" />

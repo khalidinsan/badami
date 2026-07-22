@@ -1,4 +1,4 @@
-import { Play, Square, Loader2, RefreshCw, HardDrive } from "lucide-react";
+import { Play, Square, Loader2, RefreshCw, HardDrive, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ServiceCard } from "@/components/local-dev/ServiceCard";
@@ -11,6 +11,7 @@ export function ServicesPanel() {
   const serviceBusy = useLocalDevStore((s) => s.serviceBusy);
   const selectedServiceId = useLocalDevStore((s) => s.selectedServiceId);
   const loading = useLocalDevStore((s) => s.loading);
+  const error = useLocalDevStore((s) => s.error);
   const startService = useLocalDevStore((s) => s.startService);
   const stopService = useLocalDevStore((s) => s.stopService);
   const startStack = useLocalDevStore((s) => s.startStack);
@@ -72,17 +73,45 @@ export function ServicesPanel() {
         </div>
       </div>
 
+      {error && services.length > 0 && (
+        <div className="flex items-start gap-2 border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-800 dark:text-red-200">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Last status refresh failed</p>
+            <p className="mt-0.5 break-words opacity-90">{error}</p>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 shrink-0 px-2 text-[11px]"
+            onClick={() => void refreshStatus()}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-auto p-4">
         {services.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <HardDrive className="mb-3 h-10 w-10 text-muted-foreground/30" />
             <p className="mb-1 text-sm font-medium text-muted-foreground">
-              {loading ? "Discovering services…" : "No services reported"}
+              {loading
+                ? "Discovering services…"
+                : error
+                  ? "Could not load services"
+                  : "No services reported"}
             </p>
-            <p className="mb-4 max-w-sm text-xs text-muted-foreground/70">
-              Status comes from the local-dev supervisor. Install runtime resources and generate
-              configs if services stay empty.
-            </p>
+            {error ? (
+              <p className="mb-4 max-w-md break-words text-xs text-red-600 dark:text-red-400">
+                {error}
+              </p>
+            ) : (
+              <p className="mb-4 max-w-sm text-xs text-muted-foreground/70">
+                Status comes from the local-dev supervisor. Install runtime resources and generate
+                configs if services stay empty.
+              </p>
+            )}
             <Button size="sm" variant="outline" onClick={() => void refreshStatus()}>
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
               Retry status

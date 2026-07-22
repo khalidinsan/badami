@@ -15,8 +15,8 @@ export function LogViewer({ className }: LogViewerProps) {
   const services = useLocalDevStore((s) => s.services);
   const fetchLogs = useLocalDevStore((s) => s.fetchLogs);
 
-  const selected =
-    selectedServiceId ?? (services.length > 0 ? services[0].id : null);
+  // selectedServiceId is auto-set on first status refresh; no silent fallback needed
+  const selected = selectedServiceId;
 
   useEffect(() => {
     if (!selected) return;

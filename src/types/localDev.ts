@@ -136,10 +136,20 @@ export function serviceStatusDetail(status: ServiceStatus): string | null {
   }
 }
 
-/** DNS degraded when dnsmasq is present but not cleanly running. */
+/**
+ * DNS degraded when dnsmasq is present but in a terminal bad state.
+ * Excludes transitional starting/stopping (avoids banner flash during stack start).
+ */
 export function isDnsDegraded(services: ServiceStatusReport[]): boolean {
   const dns = services.find((s) => s.id === "dnsmasq");
   if (!dns) return false;
-  if (dns.status.status === "unavailable") return false; // binary missing — not "degraded"
-  return dns.status.status !== "running";
+  switch (dns.status.status) {
+    case "stopped":
+    case "unhealthy":
+    case "error":
+      return true;
+    default:
+      // running | starting | stopping | unavailable — not "degraded" for the banner
+      return false;
+  }
 }

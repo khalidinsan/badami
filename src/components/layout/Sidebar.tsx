@@ -40,6 +40,7 @@ import { useCredentialStore } from "@/stores/credentialStore";
 import { getExpiryBadgeCount } from "@/hooks/useExpiryCheck";
 import { SyncStatusIndicator } from "@/components/sync/SyncStatusIndicator";
 import { useAppTabStore, type AppTabType } from "@/stores/appTabStore";
+import { isMacOS } from "@/lib/platform";
 
 interface NavItem {
   to: string;
@@ -49,13 +50,6 @@ interface NavItem {
   tabType: AppTabType;
   /** When true, only show on macOS (Local Dev stack). */
   macOnly?: boolean;
-}
-
-function isMacOS(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent.toLowerCase();
-  const platform = (navigator.platform || "").toLowerCase();
-  return ua.includes("mac") || platform.includes("mac");
 }
 
 const navItems: NavItem[] = [

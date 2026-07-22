@@ -1,33 +1,33 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { HardDrive, Import, LayoutGrid } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ServicesPanel } from "@/components/local-dev/ServicesPanel";
 import { LogViewer } from "@/components/local-dev/LogViewer";
 import { DnsDegradedBanner } from "@/components/local-dev/DnsDegradedBanner";
-import { startStatusPolling, useLocalDevStore } from "@/stores/localDevStore";
+import { acquireStatusPolling, useLocalDevStore } from "@/stores/localDevStore";
+import { useAppTabStore } from "@/stores/appTabStore";
+import { isMacOS } from "@/lib/platform";
 
 export const Route = createFileRoute("/local-dev/")({
   component: () => null,
 });
 
-function isMacOS(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent.toLowerCase();
-  const platform = (navigator.platform || "").toLowerCase();
-  return ua.includes("mac") || platform.includes("mac");
-}
-
 export function LocalDevPage() {
-  const [mac] = useState(isMacOS);
+  const mac = isMacOS();
   const discover = useLocalDevStore((s) => s.discover);
   const discovery = useLocalDevStore((s) => s.discovery);
+  /** Only poll while a local-dev tab is the active (visible) tab — not keep-alive hidden. */
+  const localDevActive = useAppTabStore((s) => {
+    const tab = s.tabs.find((t) => t.id === s.activeTabId);
+    return tab?.type === "local-dev";
+  });
 
   useEffect(() => {
-    if (!mac) return;
+    if (!mac || !localDevActive) return;
     void discover();
-    return startStatusPolling();
-  }, [mac, discover]);
+    return acquireStatusPolling();
+  }, [mac, localDevActive, discover]);
 
   if (!mac) {
     return (

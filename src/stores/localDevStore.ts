@@ -35,6 +35,25 @@ interface LocalDevState {
   fetchLogs: (serviceId: string, lines?: number) => Promise<void>;
 }
 
+function serviceLabel(serviceId: string): string {
+  return (
+    useLocalDevStore.getState().services.find((s) => s.id === serviceId)?.label ?? serviceId
+  );
+}
+
+function applyServices(services: ServiceStatusReport[]) {
+  const prev = useLocalDevStore.getState().selectedServiceId;
+  const selectedStillValid = prev != null && services.some((s) => s.id === prev);
+  const selectedServiceId =
+    selectedStillValid ? prev : services.length > 0 ? services[0].id : null;
+  return {
+    services,
+    dnsDegraded: isDnsDegraded(services),
+    selectedServiceId,
+    error: null as string | null,
+  };
+}
+
 export const useLocalDevStore = create<LocalDevState>((set, get) => ({
   services: [],
   discovery: null,
@@ -54,11 +73,7 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
       const services = await invoke<ServiceStatusReport[]>("ld_service_status", {
         serviceId: null,
       });
-      set({
-        services,
-        dnsDegraded: isDnsDegraded(services),
-        error: null,
-      });
+      set(applyServices(services));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       set({ error: message });
@@ -79,6 +94,7 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
   },
 
   startService: async (serviceId) => {
+    const label = serviceLabel(serviceId);
     set((s) => ({
       serviceBusy: { ...s.serviceBusy, [serviceId]: true },
     }));
@@ -87,16 +103,16 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
         serviceId,
       });
       if (result.status.status === "error" || result.status.status === "unavailable") {
-        toast.error(`Failed to start ${serviceId}`, {
+        toast.error(`Failed to start ${label}`, {
           description: result.message || serviceStatusMsg(result.status),
         });
       } else {
-        toast.success(`${serviceId} started`);
+        toast.success(`${label} started`);
       }
       await get().refreshStatus();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      toast.error(`Failed to start ${serviceId}`, { description: message });
+      toast.error(`Failed to start ${label}`, { description: message });
     } finally {
       set((s) => {
         const next = { ...s.serviceBusy };
@@ -107,6 +123,7 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
   },
 
   stopService: async (serviceId) => {
+    const label = serviceLabel(serviceId);
     set((s) => ({
       serviceBusy: { ...s.serviceBusy, [serviceId]: true },
     }));
@@ -115,16 +132,16 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
         serviceId,
       });
       if (result.status.status === "error") {
-        toast.error(`Failed to stop ${serviceId}`, {
+        toast.error(`Failed to stop ${label}`, {
           description: result.message || serviceStatusMsg(result.status),
         });
       } else {
-        toast.success(`${serviceId} stopped`);
+        toast.success(`${label} stopped`);
       }
       await get().refreshStatus();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      toast.error(`Failed to stop ${serviceId}`, { description: message });
+      toast.error(`Failed to stop ${label}`, { description: message });
     } finally {
       set((s) => {
         const next = { ...s.serviceBusy };
@@ -197,12 +214,29 @@ function serviceStatusMsg(status: ServiceActionResult["status"]): string {
   return status.status;
 }
 
-/** Poll service status while active. Returns cleanup. */
-export function startStatusPolling(): () => void {
-  const tick = () => {
-    void useLocalDevStore.getState().refreshStatus();
+// ── Shared status poller (single timer; refcounted) ─────────────────
+
+let pollTimer: number | null = null;
+let pollSubscribers = 0;
+
+/**
+ * Acquire the shared status poller. Multiple Local Dev tab instances share one
+ * interval; the timer stops when the last subscriber releases.
+ */
+export function acquireStatusPolling(): () => void {
+  pollSubscribers += 1;
+  if (pollTimer === null) {
+    const tick = () => {
+      void useLocalDevStore.getState().refreshStatus();
+    };
+    tick();
+    pollTimer = window.setInterval(tick, POLL_MS);
+  }
+  return () => {
+    pollSubscribers = Math.max(0, pollSubscribers - 1);
+    if (pollSubscribers === 0 && pollTimer !== null) {
+      window.clearInterval(pollTimer);
+      pollTimer = null;
+    }
   };
-  tick();
-  const id = window.setInterval(tick, POLL_MS);
-  return () => window.clearInterval(id);
 }
