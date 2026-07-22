@@ -211,16 +211,28 @@ fn version_to_tag(version: &str) -> String {
 }
 
 fn site_name_from_conf(site_name: &str, tld: &str) -> String {
-    // "office.test" → "office"; "office" stays "office"
-    let suffix = format!(".{tld}");
-    if let Some(base) = site_name.strip_suffix(&suffix) {
-        base.to_string()
-    } else if let Some((base, _rest)) = site_name.rsplit_once('.') {
-        // Fallback: strip last .segment if it looks like a tld-ish label
-        base.to_string()
-    } else {
-        site_name.to_string()
+    // "office.test" → "office"; "office.test.conf" → "office"; "office" stays "office"
+    let mut name = site_name.trim();
+    // Strip trailing .conf first so filenames never leave dots in the site name.
+    if let Some(base) = name.strip_suffix(".conf") {
+        name = base;
     }
+    let suffix = format!(".{tld}");
+    if let Some(base) = name.strip_suffix(&suffix) {
+        return base.to_string();
+    }
+    // Fallback: strip last .segment only if it looks like a short tld-ish label
+    // (not part of a multi-dot site name we already handled via .{tld}).
+    if let Some((base, rest)) = name.rsplit_once('.') {
+        if !rest.is_empty()
+            && rest.len() <= 8
+            && rest.chars().all(|c| c.is_ascii_alphanumeric())
+            && !base.is_empty()
+        {
+            return base.to_string();
+        }
+    }
+    name.to_string()
 }
 
 /// Resolve a site directory under park paths or Valet Sites links.
@@ -265,14 +277,22 @@ fn normalize_binary_source(source: &str) -> String {
 
 fn role_for_db(role: &str) -> String {
     // Map discovery roles → BinaryRole-ish names used by schema.
+    // Collapse mysql/mysqld into mariadb family so PATH mysqld does not
+    // compete as a second selected engine when Herd mariadbd is present.
     match role {
-        "mariadbd" => "mariadb".into(),
+        "mariadbd" | "mysqld" | "mysql" => "mariadb".into(),
         "redis-server" => "redis".into(),
         "php-fpm" => "php_fpm".into(),
         r if r.ends_with("-fpm") && r.starts_with("php") => "php_fpm".into(),
-        r if r.starts_with("php") && r.chars().skip(3).all(|c| c.is_ascii_digit()) => "php".into(),
+        r if r.starts_with("php") => "php".into(),
         r => r.to_string(),
     }
+}
+
+/// Selection family for "at most one selected default" logic.
+/// Versioned Herd `php74`/`php84` share family `php` with bare PATH `php`.
+fn binary_family(role: &str) -> String {
+    role_for_db(role)
 }
 
 fn pick_default_php_version(
@@ -296,25 +316,61 @@ fn pick_default_php_version(
         .unwrap_or_else(|| "8.4".into())
 }
 
+/// Key used for "already selected this slot".
+/// - Versioned PHP (`php74` / version `7.4`) → `php:7.4` (multi-select OK per version)
+/// - Bare unversioned `php` / `php-fpm` → family only (`php` / `php_fpm`) so PATH php
+///   does not co-select next to Herd versioned bins
+/// - mariadb/mysqld → `mariadb`
 fn binary_select_key(role: &str, version: &Option<String>) -> String {
-    let db_role = role_for_db(role);
-    if role.starts_with("php") {
-        format!("{}:{}", db_role, version.clone().unwrap_or_default())
-    } else {
-        db_role
+    let family = binary_family(role);
+    // Versioned phpNN / phpNN-fpm keep per-version slots when a version is known.
+    let is_versioned_php = role.starts_with("php")
+        && role
+            .trim_end_matches("-fpm")
+            .chars()
+            .skip(3)
+            .all(|c| c.is_ascii_digit())
+        && role.len() > 3;
+    if is_versioned_php {
+        if let Some(v) = version {
+            if !v.is_empty() {
+                return format!("{family}:{v}");
+            }
+        }
+        // Derive version from role tag when missing (php74 → 7.4).
+        let tag = role.trim_start_matches("php").trim_end_matches("-fpm");
+        if tag.len() == 2 && tag.chars().all(|c| c.is_ascii_digit()) {
+            let ver = format!("{}.{}", &tag[0..1], &tag[1..2]);
+            return format!("{family}:{ver}");
+        }
     }
+    family
 }
 
 fn select_binaries(report: &DiscoveryReport) -> Vec<ImportedBinary> {
     // Prefer Herd-sourced for each logical role; keep alternates unselected.
+    // Track both exact select keys and families so bare PATH php/mysqld do not
+    // co-select when any Herd phpNN / mariadbd is already selected.
     let mut selected_keys: BTreeSet<String> = BTreeSet::new();
+    let mut selected_families: BTreeSet<String> = BTreeSet::new();
     let mut out: Vec<ImportedBinary> = Vec::new();
 
     // Pass 1: select Herd-sourced binaries first.
     for c in &report.candidates {
         let src = normalize_binary_source(&c.source);
         let key = binary_select_key(&c.role, &c.version);
-        let is_selected = src == "herd" && selected_keys.insert(key);
+        let family = binary_family(&c.role);
+        let is_selected = if src == "herd" {
+            // Herd versioned PHP may select multiple versions; still one per key.
+            if selected_keys.insert(key) {
+                selected_families.insert(family);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
         let db_role = role_for_db(&c.role);
         out.push(ImportedBinary {
             role: if c.role.starts_with("php") {
@@ -329,17 +385,24 @@ fn select_binaries(report: &DiscoveryReport) -> Vec<ImportedBinary> {
         });
     }
 
-    // Pass 2: fill gaps with non-Herd candidates when no selection exists for that key.
+    // Pass 2: fill gaps with non-Herd candidates only when the family is empty.
+    // Prevents system `php` / `mysqld` being selected next to Herd phpNN / mariadbd.
     let mut promote: Vec<usize> = Vec::new();
     for (idx, b) in out.iter().enumerate() {
         if b.is_selected {
             continue;
         }
-        let key = binary_select_key(&b.role, &b.version);
-        if !selected_keys.contains(&key) {
-            promote.push(idx);
-            selected_keys.insert(key);
+        let family = binary_family(&b.role);
+        if selected_families.contains(&family) {
+            continue;
         }
+        let key = binary_select_key(&b.role, &b.version);
+        if selected_keys.contains(&key) {
+            continue;
+        }
+        promote.push(idx);
+        selected_keys.insert(key);
+        selected_families.insert(family);
     }
     for idx in promote {
         out[idx].is_selected = true;
@@ -348,14 +411,19 @@ fn select_binaries(report: &DiscoveryReport) -> Vec<ImportedBinary> {
     out
 }
 
+fn badami_mariadb_socket(paths: &RuntimePaths) -> String {
+    format!("{}/mariadb.sock", paths.socks)
+}
+
 fn build_services(
     report: &DiscoveryReport,
     selected_mariadb: Option<&MariadbCandidate>,
     paths: &RuntimePaths,
+    http_port: u16,
 ) -> Vec<ImportedService> {
     let mut services = Vec::new();
 
-    // nginx
+    // nginx — port matches ImportHerdRequest / generated confs (not hard-coded 8080)
     let nginx_bin = report
         .herd
         .nginx_binary
@@ -373,7 +441,7 @@ fn build_services(
         enabled: true,
         data_dir: None,
         config_path: Some(format!("{}/nginx.conf", paths.nginx)),
-        port: Some(8080),
+        port: Some(http_port),
         socket_path: None,
         binary_path: nginx_bin,
         extra_json: None,
@@ -400,22 +468,21 @@ fn build_services(
         });
     }
 
-    // mariadb — data_dir path only, no copy
+    // mariadb — data_dir path only, no copy.
+    // socket_path MUST match Badami wrapper my.cnf (paths.socks/mariadb.sock).
+    // Herd's live socket is preserved under extra_json.herd_socket for doctor/adopt.
     if let Some(m) = selected_mariadb {
         let basedir = m
             .my_cnf
             .as_ref()
             .and_then(|c| c.basedir.clone());
-        let socket = m
-            .my_cnf
-            .as_ref()
-            .and_then(|c| c.socket.clone())
-            .or_else(|| Some(format!("{}/mariadb.sock", paths.socks)));
+        let herd_socket = m.my_cnf.as_ref().and_then(|c| c.socket.clone());
+        let socket = badami_mariadb_socket(paths);
         let port = m.my_cnf.as_ref().and_then(|c| c.port).or(Some(3306));
         let bin = report
             .candidates
             .iter()
-            .find(|c| c.role == "mariadbd")
+            .find(|c| c.role == "mariadbd" || c.role == "mysqld")
             .map(|c| c.path.clone());
         services.push(ImportedService {
             kind: "mariadb".into(),
@@ -424,7 +491,7 @@ fn build_services(
             data_dir: Some(m.path.clone()),
             config_path: Some(format!("{}/my.cnf", paths.mariadb)),
             port,
-            socket_path: socket,
+            socket_path: Some(socket),
             binary_path: bin,
             extra_json: Some(serde_json::json!({
                 "uuid": m.uuid,
@@ -433,6 +500,7 @@ fn build_services(
                 "basedir": basedir,
                 "policy": "reuse_herd",
                 "copied": false,
+                "herd_socket": herd_socket,
             })),
         });
     }
@@ -550,14 +618,25 @@ fn ensure_import_dir(paths: &RuntimePaths) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// Write stable `herd-snapshot.json` plus a timestamped history copy
+/// `herd-snapshot-{unix}.json` so a later dry_run/import does not erase the only artifact.
 fn write_snapshot(paths: &RuntimePaths, snapshot: &HerdSnapshot) -> Result<String, String> {
     let dir = ensure_import_dir(paths)?;
-    let out = dir.join("herd-snapshot.json");
     let text = serde_json::to_string_pretty(snapshot)
         .map_err(|e| format!("serialize herd-snapshot: {e}"))?
         + "\n";
-    fs::write(&out, text).map_err(|e| format!("write {}: {e}", out.display()))?;
-    Ok(out.to_string_lossy().into_owned())
+
+    let stable = dir.join("herd-snapshot.json");
+    fs::write(&stable, &text).map_err(|e| format!("write {}: {e}", stable.display()))?;
+
+    let stamped = dir.join(format!("herd-snapshot-{}.json", snapshot.imported_at_unix));
+    // Best-effort history; do not fail import if stamp write fails (disk full etc.).
+    if let Err(e) = fs::write(&stamped, &text) {
+        // Still return stable path; caller can note the failure separately if needed.
+        let _ = e;
+    }
+
+    Ok(stable.to_string_lossy().into_owned())
 }
 
 fn resolve_mariadb_basedir(selected: &MariadbCandidate, report: &DiscoveryReport) -> Option<String> {
@@ -720,7 +799,7 @@ pub fn import_herd(
 
     // 5) Binaries + services DTOs
     let binaries = select_binaries(&report);
-    let services = build_services(&report, selected_mariadb.as_ref(), &paths);
+    let services = build_services(&report, selected_mariadb.as_ref(), &paths, http_port);
 
     let settings = ImportSettingsSuggestion {
         tld: tld.clone(),
@@ -787,7 +866,8 @@ pub fn import_herd(
             Some(MariadbWrapperInput {
                 datadir: m.path.clone(),
                 basedir,
-                socket: Some(format!("{}/mariadb.sock", paths.socks)),
+                // Same path as ImportedService.socket_path (Badami socks/, not Herd /tmp).
+                socket: Some(badami_mariadb_socket(&paths)),
                 port: m.my_cnf.as_ref().and_then(|c| c.port).or(Some(3306)),
                 allow_unverified_datadir: Some(false),
             })
@@ -885,10 +965,19 @@ pub fn import_herd(
         notes.push("dry_run: skipped isolated site conf writes.".into());
     }
 
-    // 9) Snapshot (always written — even dry_run; it is the import artifact)
+    // 9) Snapshot (always written — even dry_run; it is the import artifact).
+    // Precompute path so notes inside the snapshot include the write target
+    // (Issue 7: previously the "Wrote …" line only appeared on ImportResult).
+    let imported_at = unix_now();
+    let snapshot_path_preview = format!("{}/herd-snapshot.json", paths.import);
+    notes.push(format!("Wrote import snapshot → {snapshot_path_preview}"));
+    notes.push(format!(
+        "Also writing history copy herd-snapshot-{imported_at}.json under import/"
+    ));
+
     let snapshot = HerdSnapshot {
         version: 1,
-        imported_at_unix: unix_now(),
+        imported_at_unix: imported_at,
         platform: report.platform.clone(),
         arch: report.arch.clone(),
         herd_home: report.herd.home_path.clone(),
@@ -903,7 +992,6 @@ pub fn import_herd(
         warnings: warnings.clone(),
     };
     let snapshot_path = write_snapshot(&paths, &snapshot)?;
-    notes.push(format!("Wrote import snapshot → {snapshot_path}"));
 
     Ok(ImportResult {
         herd_detected: report.herd.detected,
@@ -931,55 +1019,143 @@ mod tests {
 
     #[test]
     fn normalize_park_strips_trailing_slash() {
+        // Fixed non-existent path: pure strip behavior (no canonicalize).
+        let missing = "/tmp/badami-park-dedupe-noexist-xyz/";
         assert_eq!(
-            normalize_park_path("/tmp/foo/"),
-            if Path::new("/tmp/foo").exists() || Path::new("/tmp/foo/").exists() {
-                // may canonicalize
-                normalize_park_path("/tmp/foo")
-            } else {
-                "/tmp/foo".to_string()
-            }
+            normalize_park_path(missing),
+            "/tmp/badami-park-dedupe-noexist-xyz"
         );
         assert_eq!(normalize_park_path("/"), "/");
-        assert_eq!(normalize_park_path("  /var/tmp/  "), {
-            let n = normalize_park_path("/var/tmp");
-            n
-        });
+        assert_eq!(
+            normalize_park_path("  /tmp/badami-park-dedupe-noexist-xyz/  "),
+            "/tmp/badami-park-dedupe-noexist-xyz"
+        );
+
+        // Canonicalize when path exists: temp dir with trailing slash collapses.
+        let tmp = std::env::temp_dir().join(format!(
+            "badami-park-canon-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let with_slash = format!("{}/", tmp.display());
+        let norm = normalize_park_path(&with_slash);
+        assert!(!norm.ends_with('/') || norm == "/");
+        assert_eq!(norm, fs::canonicalize(&tmp).unwrap().to_string_lossy());
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn dedupe_parks_with_trailing_slash() {
         let raw = vec![
-            "/tmp/parks".into(),
-            "/tmp/parks/".into(),
-            "/tmp/other/".into(),
+            "/tmp/badami-park-dedupe-noexist-a".into(),
+            "/tmp/badami-park-dedupe-noexist-a/".into(),
+            "/tmp/badami-park-dedupe-noexist-b/".into(),
         ];
         let parks = normalize_park_paths(&raw);
         assert_eq!(parks.len(), 2);
-        let paths: Vec<_> = parks.iter().map(|p| p.path.clone()).collect();
-        assert!(paths.iter().any(|p| p.ends_with("parks") || p.contains("parks")));
-        // Sources retained for first park
         let parks_entry = parks
             .iter()
-            .find(|p| p.path.contains("parks"))
+            .find(|p| p.path.ends_with("badami-park-dedupe-noexist-a"))
             .expect("parks entry");
-        assert!(parks_entry.sources.len() >= 2);
+        assert_eq!(parks_entry.sources.len(), 2);
+        assert!(!parks_entry.path.ends_with('/'));
     }
 
     #[test]
-    fn site_name_strips_tld() {
+    fn site_name_strips_tld_and_conf() {
         assert_eq!(site_name_from_conf("office.test", "test"), "office");
         assert_eq!(
             site_name_from_conf("office_sumedang.test", "test"),
             "office_sumedang"
         );
         assert_eq!(site_name_from_conf("office", "test"), "office");
+        // Issue 5: strip .conf before .{tld}
+        assert_eq!(site_name_from_conf("office.test.conf", "test"), "office");
+        assert_eq!(
+            site_name_from_conf("office_desa.test.conf", "test"),
+            "office_desa"
+        );
     }
 
     #[test]
     fn version_to_tag_basic() {
         assert_eq!(version_to_tag("7.4"), "74");
         assert_eq!(version_to_tag("8.4"), "84");
+    }
+
+    #[test]
+    fn import_sites_skips_unavailable_php() {
+        // Issue 3: pure unit test — no Herd dependency.
+        let confs = vec![
+            NginxSiteConf {
+                path: "/fake/nginx/office.test".into(),
+                site_name: "office.test".into(),
+                isolated_php_version: Some("7.4".into()),
+            },
+            NginxSiteConf {
+                path: "/fake/nginx/legacy.test".into(),
+                site_name: "legacy.test".into(),
+                isolated_php_version: Some("8.2".into()),
+            },
+            NginxSiteConf {
+                path: "/fake/nginx/default.test".into(),
+                site_name: "default.test".into(),
+                isolated_php_version: None,
+            },
+        ];
+        let php = vec![
+            PhpVersionInfo {
+                version: "7.4".into(),
+                tag: "74".into(),
+                available: true,
+                reason: None,
+                cli_path: Some("/bin/php74".into()),
+                fpm_path: Some("/bin/php74-fpm".into()),
+                fpm_conf_path: None,
+            },
+            PhpVersionInfo {
+                version: "8.2".into(),
+                tag: "82".into(),
+                available: false,
+                reason: Some("missing_binary".into()),
+                cli_path: None,
+                fpm_path: None,
+                fpm_conf_path: Some("/fake/8.2-fpm.conf".into()),
+            },
+        ];
+        let sites = import_sites(&confs, &php, &[], "test", None);
+        assert_eq!(sites.len(), 3);
+
+        let office = sites.iter().find(|s| s.name == "office").unwrap();
+        assert!(office.isolated);
+        assert!(!office.skipped);
+        assert!(!office.conf_written);
+        assert_eq!(office.php_version.as_deref(), Some("7.4"));
+
+        let legacy = sites.iter().find(|s| s.name == "legacy").unwrap();
+        assert!(legacy.isolated);
+        assert!(legacy.skipped);
+        assert!(!legacy.conf_written);
+        assert_eq!(
+            legacy.skip_reason.as_deref(),
+            Some("php_8.2_unavailable")
+        );
+
+        let default = sites.iter().find(|s| s.name == "default").unwrap();
+        assert!(!default.isolated);
+        assert!(!default.skipped);
+    }
+
+    #[test]
+    fn binary_select_key_collapses_mysqld_and_bare_php() {
+        assert_eq!(
+            binary_select_key("php74", &Some("7.4".into())),
+            "php:7.4"
+        );
+        assert_eq!(binary_select_key("php", &None), "php");
+        assert_eq!(binary_select_key("mariadbd", &None), "mariadb");
+        assert_eq!(binary_select_key("mysqld", &None), "mariadb");
     }
 
     #[test]
@@ -990,7 +1166,7 @@ mod tests {
                 install_resources: Some(false),
                 generate_configs: Some(false),
                 write_isolated_sites: Some(false),
-                http_port: Some(8080),
+                http_port: Some(9090),
                 default_php_version: None,
             },
             None,
@@ -1003,18 +1179,43 @@ mod tests {
         assert!(res.snapshot_path.contains("herd-snapshot.json"));
         assert!(Path::new(&res.snapshot_path).is_file());
 
-        // Snapshot is valid JSON
+        // Issue 2: nginx service port follows request http_port
+        let nginx = res
+            .services
+            .iter()
+            .find(|s| s.kind == "nginx")
+            .expect("nginx service");
+        assert_eq!(nginx.port, Some(9090));
+        assert_eq!(res.settings.http_port, 9090);
+
+        // Snapshot is valid JSON and includes the "Wrote import snapshot" note (Issue 7)
         let body = fs::read_to_string(&res.snapshot_path).unwrap();
         let v: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(v["version"], 1);
+        let snap_notes = v["notes"].as_array().cloned().unwrap_or_default();
+        assert!(
+            snap_notes
+                .iter()
+                .any(|n| n.as_str().unwrap_or("").contains("Wrote import snapshot")),
+            "snapshot notes must include write path line"
+        );
+
+        // Issue 6: history stamp exists
+        let stamp = PathBuf::from(&res.snapshot_path).with_file_name(format!(
+            "herd-snapshot-{}.json",
+            v["imported_at_unix"].as_u64().unwrap_or(0)
+        ));
+        assert!(
+            stamp.is_file(),
+            "expected history snapshot at {}",
+            stamp.display()
+        );
 
         if res.herd_detected {
-            // Live machine with Herd: parks should be deduped (Sites slash pair → 1)
             assert!(
                 res.parks.len() >= 1,
                 "expected at least one park on Herd machine"
             );
-            // No park path should end with / (except root)
             for p in &res.parks {
                 assert!(
                     p.path == "/" || !p.path.ends_with('/'),
@@ -1022,21 +1223,75 @@ mod tests {
                     p.path
                 );
             }
-            // Skipped isolates for unavailable PHP must not have conf_written
             for s in &res.sites {
                 if s.skipped {
                     assert!(!s.conf_written);
+                    if let Some(ref reason) = s.skip_reason {
+                        assert!(
+                            reason.starts_with("php_") && reason.ends_with("_unavailable"),
+                            "skip_reason format: {reason}"
+                        );
+                    }
                 }
             }
-            // MariaDB if present is path-only
+            // Issue 1: MariaDB socket_path is Badami socks/, Herd socket in extra_json
             if let Some(ref m) = res.selected_mariadb {
                 assert!(Path::new(&m.path).is_dir() || !m.path.is_empty());
+                let svc = res
+                    .services
+                    .iter()
+                    .find(|svc| svc.kind == "mariadb")
+                    .expect("mariadb service");
+                assert_eq!(svc.data_dir.as_ref(), Some(&m.path));
+                let sock = svc.socket_path.as_deref().unwrap_or("");
                 assert!(
-                    res.services
-                        .iter()
-                        .any(|svc| svc.kind == "mariadb" && svc.data_dir.as_ref() == Some(&m.path))
+                    sock.contains("/Badami/local-dev/socks/mariadb.sock")
+                        || sock.ends_with("/socks/mariadb.sock"),
+                    "socket_path must be Badami wrapper sock, got {sock}"
+                );
+                assert!(
+                    !sock.starts_with("/tmp/"),
+                    "must not use Herd /tmp socket as service socket_path"
+                );
+                if let Some(ref extra) = svc.extra_json {
+                    // herd_socket may be null if Herd my.cnf lacked socket
+                    assert!(extra.get("herd_socket").is_some());
+                    assert_eq!(extra.get("copied").and_then(|v| v.as_bool()), Some(false));
+                }
+            }
+
+            // Issue 4: no co-selected bare php when Herd phpNN selected
+            let selected_php: Vec<_> = res
+                .binaries
+                .iter()
+                .filter(|b| b.is_selected && binary_family(&b.role) == "php")
+                .collect();
+            let has_versioned = selected_php.iter().any(|b| {
+                b.role
+                    .trim_end_matches("-fpm")
+                    .chars()
+                    .skip(3)
+                    .all(|c| c.is_ascii_digit())
+                    && b.role.len() > 3
+            });
+            if has_versioned {
+                assert!(
+                    !selected_php.iter().any(|b| b.role == "php" || b.role == "php-fpm"),
+                    "bare PATH php must not be selected next to Herd phpNN"
                 );
             }
+            // mysqld not selected when mariadb is
+            let sel_db: Vec<_> = res
+                .binaries
+                .iter()
+                .filter(|b| b.is_selected && binary_family(&b.role) == "mariadb")
+                .collect();
+            // At most one mariadb-family selection is ideal; if multiple paths of same role ok,
+            // but mysqld role string shouldn't appear selected when mariadb is.
+            assert!(
+                !sel_db.iter().any(|b| b.role == "mysqld"),
+                "mysqld must collapse under mariadb family / not dual-select"
+            );
         }
     }
 
@@ -1061,6 +1316,11 @@ mod tests {
         assert!(!res.mariadb_datadir_copied);
         assert!(Path::new(&res.snapshot_path).is_file());
 
+        // nginx port + settings agree
+        let nginx = res.services.iter().find(|s| s.kind == "nginx").unwrap();
+        assert_eq!(nginx.port, Some(8080));
+        assert_eq!(res.settings.http_port, 8080);
+
         if res.herd_detected {
             if let Some(ref cfg) = res.configs {
                 assert!(!cfg.written.is_empty());
@@ -1068,20 +1328,32 @@ mod tests {
                 let valet = fs::read_to_string(root.join("config/valet/config.json")).unwrap();
                 let v: serde_json::Value = serde_json::from_str(&valet).unwrap();
                 let paths = v["paths"].as_array().cloned().unwrap_or_default();
-                // Deduped parks written into config
                 assert_eq!(paths.len(), res.parks.len());
                 for p in &paths {
                     let s = p.as_str().unwrap_or("");
                     assert!(s == "/" || !s.ends_with('/'));
                 }
+
+                // Issue 1: wrapper my.cnf socket matches service DTO Badami socket
+                if let Some(svc) = res.services.iter().find(|s| s.kind == "mariadb") {
+                    let my = fs::read_to_string(root.join("mariadb/my.cnf")).unwrap();
+                    let sock = svc.socket_path.as_deref().unwrap_or("");
+                    assert!(
+                        my.contains(sock),
+                        "wrapper my.cnf must contain service socket_path {sock}"
+                    );
+                    assert!(my.contains("socks/mariadb.sock") || my.contains(&sock.replace('\\', "/")));
+                }
             }
-            // Available isolates should get confs when write_isolated_sites
             for s in res.sites.iter().filter(|s| s.isolated && !s.skipped) {
                 assert!(
                     s.conf_written,
                     "expected conf for available isolate {}.{}",
                     s.name, s.tld
                 );
+            }
+            for s in res.sites.iter().filter(|s| s.skipped) {
+                assert!(!s.conf_written);
             }
         }
     }
