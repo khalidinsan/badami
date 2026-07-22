@@ -1,6 +1,7 @@
 //! Site park / link / isolate management for Badami Local Dev.
 //!
-//! Operates only under `~/Library/Application Support/Badami/local-dev/`.
+//! Operates only under `~/Library/Application Support/Badami/local-dev/`
+//! (or an injected test root via `*_at` helpers).
 //! **Never** mutates or deletes Herd datadir / Herd configs / project source trees
 //! (except creating/removing Badami-owned Valet `Sites/` symlinks).
 //!
@@ -13,11 +14,12 @@
 //! - `ld_reload_nginx` — `nginx -t` then `nginx -s reload`
 
 use super::config_gen::{
-    validate_php_version_display, validate_site_name, validate_tld, write_isolated_site_conf,
-    write_valet_config, IsolatedSiteRequest,
+    ensure_path_under_root, validate_php_version_display, validate_site_name, validate_tld,
+    write_isolated_site_conf, write_valet_config, IsolatedSiteRequest,
 };
 use super::discovery::{build_runtime_paths, discover, preferred_suffix, RuntimePaths};
 use super::import_herd::normalize_park_path;
+use super::mariadb_guard::{pid_is_alive, read_pid_file};
 use super::service_specs::parse_nginx_http_port;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -122,8 +124,10 @@ fn sites_dir(paths: &RuntimePaths) -> PathBuf {
     PathBuf::from(&paths.config_valet).join("Sites")
 }
 
-fn isolated_conf_path(paths: &RuntimePaths, site: &str) -> PathBuf {
-    PathBuf::from(&paths.nginx).join("sites").join(format!("{site}.conf"))
+fn isolated_conf_path(paths: &RuntimePaths, site: &str) -> Result<PathBuf, String> {
+    let sites = PathBuf::from(&paths.nginx).join("sites");
+    // Confined under nginx/sites/{validated_name}.conf (no traversal).
+    ensure_path_under_root(&sites, Path::new(&format!("{site}.conf")))
 }
 
 fn read_valet_config(paths: &RuntimePaths) -> ValetConfig {
@@ -168,7 +172,12 @@ fn read_valet_config(paths: &RuntimePaths) -> ValetConfig {
     cfg
 }
 
-fn write_parks(paths: &RuntimePaths, tld: &str, loopback: &str, park_paths: &[String]) -> Result<Vec<String>, String> {
+fn write_parks(
+    paths: &RuntimePaths,
+    tld: &str,
+    loopback: &str,
+    park_paths: &[String],
+) -> Result<Vec<String>, String> {
     validate_tld(tld)?;
     let mut written = Vec::new();
     write_valet_config(paths, tld, park_paths, loopback, &mut written)?;
@@ -185,27 +194,24 @@ pub fn site_url(name: &str, tld: &str, http_port: u16) -> String {
     }
 }
 
+/// Map display PHP version (`7.4` / `8.4`) → compact tag (`74` / `84`).
+///
+/// Herd / Badami socket names use exactly two digits. Only single-digit
+/// major.minor forms are accepted.
 fn version_to_tag(version: &str) -> Result<String, String> {
     validate_php_version_display(version)?;
     let parts: Vec<&str> = version.split('.').collect();
-    if parts.len() != 2 {
-        return Err(format!("php version must look like \"7.4\"; got {version:?}"));
+    if parts.len() != 2
+        || parts[0].len() != 1
+        || parts[1].len() != 1
+        || !parts[0].chars().all(|c| c.is_ascii_digit())
+        || !parts[1].chars().all(|c| c.is_ascii_digit())
+    {
+        return Err(format!(
+            "php version tag must be N.M with single digits (e.g. \"7.4\", \"8.4\"); got {version:?}"
+        ));
     }
-    let major = parts[0];
-    let minor = parts[1];
-    if major.len() != 1 || minor.len() != 1 {
-        // Still allow "10.0" style if ever needed — pad/join digits.
-        let tag = format!("{major}{minor}");
-        if tag.chars().all(|c| c.is_ascii_digit()) && tag.len() >= 2 && tag.len() <= 4 {
-            return Ok(if tag.len() == 2 {
-                tag
-            } else {
-                // compact first two significant digits for socket naming (74 / 84)
-                format!("{}{}", &major.chars().next().unwrap_or('0'), &minor.chars().next().unwrap_or('0'))
-            });
-        }
-    }
-    Ok(format!("{major}{minor}"))
+    Ok(format!("{}{}", parts[0], parts[1]))
 }
 
 fn parse_isolated_version_from_conf(content: &str) -> Option<String> {
@@ -222,21 +228,18 @@ fn parse_isolated_version_from_conf(content: &str) -> Option<String> {
 }
 
 fn read_isolation(paths: &RuntimePaths, site: &str) -> (bool, Option<String>, Option<String>) {
-    let conf = isolated_conf_path(paths, site);
+    let Ok(conf) = isolated_conf_path(paths, site) else {
+        return (false, None, None);
+    };
     if !conf.is_file() {
         return (false, None, None);
     }
     let content = fs::read_to_string(&conf).unwrap_or_default();
     let ver = parse_isolated_version_from_conf(&content);
-    (
-        true,
-        ver,
-        Some(conf.to_string_lossy().into_owned()),
-    )
+    (true, ver, Some(conf.to_string_lossy().into_owned()))
 }
 
 fn resolve_link_target(link: &Path) -> Option<String> {
-    // Prefer canonicalize (resolves final target); fall back to read_link.
     if let Ok(canon) = fs::canonicalize(link) {
         return Some(canon.to_string_lossy().into_owned());
     }
@@ -262,17 +265,15 @@ fn is_hidden_or_junk(name: &str) -> bool {
 
 // ── Core: list sites ────────────────────────────────────────────────
 
-/// Scan Badami valet config park paths + Sites/ links and build site inventory.
-pub fn list_sites() -> Result<ListSitesResult, String> {
-    let paths = build_runtime_paths()?;
-    let cfg = read_valet_config(&paths);
-    let http_port = parse_nginx_http_port(&paths);
+/// Scan valet config park paths + Sites/ links and build site inventory.
+pub fn list_sites_at(paths: &RuntimePaths) -> Result<ListSitesResult, String> {
+    let cfg = read_valet_config(paths);
+    let http_port = parse_nginx_http_port(paths);
     let mut notes = Vec::new();
 
-    if !valet_config_path(&paths).is_file() {
+    if !valet_config_path(paths).is_file() {
         notes.push(
-            "No Badami valet config.json yet — run ld_generate_configs or ld_import_herd first."
-                .into(),
+            "No valet config.json yet — run ld_generate_configs or ld_import_herd first.".into(),
         );
     }
 
@@ -280,7 +281,7 @@ pub fn list_sites() -> Result<ListSitesResult, String> {
     let mut by_name: BTreeMap<String, SiteInfo> = BTreeMap::new();
 
     // 1) Linked sites under config/valet/Sites/
-    let links_dir = sites_dir(&paths);
+    let links_dir = sites_dir(paths);
     if links_dir.is_dir() {
         if let Ok(entries) = fs::read_dir(&links_dir) {
             for entry in entries.flatten() {
@@ -293,7 +294,6 @@ pub fn list_sites() -> Result<ListSitesResult, String> {
                     continue;
                 }
                 let link_path = entry.path();
-                // Only treat as link if symlink or directory.
                 let meta = fs::symlink_metadata(&link_path).ok();
                 let is_link = meta
                     .as_ref()
@@ -305,7 +305,7 @@ pub fn list_sites() -> Result<ListSitesResult, String> {
                 }
                 let target = resolve_link_target(&link_path)
                     .unwrap_or_else(|| link_path.to_string_lossy().into_owned());
-                let (isolated, php_version, conf_path) = read_isolation(&paths, &name);
+                let (isolated, php_version, conf_path) = read_isolation(paths, &name);
                 by_name.insert(
                     name.clone(),
                     SiteInfo {
@@ -333,7 +333,6 @@ pub fn list_sites() -> Result<ListSitesResult, String> {
             continue;
         }
         // Skip scanning the Badami Sites dir as a park (links already handled).
-        // Still allow Herd's Sites park path if present.
         let is_badami_sites = park_p
             .canonicalize()
             .ok()
@@ -353,22 +352,19 @@ pub fn list_sites() -> Result<ListSitesResult, String> {
                 continue;
             }
             let child = entry.path();
-            // Accept directories and symlinks-to-directories (common for monorepos).
             if !child.is_dir() {
                 continue;
             }
             if validate_site_name(&name).is_err() {
-                // Valet ignores invalid hostnames; skip quietly but note once-ish.
                 continue;
             }
             if by_name.contains_key(&name) {
-                // Linked already owns this hostname.
                 continue;
             }
             let path_str = fs::canonicalize(&child)
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_else(|_| child.to_string_lossy().into_owned());
-            let (isolated, php_version, conf_path) = read_isolation(&paths, &name);
+            let (isolated, php_version, conf_path) = read_isolation(paths, &name);
             by_name.insert(
                 name.clone(),
                 SiteInfo {
@@ -443,12 +439,18 @@ pub fn list_sites() -> Result<ListSitesResult, String> {
     })
 }
 
+pub fn list_sites() -> Result<ListSitesResult, String> {
+    list_sites_at(&build_runtime_paths()?)
+}
+
 // ── Park / unpark ───────────────────────────────────────────────────
 
-/// Add a park path to Badami valet config.json (normalized, deduped).
-pub fn park_path(raw_path: &str) -> Result<ParkResult, String> {
-    let paths = build_runtime_paths()?;
-    let mut cfg = read_valet_config(&paths);
+/// Add a park path to valet config.json (normalized, deduped).
+///
+/// Parks are source-code trees (e.g. `~/Herd`, project folders). Parking is
+/// **config-only** — never deletes or mutates the directory or Herd data.
+pub fn park_path_at(paths: &RuntimePaths, raw_path: &str) -> Result<ParkResult, String> {
+    let mut cfg = read_valet_config(paths);
 
     let norm = normalize_park_path(raw_path);
     if norm.is_empty() {
@@ -458,9 +460,6 @@ pub fn park_path(raw_path: &str) -> Result<ParkResult, String> {
     if !p.is_dir() {
         return Err(format!("park path is not a directory: {norm}"));
     }
-    // Refuse parking anything under Herd datadir services UUID paths as a safety
-    // tip only — parks are source code trees; still allow Herd Sites / ~/Herd.
-    // Never *delete* Herd data; parking is config-only.
 
     let mut notes = Vec::new();
     if cfg.paths.iter().any(|x| x == &norm) {
@@ -475,7 +474,7 @@ pub fn park_path(raw_path: &str) -> Result<ParkResult, String> {
     }
 
     cfg.paths.push(norm.clone());
-    let written = write_parks(&paths, &cfg.tld, &cfg.loopback, &cfg.paths)?;
+    let written = write_parks(paths, &cfg.tld, &cfg.loopback, &cfg.paths)?;
     notes.push(format!("parked {norm}"));
 
     Ok(ParkResult {
@@ -487,21 +486,23 @@ pub fn park_path(raw_path: &str) -> Result<ParkResult, String> {
     })
 }
 
-/// Remove a park path from Badami valet config.json. Never deletes the directory.
-pub fn unpark_path(raw_path: &str) -> Result<ParkResult, String> {
-    let paths = build_runtime_paths()?;
-    let mut cfg = read_valet_config(&paths);
+pub fn park_path(raw_path: &str) -> Result<ParkResult, String> {
+    park_path_at(&build_runtime_paths()?, raw_path)
+}
+
+/// Remove a park path from valet config.json. Never deletes the directory.
+pub fn unpark_path_at(paths: &RuntimePaths, raw_path: &str) -> Result<ParkResult, String> {
+    let mut cfg = read_valet_config(paths);
     let norm = normalize_park_path(raw_path);
     if norm.is_empty() {
         return Err("park path is empty".into());
     }
 
     let before = cfg.paths.len();
-    cfg.paths.retain(|p| p != &norm && normalize_park_path(p) != norm);
-    // Also match by trailing-slash variants already normalized away.
+    cfg.paths
+        .retain(|p| p != &norm && normalize_park_path(p) != norm);
 
     if cfg.paths.len() == before {
-        // Try matching by canonicalize when path exists.
         let target_canon = Path::new(&norm)
             .canonicalize()
             .ok()
@@ -526,7 +527,7 @@ pub fn unpark_path(raw_path: &str) -> Result<ParkResult, String> {
         });
     }
 
-    let written = write_parks(&paths, &cfg.tld, &cfg.loopback, &cfg.paths)?;
+    let written = write_parks(paths, &cfg.tld, &cfg.loopback, &cfg.paths)?;
     Ok(ParkResult {
         park_paths: cfg.paths,
         path: norm.clone(),
@@ -539,13 +540,20 @@ pub fn unpark_path(raw_path: &str) -> Result<ParkResult, String> {
     })
 }
 
+pub fn unpark_path(raw_path: &str) -> Result<ParkResult, String> {
+    unpark_path_at(&build_runtime_paths()?, raw_path)
+}
+
 // ── Link / unlink ───────────────────────────────────────────────────
 
 /// Create `config/valet/Sites/{site}` → `path` symlink for a custom domain.
-pub fn link_site(site: &str, target_path: &str) -> Result<LinkResult, String> {
+pub fn link_site_at(
+    paths: &RuntimePaths,
+    site: &str,
+    target_path: &str,
+) -> Result<LinkResult, String> {
     validate_site_name(site)?;
-    let paths = build_runtime_paths()?;
-    let links = sites_dir(&paths);
+    let links = sites_dir(paths);
     fs::create_dir_all(&links).map_err(|e| format!("mkdir Sites: {e}"))?;
 
     let target = normalize_park_path(target_path);
@@ -556,12 +564,14 @@ pub fn link_site(site: &str, target_path: &str) -> Result<LinkResult, String> {
     if !target_p.exists() {
         return Err(format!("link target does not exist: {target}"));
     }
+    // Valet links are project directories (follow symlink-to-dir via is_dir).
+    if !target_p.is_dir() {
+        return Err(format!("link target must be a directory: {target}"));
+    }
 
     let link_path = links.join(site);
     // Refuse path traversal: link must live under Sites.
-    let links_canon = links
-        .canonicalize()
-        .unwrap_or_else(|_| links.clone());
+    let links_canon = links.canonicalize().unwrap_or_else(|_| links.clone());
     if let Ok(parent) = link_path
         .parent()
         .ok_or_else(|| "invalid link path".to_string())?
@@ -575,12 +585,10 @@ pub fn link_site(site: &str, target_path: &str) -> Result<LinkResult, String> {
     let mut notes = Vec::new();
 
     if link_path.exists() || link_path.symlink_metadata().is_ok() {
-        // Replace only if it's a symlink we own under Sites (not a real dir full of files).
-        let meta = fs::symlink_metadata(&link_path)
-            .map_err(|e| format!("stat existing link: {e}"))?;
+        let meta =
+            fs::symlink_metadata(&link_path).map_err(|e| format!("stat existing link: {e}"))?;
         if meta.file_type().is_symlink() {
-            fs::remove_file(&link_path)
-                .map_err(|e| format!("remove existing symlink: {e}"))?;
+            fs::remove_file(&link_path).map_err(|e| format!("remove existing symlink: {e}"))?;
             notes.push("replaced existing symlink".into());
         } else if meta.is_dir() {
             return Err(format!(
@@ -591,7 +599,6 @@ pub fn link_site(site: &str, target_path: &str) -> Result<LinkResult, String> {
         }
     }
 
-    // Prefer absolute target for durable links.
     let abs_target = fs::canonicalize(target_p)
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or(target.clone());
@@ -606,8 +613,7 @@ pub fn link_site(site: &str, target_path: &str) -> Result<LinkResult, String> {
     notes.push(format!("linked {site} → {abs_target}"));
 
     // Ensure Sites park path is listed so Valet server.php can find links.
-    // Valet resolves via VALET_HOME_PATH/Sites first; config paths also include Sites.
-    let mut cfg = read_valet_config(&paths);
+    let mut cfg = read_valet_config(paths);
     let sites_str = links
         .canonicalize()
         .unwrap_or(links.clone())
@@ -620,10 +626,10 @@ pub fn link_site(site: &str, target_path: &str) -> Result<LinkResult, String> {
             .unwrap_or(p == &sites_str)
     }) {
         cfg.paths.push(sites_str.clone());
-        if let Err(e) = write_parks(&paths, &cfg.tld, &cfg.loopback, &cfg.paths) {
+        if let Err(e) = write_parks(paths, &cfg.tld, &cfg.loopback, &cfg.paths) {
             notes.push(format!("warning: could not add Sites to park paths: {e}"));
         } else {
-            notes.push("added Badami Sites/ to park paths".into());
+            notes.push("added Sites/ to park paths".into());
         }
     }
 
@@ -636,11 +642,14 @@ pub fn link_site(site: &str, target_path: &str) -> Result<LinkResult, String> {
     })
 }
 
+pub fn link_site(site: &str, target_path: &str) -> Result<LinkResult, String> {
+    link_site_at(&build_runtime_paths()?, site, target_path)
+}
+
 /// Remove `config/valet/Sites/{site}` symlink only. Never deletes the target.
-pub fn unlink_site(site: &str) -> Result<LinkResult, String> {
+pub fn unlink_site_at(paths: &RuntimePaths, site: &str) -> Result<LinkResult, String> {
     validate_site_name(site)?;
-    let paths = build_runtime_paths()?;
-    let links = sites_dir(&paths);
+    let links = sites_dir(paths);
     let link_path = links.join(site);
 
     if !link_path.exists() && link_path.symlink_metadata().is_err() {
@@ -653,15 +662,12 @@ pub fn unlink_site(site: &str) -> Result<LinkResult, String> {
         });
     }
 
-    let meta = fs::symlink_metadata(&link_path)
-        .map_err(|e| format!("stat link: {e}"))?;
-
+    let meta = fs::symlink_metadata(&link_path).map_err(|e| format!("stat link: {e}"))?;
     let target = resolve_link_target(&link_path).unwrap_or_default();
 
     if meta.file_type().is_symlink() {
         fs::remove_file(&link_path).map_err(|e| format!("unlink symlink: {e}"))?;
     } else if meta.is_dir() {
-        // Real directory under Sites — refuse recursive delete for safety.
         return Err(format!(
             "Sites/{site} is a real directory, not a symlink; refusing to delete"
         ));
@@ -679,6 +685,10 @@ pub fn unlink_site(site: &str) -> Result<LinkResult, String> {
             "target project directory left intact".into(),
         ],
     })
+}
+
+pub fn unlink_site(site: &str) -> Result<LinkResult, String> {
+    unlink_site_at(&build_runtime_paths()?, site)
 }
 
 // ── Isolate / unisolate ─────────────────────────────────────────────
@@ -708,7 +718,11 @@ fn php_version_available(version: &str) -> Result<(bool, Option<String>), String
 }
 
 /// Write isolated nginx conf with static unix socket. Refuses if PHP binary missing.
-pub fn isolate_php(site: &str, version: &str) -> Result<IsolateResult, String> {
+pub fn isolate_php_at(
+    paths: &RuntimePaths,
+    site: &str,
+    version: &str,
+) -> Result<IsolateResult, String> {
     validate_site_name(site)?;
     validate_php_version_display(version)?;
     let tag = version_to_tag(version)?;
@@ -726,9 +740,8 @@ pub fn isolate_php(site: &str, version: &str) -> Result<IsolateResult, String> {
         });
     }
 
-    let paths = build_runtime_paths()?;
-    let cfg = read_valet_config(&paths);
-    let http_port = parse_nginx_http_port(&paths);
+    let cfg = read_valet_config(paths);
+    let http_port = parse_nginx_http_port(paths);
 
     let mut written = Vec::new();
     let req = IsolatedSiteRequest {
@@ -738,9 +751,9 @@ pub fn isolate_php(site: &str, version: &str) -> Result<IsolateResult, String> {
         php_tag: tag.clone(),
         http_port: Some(http_port),
     };
-    write_isolated_site_conf(&paths, &req, &mut written)?;
+    write_isolated_site_conf(paths, &req, &mut written)?;
 
-    let conf = isolated_conf_path(&paths, site);
+    let conf = isolated_conf_path(paths, site)?;
     Ok(IsolateResult {
         site: site.to_string(),
         php_version: Some(version.to_string()),
@@ -755,25 +768,21 @@ pub fn isolate_php(site: &str, version: &str) -> Result<IsolateResult, String> {
     })
 }
 
-/// Remove Badami isolated site conf. Never touches Herd nginx confs.
-pub fn unisolate_site(site: &str) -> Result<IsolateResult, String> {
-    validate_site_name(site)?;
-    let paths = build_runtime_paths()?;
-    let conf = isolated_conf_path(&paths, site);
+pub fn isolate_php(site: &str, version: &str) -> Result<IsolateResult, String> {
+    isolate_php_at(&build_runtime_paths()?, site, version)
+}
 
-    // Safety: conf must be under Badami local-dev/nginx/sites/
-    let sites_dir = PathBuf::from(&paths.nginx).join("sites");
-    let conf_s = conf.to_string_lossy();
-    let sites_s = sites_dir.to_string_lossy();
-    if !conf_s.starts_with(sites_s.as_ref()) {
-        return Err("refusing to delete conf outside Badami nginx/sites/".into());
-    }
+/// Remove isolated site conf under `nginx/sites/`. Never touches Herd nginx confs.
+pub fn unisolate_site_at(paths: &RuntimePaths, site: &str) -> Result<IsolateResult, String> {
+    validate_site_name(site)?;
+    // Path-component-safe confinement (same helper as conf writer).
+    let conf = isolated_conf_path(paths, site)?;
 
     if !conf.is_file() {
         return Ok(IsolateResult {
             site: site.to_string(),
             php_version: None,
-            conf_path: Some(conf_s.into_owned()),
+            conf_path: Some(conf.to_string_lossy().into_owned()),
             action: "noop".into(),
             written: vec![],
             notes: vec![format!("no isolate conf for {site}")],
@@ -802,13 +811,16 @@ pub fn unisolate_site(site: &str) -> Result<IsolateResult, String> {
     })
 }
 
+pub fn unisolate_site(site: &str) -> Result<IsolateResult, String> {
+    unisolate_site_at(&build_runtime_paths()?, site)
+}
+
 // ── Open URL ────────────────────────────────────────────────────────
 
-pub fn open_site_url(site: &str) -> Result<OpenSiteUrlResult, String> {
+pub fn open_site_url_at(paths: &RuntimePaths, site: &str) -> Result<OpenSiteUrlResult, String> {
     validate_site_name(site)?;
-    let paths = build_runtime_paths()?;
-    let cfg = read_valet_config(&paths);
-    let http_port = parse_nginx_http_port(&paths);
+    let cfg = read_valet_config(paths);
+    let http_port = parse_nginx_http_port(paths);
     let url = site_url(site, &cfg.tld, http_port);
     Ok(OpenSiteUrlResult {
         site: site.to_string(),
@@ -818,10 +830,13 @@ pub fn open_site_url(site: &str) -> Result<OpenSiteUrlResult, String> {
     })
 }
 
+pub fn open_site_url(site: &str) -> Result<OpenSiteUrlResult, String> {
+    open_site_url_at(&build_runtime_paths()?, site)
+}
+
 // ── Nginx reload ────────────────────────────────────────────────────
 
 fn find_nginx_binary() -> Option<PathBuf> {
-    // Prefer discovery inventory; fall back to well-known Herd / Homebrew paths.
     if let Ok(report) = discover() {
         if let Some(ref b) = report.herd.nginx_binary {
             let p = PathBuf::from(b);
@@ -855,7 +870,12 @@ fn find_nginx_binary() -> Option<PathBuf> {
     None
 }
 
-fn run_nginx(binary: &Path, conf: &Path, prefix: &Path, signal_args: &[&str]) -> (bool, String, String) {
+fn run_nginx(
+    binary: &Path,
+    conf: &Path,
+    prefix: &Path,
+    signal_args: &[&str],
+) -> (bool, String, String) {
     let conf_s = conf.to_string_lossy();
     let prefix_s = prefix.to_string_lossy();
     let mut args: Vec<&str> = vec!["-c", conf_s.as_ref(), "-p", prefix_s.as_ref()];
@@ -872,9 +892,41 @@ fn run_nginx(binary: &Path, conf: &Path, prefix: &Path, signal_args: &[&str]) ->
     }
 }
 
+/// Require Badami-owned pid file: under `local-dev/pids/`, basename `nginx.pid`.
+fn nginx_pid_path(paths: &RuntimePaths) -> Result<PathBuf, String> {
+    let pids = PathBuf::from(&paths.pids);
+    let pid = ensure_path_under_root(&pids, Path::new("nginx.pid"))?;
+    if pid.file_name().and_then(|s| s.to_str()) != Some("nginx.pid") {
+        return Err("refusing unexpected nginx pid basename".into());
+    }
+    Ok(pid)
+}
+
+/// Guard before HUP: pid file must be under local-dev/pids and process alive.
+fn check_nginx_pid_for_reload(paths: &RuntimePaths, notes: &mut Vec<String>) -> Result<(), String> {
+    let pid_path = nginx_pid_path(paths)?;
+    let Some(pid) = read_pid_file(&pid_path) else {
+        return Err(
+            "nginx.pid missing under local-dev/pids — start nginx first (ld_service_start nginx)"
+                .into(),
+        );
+    };
+    if !pid_is_alive(pid) {
+        return Err(format!(
+            "nginx.pid={pid} is dead/stale — start nginx first (ld_service_start nginx)"
+        ));
+    }
+    notes.push(format!(
+        "pid gate: nginx.pid={pid} alive under local-dev/pids"
+    ));
+    Ok(())
+}
+
 /// `nginx -t` then `nginx -s reload` against Badami-generated conf.
-pub fn reload_nginx() -> Result<ReloadNginxResult, String> {
-    let paths = build_runtime_paths()?;
+///
+/// Safety: Badami `-c`/`-p` only; pid file must live under `local-dev/pids/nginx.pid`
+/// and refer to a live process before HUP (avoids signaling foreign masters).
+pub fn reload_nginx_at(paths: &RuntimePaths) -> Result<ReloadNginxResult, String> {
     let conf = PathBuf::from(&paths.nginx).join("nginx.conf");
     let prefix = PathBuf::from(&paths.nginx);
     let mut notes = Vec::new();
@@ -888,9 +940,24 @@ pub fn reload_nginx() -> Result<ReloadNginxResult, String> {
             conf: Some(conf.to_string_lossy().into_owned()),
             stdout: String::new(),
             stderr: String::new(),
-            notes: vec![
-                "nginx.conf missing — run ld_generate_configs first".into(),
-            ],
+            notes: vec!["nginx.conf missing — run ld_generate_configs first".into()],
+        });
+    }
+
+    // Pid ownership gate before any signal.
+    if let Err(e) = check_nginx_pid_for_reload(paths, &mut notes) {
+        return Ok(ReloadNginxResult {
+            ok: false,
+            test_ok: false,
+            reloaded: false,
+            binary: None,
+            conf: Some(conf.to_string_lossy().into_owned()),
+            stdout: String::new(),
+            stderr: String::new(),
+            notes: {
+                notes.push(e);
+                notes
+            },
         });
     }
 
@@ -903,11 +970,13 @@ pub fn reload_nginx() -> Result<ReloadNginxResult, String> {
             conf: Some(conf.to_string_lossy().into_owned()),
             stdout: String::new(),
             stderr: String::new(),
-            notes: vec!["nginx binary not found (Herd Resources / Homebrew / PATH)".into()],
+            notes: {
+                notes.push("nginx binary not found (Herd Resources / Homebrew / PATH)".into());
+                notes
+            },
         });
     };
 
-    // nginx -t
     let (test_ok, t_out, t_err) = run_nginx(&binary, &conf, &prefix, &["-t"]);
     notes.push(if test_ok {
         "nginx -t: ok".into()
@@ -928,7 +997,6 @@ pub fn reload_nginx() -> Result<ReloadNginxResult, String> {
         });
     }
 
-    // nginx -s reload
     let (reload_ok, r_out, r_err) = run_nginx(&binary, &conf, &prefix, &["-s", "reload"]);
     notes.push(if reload_ok {
         "nginx -s reload: ok".into()
@@ -939,19 +1007,20 @@ pub fn reload_nginx() -> Result<ReloadNginxResult, String> {
         )
     });
 
-    let stdout = format!("{t_out}{r_out}");
-    let stderr = format!("{t_err}{r_err}");
-
     Ok(ReloadNginxResult {
         ok: reload_ok,
         test_ok: true,
         reloaded: reload_ok,
         binary: Some(binary.to_string_lossy().into_owned()),
         conf: Some(conf.to_string_lossy().into_owned()),
-        stdout,
-        stderr,
+        stdout: format!("{t_out}{r_out}"),
+        stderr: format!("{t_err}{r_err}"),
         notes,
     })
+}
+
+pub fn reload_nginx() -> Result<ReloadNginxResult, String> {
+    reload_nginx_at(&build_runtime_paths()?)
 }
 
 // ── Tauri commands ──────────────────────────────────────────────────
@@ -1024,6 +1093,7 @@ pub async fn ld_reload_nginx() -> Result<ReloadNginxResult, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::discovery::runtime_paths_from_root;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_tmp(label: &str) -> PathBuf {
@@ -1034,12 +1104,50 @@ mod tests {
         std::env::temp_dir().join(format!("badami-sites-{label}-{n}"))
     }
 
+    /// Isolated local-dev tree under /tmp — never touches Application Support.
+    struct TempLocalDev {
+        root: PathBuf,
+        paths: RuntimePaths,
+    }
+
+    impl TempLocalDev {
+        fn new(label: &str) -> Self {
+            let root = unique_tmp(label);
+            let _ = fs::remove_dir_all(&root);
+            let paths = runtime_paths_from_root(root.clone());
+            for sub in [
+                &paths.config_valet,
+                &paths.nginx,
+                &format!("{}/sites", paths.nginx),
+                &paths.pids,
+                &paths.socks,
+                &paths.logs,
+            ] {
+                fs::create_dir_all(sub).unwrap();
+            }
+            fs::create_dir_all(sites_dir(&paths)).unwrap();
+            // Minimal valet config
+            let mut written = Vec::new();
+            write_valet_config(&paths, "test", &[], "127.0.0.1", &mut written).unwrap();
+            // Minimal badami.conf for http_port parsing
+            fs::write(
+                PathBuf::from(&paths.nginx).join("badami.conf"),
+                "listen 127.0.0.1:8080;\n",
+            )
+            .unwrap();
+            Self { root, paths }
+        }
+    }
+
+    impl Drop for TempLocalDev {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
     #[test]
     fn site_url_mode_a_includes_port() {
-        assert_eq!(
-            site_url("office", "test", 8080),
-            "http://office.test:8080"
-        );
+        assert_eq!(site_url("office", "test", 8080), "http://office.test:8080");
         assert_eq!(site_url("office", "test", 80), "http://office.test");
         assert_eq!(
             site_url("office_oku", "test", 9090),
@@ -1053,14 +1161,31 @@ mod tests {
         assert_eq!(version_to_tag("8.4").unwrap(), "84");
         assert!(version_to_tag("bad").is_err());
         assert!(version_to_tag("../x").is_err());
+        // Multi-digit major/minor rejected (Herd tags are two digits).
+        assert!(version_to_tag("10.0").is_err());
+        assert!(version_to_tag("7.10").is_err());
     }
 
     #[test]
     fn validate_site_name_used_on_link() {
-        assert!(link_site("../etc", "/tmp").is_err());
-        assert!(link_site("foo/bar", "/tmp").is_err());
-        assert!(unlink_site("bad\nname").is_err());
-        assert!(isolate_php("a;b", "7.4").is_err());
+        let tmp = TempLocalDev::new("validate");
+        assert!(link_site_at(&tmp.paths, "../etc", "/tmp").is_err());
+        assert!(link_site_at(&tmp.paths, "foo/bar", "/tmp").is_err());
+        assert!(unlink_site_at(&tmp.paths, "bad\nname").is_err());
+        assert!(isolate_php_at(&tmp.paths, "a;b", "7.4").is_err());
+    }
+
+    #[test]
+    fn link_rejects_file_target() {
+        let tmp = TempLocalDev::new("link-file");
+        let file = unique_tmp("not-a-dir");
+        fs::write(&file, b"x").unwrap();
+        let err = link_site_at(&tmp.paths, "badlink", &file.to_string_lossy()).unwrap_err();
+        assert!(
+            err.contains("directory"),
+            "expected directory requirement: {err}"
+        );
+        let _ = fs::remove_file(&file);
     }
 
     #[test]
@@ -1073,76 +1198,50 @@ mod tests {
         assert!(parse_isolated_version_from_conf("server {}").is_none());
     }
 
-    /// Serialize tests that mutate shared Application Support valet config.
-    fn config_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-        LOCK.get_or_init(|| std::sync::Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-    }
-
     #[test]
-    fn park_unpark_roundtrip_smoke() {
-        let _guard = config_lock();
-        // Use a temp directory as a park under the real Badami config (side-effecting
-        // but restores park list by unparking). Skip if HOME/local-dev not writable.
-        let park_dir = unique_tmp("park");
+    fn park_unpark_roundtrip_temp_root() {
+        let tmp = TempLocalDev::new("park");
+        let park_dir = unique_tmp("park-src");
         fs::create_dir_all(&park_dir).unwrap();
-        // Create a child site folder
         let child = park_dir.join("demo_site_xyz");
         fs::create_dir_all(&child).unwrap();
 
-        let res = park_path(&park_dir.to_string_lossy());
-        if res.is_err() {
-            // Environment without Application Support write access
-            let _ = fs::remove_dir_all(&park_dir);
-            return;
-        }
-        let res = res.unwrap();
+        let res = park_path_at(&tmp.paths, &park_dir.to_string_lossy()).expect("park");
         assert_eq!(res.action, "parked");
         let norm = normalize_park_path(&park_dir.to_string_lossy());
-        assert!(
-            res.park_paths.iter().any(|p| p == &norm || p.contains("badami-sites-park")),
-            "park path missing from result: {:?}",
-            res.park_paths
-        );
+        assert!(res.park_paths.iter().any(|p| p == &norm));
 
-        let listed = list_sites().expect("list");
+        let listed = list_sites_at(&tmp.paths).expect("list");
+        assert!(listed.park_paths.iter().any(|p| p == &norm));
         assert!(
-            listed.park_paths.iter().any(|p| p == &norm),
-            "park path missing from list_sites park_paths: {:?}",
-            listed.park_paths
-        );
-        assert!(
-            listed.sites.iter().any(|s| s.name == "demo_site_xyz" && s.kind == "parked"),
+            listed
+                .sites
+                .iter()
+                .any(|s| s.name == "demo_site_xyz" && s.kind == "parked"),
             "expected demo_site_xyz in {:?}",
-            listed.sites.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            listed.sites.iter().map(|s| &s.name).collect::<Vec<_>>()
         );
 
-        let un = unpark_path(&park_dir.to_string_lossy()).expect("unpark");
+        let un = unpark_path_at(&tmp.paths, &park_dir.to_string_lossy()).expect("unpark");
         assert_eq!(un.action, "unparked");
-        // Directory still exists (never delete project trees)
+        // Project tree left intact
         assert!(park_dir.is_dir());
         assert!(child.is_dir());
         let _ = fs::remove_dir_all(&park_dir);
     }
 
     #[test]
-    fn link_unlink_roundtrip_smoke() {
-        let _guard = config_lock();
+    fn link_unlink_roundtrip_temp_root() {
+        let tmp = TempLocalDev::new("link");
         let target = unique_tmp("link-target");
         fs::create_dir_all(&target).unwrap();
 
-        let res = link_site("badami_link_test", &target.to_string_lossy());
-        if res.is_err() {
-            let _ = fs::remove_dir_all(&target);
-            return;
-        }
-        let res = res.unwrap();
+        let res = link_site_at(&tmp.paths, "badami_link_test", &target.to_string_lossy())
+            .expect("link");
         assert_eq!(res.action, "linked");
         assert!(Path::new(&res.link_path).symlink_metadata().is_ok());
 
-        let listed = list_sites().expect("list");
+        let listed = list_sites_at(&tmp.paths).expect("list");
         let site = listed
             .sites
             .iter()
@@ -1150,49 +1249,53 @@ mod tests {
             .expect("linked site listed");
         assert_eq!(site.kind, "linked");
 
-        let un = unlink_site("badami_link_test").expect("unlink");
+        let un = unlink_site_at(&tmp.paths, "badami_link_test").expect("unlink");
         assert_eq!(un.action, "unlinked");
-        // Target intact
         assert!(target.is_dir());
         let _ = fs::remove_dir_all(&target);
     }
 
     #[test]
     fn isolate_refuses_missing_php_or_writes_when_available() {
-        // 5.0 almost certainly missing
-        let res = isolate_php("office", "5.0");
-        // validate version format "5.0" is ok
-        match res {
+        let tmp = TempLocalDev::new("iso-refuse");
+        // 5.0 almost certainly missing from discovery inventory
+        match isolate_php_at(&tmp.paths, "office", "5.0") {
             Ok(r) => {
                 assert!(r.refused, "should refuse unavailable php: {:?}", r.notes);
                 assert_eq!(r.action, "refused");
             }
             Err(e) => {
-                // discovery might fail on some platforms
                 eprintln!("isolate_php skipped: {e}");
             }
         }
     }
 
     #[test]
-    fn open_site_url_respects_port() {
-        let res = open_site_url("office").expect("url");
-        assert!(res.url.starts_with("http://office."));
-        if res.http_port == 80 {
-            assert!(!res.url.contains(":80"));
-        } else {
-            assert!(res.url.contains(&format!(":{}", res.http_port)));
-        }
+    fn open_site_url_respects_port_temp() {
+        let tmp = TempLocalDev::new("url");
+        let res = open_site_url_at(&tmp.paths, "office").expect("url");
+        assert_eq!(res.url, "http://office.test:8080");
+        assert_eq!(res.http_port, 8080);
+
+        // Port 80 omits :80
+        fs::write(
+            PathBuf::from(&tmp.paths.nginx).join("badami.conf"),
+            "listen 127.0.0.1:80;\n",
+        )
+        .unwrap();
+        let res80 = open_site_url_at(&tmp.paths, "office").expect("url80");
+        assert_eq!(res80.url, "http://office.test");
     }
 
     #[test]
-    fn unisolate_noop_missing() {
-        let res = unisolate_site("zzz_nonexistent_site_xyz").expect("unisolate");
+    fn unisolate_noop_missing_temp() {
+        let tmp = TempLocalDev::new("uniso");
+        let res = unisolate_site_at(&tmp.paths, "zzz_nonexistent_site_xyz").expect("unisolate");
         assert_eq!(res.action, "noop");
     }
 
     #[test]
-    fn isolate_unisolate_when_php74_available() {
+    fn isolate_unisolate_temp_when_php74_available() {
         let report = match discover() {
             Ok(r) => r,
             Err(_) => return,
@@ -1206,20 +1309,49 @@ mod tests {
             return;
         }
 
-        let res = isolate_php("badami_iso_test", "7.4").expect("isolate");
+        let tmp = TempLocalDev::new("iso74");
+        let res = isolate_php_at(&tmp.paths, "badami_iso_test", "7.4").expect("isolate");
         if res.refused {
             return;
         }
         assert_eq!(res.action, "isolated");
         let conf = res.conf_path.expect("conf");
+        // Conf lives under temp root, not Application Support
+        assert!(conf.starts_with(&tmp.root.to_string_lossy().as_ref()));
         assert!(Path::new(&conf).is_file());
         let body = fs::read_to_string(&conf).unwrap();
         assert!(body.contains("ISOLATED_PHP_VERSION=7.4"));
         assert!(body.contains("fastcgi_pass unix:"));
         assert!(!body.contains("js_import"));
 
-        let un = unisolate_site("badami_iso_test").expect("unisolate");
+        let un = unisolate_site_at(&tmp.paths, "badami_iso_test").expect("unisolate");
         assert_eq!(un.action, "unisolated");
         assert!(!Path::new(&conf).exists());
+    }
+
+    #[test]
+    fn reload_refuses_without_live_pid() {
+        let tmp = TempLocalDev::new("reload");
+        // Write a dummy nginx.conf so we get past missing-conf
+        fs::write(
+            PathBuf::from(&tmp.paths.nginx).join("nginx.conf"),
+            "events {}\nhttp {}\n",
+        )
+        .unwrap();
+        let res = reload_nginx_at(&tmp.paths).expect("reload");
+        assert!(!res.ok);
+        assert!(!res.reloaded);
+        assert!(
+            res.notes.iter().any(|n| n.contains("nginx.pid")),
+            "expected pid gate note: {:?}",
+            res.notes
+        );
+    }
+
+    #[test]
+    fn isolated_conf_path_rejects_traversal_name() {
+        let tmp = TempLocalDev::new("trav");
+        // validate_site_name catches this at API boundary; ensure helper also safe
+        assert!(isolated_conf_path(&tmp.paths, "../pwned").is_err());
     }
 }

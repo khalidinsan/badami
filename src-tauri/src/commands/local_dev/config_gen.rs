@@ -763,6 +763,8 @@ mod smoke_write {
 
     #[test]
     fn smoke_generate_and_install() {
+        // Serialize Application Support writes vs import_with_configs_smoke.
+        let _guard = crate::commands::local_dev::test_support::local_dev_fs_lock();
         let install = crate::commands::local_dev::resources::install_runtime_resources(None)
             .expect("install");
         assert!(install.copied_files > 0);

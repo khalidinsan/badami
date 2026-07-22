@@ -198,10 +198,13 @@ pub fn local_dev_root() -> Result<PathBuf, String> {
         .join("local-dev"))
 }
 
-pub fn build_runtime_paths() -> Result<RuntimePaths, String> {
-    let root = local_dev_root()?;
+/// Build runtime path strings from an arbitrary local-dev root (does not mkdir).
+///
+/// Used by production (`local_dev_root()`) and by unit tests that inject a temp
+/// root so they never race on Application Support.
+pub fn runtime_paths_from_root(root: PathBuf) -> RuntimePaths {
     let s = |p: PathBuf| p.to_string_lossy().into_owned();
-    Ok(RuntimePaths {
+    RuntimePaths {
         local_dev_root: s(root.clone()),
         config_valet: s(root.join("config").join("valet")),
         nginx: s(root.join("nginx")),
@@ -212,7 +215,11 @@ pub fn build_runtime_paths() -> Result<RuntimePaths, String> {
         pids: s(root.join("pids")),
         logs: s(root.join("logs")),
         import: s(root.join("import")),
-    })
+    }
+}
+
+pub fn build_runtime_paths() -> Result<RuntimePaths, String> {
+    Ok(runtime_paths_from_root(local_dev_root()?))
 }
 
 fn herd_home() -> Option<PathBuf> {

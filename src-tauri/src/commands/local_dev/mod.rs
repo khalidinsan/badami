@@ -116,3 +116,22 @@ pub async fn ld_import_herd(
 // Site park / link / isolate / open / nginx reload — see `sites` module
 // (`ld_list_sites`, `ld_park`, `ld_unpark`, `ld_link`, `ld_unlink`,
 // `ld_isolate_php`, `ld_unisolate`, `ld_open_site_url`, `ld_reload_nginx`).
+
+/// Test helpers shared across `local_dev` modules.
+#[cfg(test)]
+pub mod test_support {
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    /// Global lock for integration tests that mutate the real Badami
+    /// Application Support `local-dev/` tree (import configs, etc.).
+    ///
+    /// Sites park/link unit tests prefer injectable temp `RuntimePaths` and do
+    /// **not** need this lock. Import smokes that rewrite valet `config.json`
+    /// under Application Support **must** take it.
+    pub fn local_dev_fs_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+}

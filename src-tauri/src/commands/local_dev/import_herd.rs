@@ -1160,6 +1160,8 @@ mod tests {
 
     #[test]
     fn import_dry_run_smoke() {
+        // Coordinate with any future FS-mutating tests (sites park/link use temp roots).
+        let _guard = crate::commands::local_dev::test_support::local_dev_fs_lock();
         let res = import_herd(
             ImportHerdRequest {
                 dry_run: Some(true),
@@ -1297,6 +1299,8 @@ mod tests {
 
     #[test]
     fn import_with_configs_smoke() {
+        // Serialize Application Support config.json writes vs other local_dev FS tests.
+        let _guard = crate::commands::local_dev::test_support::local_dev_fs_lock();
         // Full path except we still never start services / copy datadir.
         let res = import_herd(
             ImportHerdRequest {
