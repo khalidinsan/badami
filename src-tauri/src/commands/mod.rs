@@ -8,6 +8,7 @@ pub mod db_schema;
 pub mod db_transfer;
 pub mod file_watch;
 pub mod ftp;
+pub mod local_dev;
 pub mod password_gen;
 pub mod session_manager;
 pub mod sftp;
