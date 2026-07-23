@@ -690,6 +690,12 @@ async fn wait_nginx_up(spec: &ServiceSpec, notes: &mut Vec<String>) -> Result<u3
 }
 
 async fn stop_nginx_privileged(spec: &ServiceSpec, notes: &mut Vec<String>) {
+    // Always heal pid file so nginx -s quit can find the master.
+    if let Some(pid) = find_our_nginx_master(spec) {
+        let _ = write_pid_file(&spec.pid_file, pid);
+        notes.push(format!("stop: discovered master pid={pid}"));
+    }
+
     if launchctl_unit_loaded(LD_NGINX_LABEL) {
         notes.push(format!("Mode B stop: launchctl kill SIGTERM system/{LD_NGINX_LABEL}"));
         let label = LD_NGINX_LABEL.to_string();
@@ -699,10 +705,10 @@ async fn stop_nginx_privileged(spec: &ServiceSpec, notes: &mut Vec<String>) {
                 .status()
         })
         .await;
-        return;
+        // Fall through — also try quit/kill so we clean up orphan masters.
     }
 
-    // Elevate quit (root-owned master will ignore unprivileged nginx -s quit / SIGTERM).
+    // Elevate quit + kill (root-owned master ignores unprivileged signals).
     let conf = match spec.requires_config.first() {
         Some(c) => c.clone(),
         None => {
@@ -718,23 +724,56 @@ async fn stop_nginx_privileged(spec: &ServiceSpec, notes: &mut Vec<String>) {
     let bin = spec.binary_path.to_string_lossy().into_owned();
     let conf_s = conf.to_string_lossy().into_owned();
     let prefix_s = prefix.to_string_lossy().into_owned();
-    let quit_cmd = format!(
-        "{} -c {} -p {} -s quit",
-        shell_single_quote(&bin),
-        shell_single_quote(&conf_s),
-        shell_single_quote(&prefix_s),
+    let pid_path = spec.pid_file.to_string_lossy().into_owned();
+    let master_pid = find_our_nginx_master(spec).unwrap_or(0);
+
+    // Shell body (run as root via osascript):
+    // 1) ensure pid file  2) nginx -s quit  3) SIGTERM master if still alive  4) SIGKILL last resort
+    let body = format!(
+        "PIDFILE={pid}; \
+         MASTER={master}; \
+         if [ -n \"$MASTER\" ] && [ \"$MASTER\" != \"0\" ]; then echo \"$MASTER\" > \"$PIDFILE\"; fi; \
+         {bin} -c {conf} -p {prefix} -s quit 2>/dev/null || true; \
+         sleep 1; \
+         if [ -n \"$MASTER\" ] && [ \"$MASTER\" != \"0\" ] && kill -0 \"$MASTER\" 2>/dev/null; then kill -TERM \"$MASTER\" 2>/dev/null || true; sleep 1; fi; \
+         if [ -n \"$MASTER\" ] && [ \"$MASTER\" != \"0\" ] && kill -0 \"$MASTER\" 2>/dev/null; then kill -9 \"$MASTER\" 2>/dev/null || true; fi; \
+         # any remaining Badami masters \
+         for p in $(ps -axo pid=,command= | awk '/nginx: master process/ && /local-dev\\\\/nginx/ {{print $1}}'); do \
+           kill -TERM \"$p\" 2>/dev/null || true; \
+         done; \
+         sleep 0.5; \
+         for p in $(ps -axo pid=,command= | awk '/nginx: master process/ && /local-dev\\\\/nginx/ {{print $1}}'); do \
+           kill -9 \"$p\" 2>/dev/null || true; \
+         done; \
+         rm -f \"$PIDFILE\"",
+        pid = shell_single_quote(&pid_path),
+        master = master_pid,
+        bin = shell_single_quote(&bin),
+        conf = shell_single_quote(&conf_s),
+        prefix = shell_single_quote(&prefix_s),
     );
     let script = format!(
         "do shell script \"{}\" with administrator privileges",
-        applescript_string(&quit_cmd)
+        applescript_string(&body)
     );
-    notes.push("privileged stop: osascript admin nginx -s quit".into());
-    let _ = tokio::task::spawn_blocking(move || {
+    notes.push("privileged stop: admin quit/kill Badami nginx master".into());
+    let out = tokio::task::spawn_blocking(move || {
         std::process::Command::new("osascript")
             .args(["-e", &script])
-            .status()
+            .output()
     })
     .await;
+    match out {
+        Ok(Ok(o)) if o.status.success() => notes.push("privileged stop: ok".into()),
+        Ok(Ok(o)) => notes.push(format!(
+            "privileged stop: exit {:?} stderr={}",
+            o.status.code(),
+            String::from_utf8_lossy(&o.stderr)
+        )),
+        Ok(Err(e)) => notes.push(format!("privileged stop osascript: {e}")),
+        Err(e) => notes.push(format!("privileged stop task: {e}")),
+    }
+    clear_stale_pid_safe(&spec.pid_file);
 }
 
 // ── Spawn ───────────────────────────────────────────────────────────
@@ -924,6 +963,27 @@ async fn start_one(
             if is_mariadb {
                 // MariaDB: preflight below decides Adopt vs HardFail.
                 notes.push(format!("probe: {reason}"));
+            } else if matches!(spec.kind, ServiceKind::Nginx) {
+                // Port busy — if it's *our* master (root Mode B), adopt instead of hard-fail.
+                if let Some(pid) = find_our_nginx_master(&spec) {
+                    let _ = write_pid_file(&spec.pid_file, pid);
+                    let status = ServiceStatus::Running { pid };
+                    let rt = inner.runtimes.entry(service_id.to_string()).or_default();
+                    rt.status = status.clone();
+                    rt.pid = Some(pid);
+                    return Ok(ServiceActionResult {
+                        service_id: service_id.to_string(),
+                        status,
+                        message: format!("{service_id} already running (adopted master pid {pid})"),
+                        notes: notes.clone(),
+                    });
+                }
+                let status = ServiceStatus::Error {
+                    message: reason.clone(),
+                };
+                inner.runtimes.entry(service_id.to_string()).or_default().status =
+                    status.clone();
+                return Err(format!("cannot start {service_id}: {reason}"));
             } else {
                 // Foreign listener / conflict — refuse start (do not claim adopted).
                 let status = ServiceStatus::Error {
@@ -1142,43 +1202,57 @@ async fn stop_one(
             }
         }
     } else if matches!(spec.kind, ServiceKind::Nginx) {
+        // Heal pid; privileged port or root master always goes through elevated stop
+        // (unprivileged nginx -s quit / SIGTERM cannot signal root masters).
+        let master = find_our_nginx_master(&spec).or(pid);
+        if let Some(p) = master {
+            let _ = write_pid_file(&spec.pid_file, p);
+        }
         if nginx_needs_root(&spec) {
             stop_nginx_privileged(&spec, notes).await;
-        } else {
-            // nginx -s quit with same -c/-p as start (argv only).
-            if spec.binary_path.is_file() {
-                let conf = spec
-                    .requires_config
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| PathBuf::from("nginx.conf"));
-                let prefix = spec
-                    .working_dir
-                    .clone()
-                    .or_else(|| conf.parent().map(|p| p.to_path_buf()))
-                    .unwrap_or_else(|| PathBuf::from("."));
-                let conf_s = conf.to_string_lossy().into_owned();
-                let prefix_s = prefix.to_string_lossy().into_owned();
-                let mut cmd = Command::new(&spec.binary_path);
-                cmd.args(["-c", &conf_s, "-p", &prefix_s, "-s", "quit"]);
-                cmd.kill_on_drop(true);
-                cmd.stdin(std::process::Stdio::null());
-                cmd.stdout(std::process::Stdio::null());
-                cmd.stderr(std::process::Stdio::null());
-                match cmd.status().await {
-                    Ok(st) if st.success() => notes.push("nginx -s quit: ok".into()),
-                    Ok(st) => notes.push(format!("nginx -s quit: exit {st}")),
-                    Err(e) => notes.push(format!("nginx -s quit: {e}")),
+        } else if spec.binary_path.is_file() {
+            let conf = spec
+                .requires_config
+                .first()
+                .cloned()
+                .unwrap_or_else(|| PathBuf::from("nginx.conf"));
+            let prefix = spec
+                .working_dir
+                .clone()
+                .or_else(|| conf.parent().map(|p| p.to_path_buf()))
+                .unwrap_or_else(|| PathBuf::from("."));
+            let conf_s = conf.to_string_lossy().into_owned();
+            let prefix_s = prefix.to_string_lossy().into_owned();
+            let mut cmd = Command::new(&spec.binary_path);
+            cmd.args(["-c", &conf_s, "-p", &prefix_s, "-s", "quit"]);
+            cmd.kill_on_drop(true);
+            cmd.stdin(std::process::Stdio::null());
+            cmd.stdout(std::process::Stdio::null());
+            cmd.stderr(std::process::Stdio::null());
+            match cmd.status().await {
+                Ok(st) if st.success() => notes.push("nginx -s quit: ok".into()),
+                Ok(st) => {
+                    notes.push(format!("nginx -s quit: exit {st} — elevating stop"));
+                    stop_nginx_privileged(&spec, notes).await;
+                }
+                Err(e) => {
+                    notes.push(format!("nginx -s quit: {e} — elevating stop"));
+                    stop_nginx_privileged(&spec, notes).await;
                 }
             }
-            // Fallback SIGTERM
-            if let Some(p) = pid {
-                if pid_is_alive(p) {
-                    let _ = signal_term(p);
+            if let Some(p) = master.or(pid) {
+                if pid_is_alive(p) && signal_term(p).is_err() {
+                    stop_nginx_privileged(&spec, notes).await;
                 }
             }
         }
-        wait_until_dead(pid, DEFAULT_STOP_GRACE_SECS).await;
+        wait_until_dead(find_our_nginx_master(&spec).or(master).or(pid), DEFAULT_STOP_GRACE_SECS)
+            .await;
+        if find_our_nginx_master(&spec).is_some() || hard_health_ok(&spec.health) {
+            notes.push("nginx still up after stop — force privileged kill".into());
+            stop_nginx_privileged(&spec, notes).await;
+            wait_until_dead(find_our_nginx_master(&spec), DEFAULT_STOP_GRACE_SECS).await;
+        }
     } else if matches!(spec.kind, ServiceKind::PhpFpm { .. }) {
         // SIGQUIT is the conventional graceful FPM master shutdown.
         if let Some(p) = pid {
