@@ -46,7 +46,7 @@ export function ServicesPanel() {
           <Button
             size="sm"
             className="h-8 gap-1.5 text-xs"
-            disabled={stackBusy}
+            disabled={stackBusy || Object.keys(serviceBusy).length > 0}
             onClick={() => void startStack()}
           >
             {stackBusy ? (
@@ -60,7 +60,7 @@ export function ServicesPanel() {
             size="sm"
             variant="outline"
             className="h-8 gap-1.5 text-xs"
-            disabled={stackBusy}
+            disabled={stackBusy || Object.keys(serviceBusy).length > 0}
             onClick={() => void stopStack()}
           >
             {stackBusy ? (

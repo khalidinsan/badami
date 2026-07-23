@@ -76,14 +76,23 @@ export function ServiceCard({
 }: ServiceCardProps) {
   const Icon = kindIcon(service);
   const running = isServiceRunning(service.status);
+  const st = service.status.status;
   const transitional = isServiceBusy(service.status) || busy;
   const detail = serviceStatusDetail(service.status);
+  // Never enable Start+Stop at once (unhealthy used to enable both → "stuck" UI).
+  // - Start: only when fully stopped / failed start (retry)
+  // - Stop: when running, or unhealthy (free the port / kill orphan)
   const canStart =
     !transitional &&
     !running &&
-    service.status.status !== "unavailable" &&
+    st !== "unavailable" &&
+    st !== "unhealthy" &&
+    st !== "starting" &&
+    st !== "stopping" &&
     service.binary_present;
-  const canStop = !transitional && (running || service.status.status === "unhealthy");
+  const canStop =
+    !transitional &&
+    (running || st === "unhealthy" || st === "starting" || st === "stopping");
   const isMariaDb =
     service.kind.kind === "maria_db" ||
     service.id === "mariadb" ||
@@ -91,9 +100,7 @@ export function ServiceCard({
   /** Offer register when healthy/running (or adopt/unhealthy still listening). */
   const showRegister =
     isMariaDb &&
-    (running ||
-      service.status.status === "unhealthy" ||
-      service.status.status === "running");
+    (running || st === "unhealthy" || st === "running");
 
   return (
     <div

@@ -195,6 +195,8 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
 
   startService: async (serviceId) => {
     const label = serviceLabel(serviceId);
+    // Ignore double-clicks while this service (or stack) is busy.
+    if (get().serviceBusy[serviceId] || get().stackBusy) return;
     set((s) => ({
       serviceBusy: { ...s.serviceBusy, [serviceId]: true },
     }));
@@ -206,12 +208,16 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
         toast.error(`Failed to start ${label}`, {
           description: result.message || serviceStatusMsg(result.status),
         });
+      } else if (result.message?.includes("already running")) {
+        toast.success(`${label} already running`);
       } else {
         toast.success(`${label} started`);
       }
       await get().refreshStatus();
     } catch (err) {
       toast.error(`Failed to start ${label}`, { description: errMessage(err) });
+      // Always refresh so card leaves a stale "stopped" if process actually started.
+      await get().refreshStatus().catch(() => undefined);
     } finally {
       set((s) => {
         const next = { ...s.serviceBusy };
@@ -223,6 +229,7 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
 
   stopService: async (serviceId) => {
     const label = serviceLabel(serviceId);
+    if (get().serviceBusy[serviceId] || get().stackBusy) return;
     set((s) => ({
       serviceBusy: { ...s.serviceBusy, [serviceId]: true },
     }));
@@ -234,12 +241,17 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
         toast.error(`Failed to stop ${label}`, {
           description: result.message || serviceStatusMsg(result.status),
         });
+      } else if (result.status.status === "unhealthy") {
+        toast.warning(`${label} stop incomplete`, {
+          description: result.message || serviceStatusMsg(result.status),
+        });
       } else {
         toast.success(`${label} stopped`);
       }
       await get().refreshStatus();
     } catch (err) {
       toast.error(`Failed to stop ${label}`, { description: errMessage(err) });
+      await get().refreshStatus().catch(() => undefined);
     } finally {
       set((s) => {
         const next = { ...s.serviceBusy };
