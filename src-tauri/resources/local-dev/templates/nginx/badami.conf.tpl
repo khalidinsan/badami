@@ -7,6 +7,13 @@ server {
     charset utf-8;
     client_max_body_size 64M;
 
+    # Valet X-Accel-Redirect for static assets (VALET_STATIC_PREFIX)
+    location /41c270e4-5535-4daa-b23e-c269744c2f45/ {
+        internal;
+        alias /;
+        try_files $uri $uri/;
+    }
+
     location / {
         rewrite ^ "{{VALET_SERVER_PHP}}" last;
     }
