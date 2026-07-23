@@ -18,7 +18,8 @@ server {
 
     location ~ [^/]\.php(/|$) {
         fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_pass unix:{{DEFAULT_PHP_SOCK}};
+        # Quoted: local-dev path may contain spaces (e.g. Application Support).
+        fastcgi_pass "unix:{{DEFAULT_PHP_SOCK}}";
         fastcgi_index "{{VALET_SERVER_PHP}}";
         include "{{NGINX_DIR}}/fastcgi_params";
         fastcgi_param SCRIPT_FILENAME "{{VALET_SERVER_PHP}}";

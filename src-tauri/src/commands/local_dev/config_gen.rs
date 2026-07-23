@@ -798,7 +798,11 @@ mod smoke_write {
         assert!(nginx.contains("127.0.0.1:8080"));
         assert!(nginx.contains("HERD_HOME"));
         assert!(!nginx.contains("js_import"));
-        assert!(nginx.contains("fastcgi_pass unix:"));
+        // Paths under Application Support contain spaces — must be quoted.
+        assert!(
+            nginx.contains("fastcgi_pass \"unix:"),
+            "fastcgi_pass unix: path must be quoted for spaces"
+        );
         assert!(!nginx.contains("fastcgi_pass $"));
         let fpm = std::fs::read_to_string(root.join("fpm/8.4-fpm.conf")).unwrap();
         assert!(fpm.contains("chdir ="));
