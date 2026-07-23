@@ -1381,30 +1381,55 @@ async fn stop_one(
         }
     }
 
-    let still_owned = pid.map(pid_is_alive).unwrap_or(false);
+    // Re-probe reality — do not trust the pre-stop pid (master may have been
+    // replaced / elevated). Nginx: also check cmdline discovery.
+    let live_master = if matches!(spec.kind, ServiceKind::Nginx) {
+        find_our_nginx_master(&spec)
+    } else {
+        None
+    };
+    let still_owned = live_master
+        .map(pid_is_alive)
+        .unwrap_or_else(|| pid.map(pid_is_alive).unwrap_or(false));
     let still_listening = hard_health_ok(&spec.health);
     let status = if still_owned {
         ServiceStatus::Unhealthy {
-            pid,
+            pid: live_master.or(pid),
             reason: "process still present after stop".into(),
         }
     } else if still_listening {
-        ServiceStatus::Unhealthy {
-            pid: None,
-            reason: "port/socket still accepting after stop (foreign listener?)".into(),
-        }
+        // Port still open but not our master — foreign process; mark stopped for
+        // *our* service so UI unlocks (user can free the port separately).
+        notes.push(
+            "port still accepting but no Badami master found — treating as stopped for UI"
+                .into(),
+        );
+        clear_stale_pid_safe(&spec.pid_file);
+        ServiceStatus::Stopped
     } else {
+        clear_stale_pid_safe(&spec.pid_file);
         ServiceStatus::Stopped
     };
 
     let rt = inner.runtimes.entry(service_id.to_string()).or_default();
     rt.status = status.clone();
-    rt.pid = None;
+    rt.pid = match &status {
+        ServiceStatus::Unhealthy { pid: p, .. } => *p,
+        _ => None,
+    };
+
+    let message = match &status {
+        ServiceStatus::Stopped => format!("{service_id} stopped"),
+        ServiceStatus::Unhealthy { reason, .. } => {
+            format!("{service_id} stop incomplete: {reason}")
+        }
+        _ => format!("{service_id} stop completed"),
+    };
 
     Ok(ServiceActionResult {
         service_id: service_id.to_string(),
         status,
-        message: format!("{service_id} stop completed"),
+        message,
         notes: notes.clone(),
     })
 }

@@ -242,9 +242,15 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
           description: result.message || serviceStatusMsg(result.status),
         });
       } else if (result.status.status === "unhealthy") {
-        toast.warning(`${label} stop incomplete`, {
-          description: result.message || serviceStatusMsg(result.status),
+        // After refresh we may still flip to stopped — avoid scaring the user.
+        toast.message(`${label}: ${result.message || "stop incomplete"}`, {
+          description: result.notes?.slice(0, 2).join(" · ") || undefined,
         });
+      } else if (
+        result.status.status === "stopped" ||
+        result.message?.includes("already stopped")
+      ) {
+        toast.success(`${label} stopped`);
       } else {
         toast.success(`${label} stopped`);
       }
