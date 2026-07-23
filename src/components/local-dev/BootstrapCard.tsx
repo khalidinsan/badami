@@ -73,9 +73,9 @@ export function BootstrapCard() {
           Mode B / DNS bootstrap
         </CardTitle>
         <CardDescription className="text-xs">
-          Dry-run scaffolds plists under local-dev/launchd only — does{" "}
-          <strong>not</strong> elevate privileges. Privileged install requires explicit admin
-          auth (never silent).
+          Port 80 needs the same kind of elevated helper Herd uses. Scaffold writes plists;
+          <strong> Install with admin</strong> registers a Badami LaunchDaemon so Start/Stop
+          nginx from the Services tab works without a password every time.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 px-4">
@@ -140,6 +140,26 @@ export function BootstrapCard() {
             onClick={() =>
               void bootstrapInstall({
                 package: pkg,
+                dry_run: false,
+                attempt_privileged_install: true,
+              })
+            }
+          >
+            {bootstrapBusy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ShieldAlert className="h-3.5 w-3.5" />
+            )}
+            Install with admin…
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5 text-xs"
+            disabled={bootstrapBusy}
+            onClick={() =>
+              void bootstrapInstall({
+                package: pkg,
                 dry_run: true,
                 attempt_privileged_install: false,
               })
@@ -150,7 +170,7 @@ export function BootstrapCard() {
             ) : (
               <Rocket className="h-3.5 w-3.5" />
             )}
-            Scaffold (dry-run)
+            Scaffold only
           </Button>
           <Button
             size="sm"
@@ -166,9 +186,9 @@ export function BootstrapCard() {
         <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-900 dark:text-amber-100">
           <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <p>
-            <strong>Privileged install</strong> into /Library/LaunchDaemons is intentionally not
-            one-click here. After dry-run, use the printed install command with admin approval.
-            Badami never invokes the Herd helper.
+            macOS blocks non-root processes from binding :80. Herd solves this with a privileged
+            helper; Badami installs its <strong>own</strong> LaunchDaemon (never Herd&apos;s).
+            Until installed, Start nginx on :80 will prompt for admin password each time.
           </p>
         </div>
 

@@ -602,7 +602,11 @@ pub fn generate_configs(req: GenerateConfigsRequest) -> Result<GenerateConfigsRe
 
     let username = runtime_username(req.username.as_deref())?;
     let group = runtime_group(req.group.as_deref())?;
-    let nginx_as_root = req.nginx_as_root.unwrap_or(false);
+    // Privileged ports need root master + `user` so workers reach FPM socks
+    // under Application Support (Mode B / :80 — same class of problem as Herd).
+    let nginx_as_root = req
+        .nginx_as_root
+        .unwrap_or(http_port > 0 && http_port < 1024);
     let dns_port = req.dns_port.unwrap_or(53);
     let park_paths = req.park_paths.unwrap_or_default();
 

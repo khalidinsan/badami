@@ -376,7 +376,9 @@ pub fn bootstrap_install(req: BootstrapInstallRequest) -> Result<BootstrapInstal
             paths.nginx.clone(),
         ];
         let plist_path = launchd_dir.join("nginx.plist");
-        let body = render_launch_daemon_plist(LD_NGINX_LABEL, &args, true, true);
+        // RunAtLoad=false, KeepAlive=false so UI Start/Stop map to kickstart/kill
+        // (KeepAlive=true would fight Stop and restart the master).
+        let body = render_launch_daemon_plist(LD_NGINX_LABEL, &args, false, false);
         write_scaffold(&plist_path, &body, &mut written)?;
         units.push(BootstrapUnitScaffold {
             label: LD_NGINX_LABEL.into(),
