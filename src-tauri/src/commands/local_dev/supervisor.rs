@@ -7,6 +7,7 @@
 //! - Never deletes Herd datadir data
 
 use super::discovery::{build_runtime_paths, discover};
+use super::doctor::LD_NGINX_LABEL;
 use super::mariadb_guard::{
     pid_is_alive, read_pid_file, run_preflight, tcp_accepting, unix_socket_accepting,
     MariadbPreflight, MariadbPreflightRequest,
@@ -431,8 +432,27 @@ fn probe_running(spec: &ServiceSpec) -> ServiceStatus {
         }
     }
 
+    // Privileged nginx often leaves no readable pid file (root master + missing
+    // pid path). If we can still identify *our* master by cmdline + binary,
+    // treat as Running and heal the pid file when possible.
+    if matches!(spec.kind, ServiceKind::Nginx) {
+        if let Some(pid) = find_our_nginx_master(spec) {
+            if hard_health_ok(&spec.health) || pid_is_alive(pid) {
+                let _ = write_pid_file(&spec.pid_file, pid);
+                return ServiceStatus::Running { pid };
+            }
+        }
+    }
+
     // Port/socket busy without ownership → conflict, not Running.
     if hard_health_ok(&spec.health) {
+        // Last chance for nginx: listener on our port with our binary (no pid file).
+        if matches!(spec.kind, ServiceKind::Nginx) {
+            if let Some(pid) = find_our_nginx_master(spec) {
+                let _ = write_pid_file(&spec.pid_file, pid);
+                return ServiceStatus::Running { pid };
+            }
+        }
         return ServiceStatus::Unhealthy {
             pid: None,
             reason: port_conflict_reason(spec),
@@ -446,6 +466,275 @@ fn probe_running(spec: &ServiceSpec) -> ServiceStatus {
     }
 
     ServiceStatus::Stopped
+}
+
+/// Locate the nginx master that was started with Badami's conf (`-c …/local-dev/nginx/nginx.conf`).
+///
+/// Root-owned masters (Mode B / admin elevate) often omit a user-readable pid file;
+/// matching on cmdline is how we keep the Services card in sync with reality.
+fn find_our_nginx_master(spec: &ServiceSpec) -> Option<u32> {
+    let conf = spec.requires_config.first()?;
+    let conf_s = conf.to_string_lossy();
+    // Unique marker for Badami conf (spaces OK — we match as substring).
+    let marker = if conf_s.contains("local-dev/nginx") {
+        "local-dev/nginx/nginx.conf"
+    } else {
+        conf.file_name()?.to_str()?
+    };
+
+    let out = std::process::Command::new("ps")
+        .args(["-axo", "pid=,command="])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // Master only (not workers).
+        if !line.contains("nginx: master process") && !line.contains("nginx-arm64") {
+            continue;
+        }
+        if line.contains("nginx: worker") {
+            continue;
+        }
+        if !line.contains(marker) && !line.contains("local-dev/nginx") {
+            continue;
+        }
+        // Parse leading PID.
+        let pid_str = line.split_whitespace().next()?;
+        let pid: u32 = pid_str.parse().ok()?;
+        if pid == 0 || !pid_is_alive(pid) {
+            continue;
+        }
+        // Prefer binary identity when we can resolve it.
+        if let Some(running) = proc_pid_path(pid) {
+            if !spec.binary_path.as_os_str().is_empty()
+                && !path_same_binary(&running, &spec.binary_path)
+            {
+                // Still accept if cmdline clearly references our conf path.
+                if !line.contains("local-dev/nginx") {
+                    continue;
+                }
+            }
+        }
+        return Some(pid);
+    }
+    None
+}
+
+// ── Privileged nginx (port < 1024 — same problem Herd solves with a helper) ─
+
+fn health_tcp_port(h: &HealthCheck) -> Option<u16> {
+    match h {
+        HealthCheck::Tcp { port, .. } => Some(*port),
+        HealthCheck::Composite { checks } => checks.iter().find_map(health_tcp_port),
+        _ => None,
+    }
+}
+
+/// True when nginx is configured for a privileged listen port (e.g. 80).
+fn nginx_needs_root(spec: &ServiceSpec) -> bool {
+    matches!(spec.kind, ServiceKind::Nginx)
+        && health_tcp_port(&spec.health).map(|p| p > 0 && p < 1024).unwrap_or(false)
+}
+
+fn launchctl_unit_loaded(label: &str) -> bool {
+    std::process::Command::new("launchctl")
+        .args(["print", &format!("system/{label}")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn shell_single_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\"'\"'"))
+}
+
+/// Escape for embedding inside an AppleScript string literal (double quotes).
+fn applescript_string(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Start nginx on a privileged port.
+///
+/// 1. Prefer LaunchDaemon (`com.khalid.badami.local-dev.nginx`) — no password after one-time install.
+/// 2. Else one-shot `osascript` admin elevation (password each start; UI still works).
+async fn start_nginx_privileged(
+    spec: &ServiceSpec,
+    notes: &mut Vec<String>,
+) -> Result<u32, String> {
+    // Path A: LaunchDaemon already installed (Herd-like after first setup).
+    if launchctl_unit_loaded(LD_NGINX_LABEL) {
+        notes.push(format!(
+            "Mode B: LaunchDaemon {LD_NGINX_LABEL} loaded — kickstart"
+        ));
+        let label = LD_NGINX_LABEL.to_string();
+        let out = tokio::task::spawn_blocking(move || {
+            std::process::Command::new("launchctl")
+                .args(["kickstart", "-k", &format!("system/{label}")])
+                .output()
+        })
+        .await
+        .map_err(|e| format!("kickstart task: {e}"))?
+        .map_err(|e| format!("launchctl kickstart: {e}"))?;
+        if !out.status.success() {
+            notes.push(format!(
+                "kickstart stderr: {}",
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+        return wait_nginx_up(spec, notes).await;
+    }
+
+    // Path B: one-shot admin elevate (like a mini privileged start without permanent helper).
+    notes.push(
+        "Mode B LaunchDaemon not installed — elevating once via macOS admin prompt (same idea as Herd helper, temporary)"
+            .into(),
+    );
+    let conf = spec
+        .requires_config
+        .first()
+        .cloned()
+        .ok_or_else(|| "nginx requires_config missing".to_string())?;
+    let prefix = spec
+        .working_dir
+        .clone()
+        .or_else(|| conf.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let bin = spec.binary_path.to_string_lossy().into_owned();
+    let conf_s = conf.to_string_lossy().into_owned();
+    let prefix_s = prefix.to_string_lossy().into_owned();
+
+    // Stop any existing master first (best-effort, may need admin too).
+    let quit_cmd = format!(
+        "{} -c {} -p {} -s quit 2>/dev/null || true; {} -c {} -p {} -g {}",
+        shell_single_quote(&bin),
+        shell_single_quote(&conf_s),
+        shell_single_quote(&prefix_s),
+        shell_single_quote(&bin),
+        shell_single_quote(&conf_s),
+        shell_single_quote(&prefix_s),
+        shell_single_quote("daemon on;"),
+    );
+    let script = format!(
+        "do shell script \"{}\" with administrator privileges",
+        applescript_string(&quit_cmd)
+    );
+
+    let out = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .output()
+    })
+    .await
+    .map_err(|e| format!("osascript task: {e}"))?
+    .map_err(|e| format!("osascript: {e}"))?;
+
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        return Err(format!(
+            "Failed to start nginx on privileged port (admin cancelled or error). \
+             Install Mode B once under Local Dev → Settings → bootstrap HTTP :80, \
+             or approve the admin prompt. Details: {err} {stdout}"
+        ));
+    }
+    notes.push("osascript admin start: ok".into());
+    wait_nginx_up(spec, notes).await
+}
+
+async fn wait_nginx_up(spec: &ServiceSpec, notes: &mut Vec<String>) -> Result<u32, String> {
+    for _ in 0..HEALTH_POLL_ATTEMPTS {
+        if let Some(pid) = try_adopt(spec) {
+            notes.push(format!("nginx up pid={pid}"));
+            return Ok(pid);
+        }
+        // Heal: discover root master by cmdline when pid file missing.
+        if let Some(pid) = find_our_nginx_master(spec) {
+            let _ = write_pid_file(&spec.pid_file, pid);
+            if hard_health_ok(&spec.health) || pid_is_alive(pid) {
+                notes.push(format!("nginx up (discovered master pid={pid})"));
+                return Ok(pid);
+            }
+        }
+        // Port up even if pid file lagging — still success for UI.
+        if hard_health_ok(&spec.health) {
+            if let Some(pid) = read_pid_file(&spec.pid_file).filter(|p| pid_is_alive(*p)) {
+                notes.push(format!("nginx listening; pid file {pid}"));
+                return Ok(pid);
+            }
+            // Do NOT return pid 0 — UI would immediately flip to "not owned".
+            // Keep polling for master discovery.
+            notes.push("nginx listening; waiting to discover master pid…".into());
+        }
+        tokio::time::sleep(Duration::from_millis(HEALTH_POLL_INTERVAL_MS)).await;
+    }
+    // Final attempt: if we found our master even without TCP probe, accept it.
+    if let Some(pid) = find_our_nginx_master(spec) {
+        let _ = write_pid_file(&spec.pid_file, pid);
+        notes.push(format!("nginx master found after timeout window pid={pid}"));
+        return Ok(pid);
+    }
+    Err(
+        "nginx privileged start timed out waiting for listen port. \
+         Check /tmp/com.khalid.badami.local-dev.nginx.err.log or nginx-error.log"
+            .into(),
+    )
+}
+
+async fn stop_nginx_privileged(spec: &ServiceSpec, notes: &mut Vec<String>) {
+    if launchctl_unit_loaded(LD_NGINX_LABEL) {
+        notes.push(format!("Mode B stop: launchctl kill SIGTERM system/{LD_NGINX_LABEL}"));
+        let label = LD_NGINX_LABEL.to_string();
+        let _ = tokio::task::spawn_blocking(move || {
+            std::process::Command::new("launchctl")
+                .args(["kill", "SIGTERM", &format!("system/{label}")])
+                .status()
+        })
+        .await;
+        return;
+    }
+
+    // Elevate quit (root-owned master will ignore unprivileged nginx -s quit / SIGTERM).
+    let conf = match spec.requires_config.first() {
+        Some(c) => c.clone(),
+        None => {
+            notes.push("privileged stop: no conf path".into());
+            return;
+        }
+    };
+    let prefix = spec
+        .working_dir
+        .clone()
+        .or_else(|| conf.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let bin = spec.binary_path.to_string_lossy().into_owned();
+    let conf_s = conf.to_string_lossy().into_owned();
+    let prefix_s = prefix.to_string_lossy().into_owned();
+    let quit_cmd = format!(
+        "{} -c {} -p {} -s quit",
+        shell_single_quote(&bin),
+        shell_single_quote(&conf_s),
+        shell_single_quote(&prefix_s),
+    );
+    let script = format!(
+        "do shell script \"{}\" with administrator privileges",
+        applescript_string(&quit_cmd)
+    );
+    notes.push("privileged stop: osascript admin nginx -s quit".into());
+    let _ = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .status()
+    })
+    .await;
 }
 
 // ── Spawn ───────────────────────────────────────────────────────────
@@ -683,6 +972,37 @@ async fn start_one(
         return Err(e);
     }
 
+    // Nginx on privileged ports (e.g. :80) — Herd uses a privileged helper; we use
+    // LaunchDaemon (preferred) or one-shot admin elevation so UI Start/Stop work.
+    if matches!(spec.kind, ServiceKind::Nginx) && nginx_needs_root(&spec) {
+        {
+            let rt = inner.runtimes.entry(service_id.to_string()).or_default();
+            rt.status = ServiceStatus::Starting;
+        }
+        return match start_nginx_privileged(&spec, notes).await {
+            Ok(pid) => {
+                let status = ServiceStatus::Running { pid };
+                let rt = inner.runtimes.entry(service_id.to_string()).or_default();
+                rt.status = status.clone();
+                rt.pid = if pid == 0 { None } else { Some(pid) };
+                Ok(ServiceActionResult {
+                    service_id: service_id.to_string(),
+                    status,
+                    message: format!("{service_id} started (privileged Mode B / admin)"),
+                    notes: notes.clone(),
+                })
+            }
+            Err(e) => {
+                let status = ServiceStatus::Error {
+                    message: e.clone(),
+                };
+                inner.runtimes.entry(service_id.to_string()).or_default().status =
+                    status.clone();
+                Err(e)
+            }
+        };
+    }
+
     // MariaDB special: preflight first
     if matches!(spec.kind, ServiceKind::MariaDb | ServiceKind::MySql) {
         let report = run_preflight(MariadbPreflightRequest::default())?;
@@ -822,36 +1142,40 @@ async fn stop_one(
             }
         }
     } else if matches!(spec.kind, ServiceKind::Nginx) {
-        // nginx -s quit with same -c/-p as start (argv only).
-        if spec.binary_path.is_file() {
-            let conf = spec
-                .requires_config
-                .first()
-                .cloned()
-                .unwrap_or_else(|| PathBuf::from("nginx.conf"));
-            let prefix = spec
-                .working_dir
-                .clone()
-                .or_else(|| conf.parent().map(|p| p.to_path_buf()))
-                .unwrap_or_else(|| PathBuf::from("."));
-            let conf_s = conf.to_string_lossy().into_owned();
-            let prefix_s = prefix.to_string_lossy().into_owned();
-            let mut cmd = Command::new(&spec.binary_path);
-            cmd.args(["-c", &conf_s, "-p", &prefix_s, "-s", "quit"]);
-            cmd.kill_on_drop(true);
-            cmd.stdin(std::process::Stdio::null());
-            cmd.stdout(std::process::Stdio::null());
-            cmd.stderr(std::process::Stdio::null());
-            match cmd.status().await {
-                Ok(st) if st.success() => notes.push("nginx -s quit: ok".into()),
-                Ok(st) => notes.push(format!("nginx -s quit: exit {st}")),
-                Err(e) => notes.push(format!("nginx -s quit: {e}")),
+        if nginx_needs_root(&spec) {
+            stop_nginx_privileged(&spec, notes).await;
+        } else {
+            // nginx -s quit with same -c/-p as start (argv only).
+            if spec.binary_path.is_file() {
+                let conf = spec
+                    .requires_config
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| PathBuf::from("nginx.conf"));
+                let prefix = spec
+                    .working_dir
+                    .clone()
+                    .or_else(|| conf.parent().map(|p| p.to_path_buf()))
+                    .unwrap_or_else(|| PathBuf::from("."));
+                let conf_s = conf.to_string_lossy().into_owned();
+                let prefix_s = prefix.to_string_lossy().into_owned();
+                let mut cmd = Command::new(&spec.binary_path);
+                cmd.args(["-c", &conf_s, "-p", &prefix_s, "-s", "quit"]);
+                cmd.kill_on_drop(true);
+                cmd.stdin(std::process::Stdio::null());
+                cmd.stdout(std::process::Stdio::null());
+                cmd.stderr(std::process::Stdio::null());
+                match cmd.status().await {
+                    Ok(st) if st.success() => notes.push("nginx -s quit: ok".into()),
+                    Ok(st) => notes.push(format!("nginx -s quit: exit {st}")),
+                    Err(e) => notes.push(format!("nginx -s quit: {e}")),
+                }
             }
-        }
-        // Fallback SIGTERM
-        if let Some(p) = pid {
-            if pid_is_alive(p) {
-                let _ = signal_term(p);
+            // Fallback SIGTERM
+            if let Some(p) = pid {
+                if pid_is_alive(p) {
+                    let _ = signal_term(p);
+                }
             }
         }
         wait_until_dead(pid, DEFAULT_STOP_GRACE_SECS).await;
