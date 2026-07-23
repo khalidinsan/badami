@@ -79,17 +79,13 @@ export function ServiceCard({
   const st = service.status.status;
   const transitional = isServiceBusy(service.status) || busy;
   const detail = serviceStatusDetail(service.status);
-  // Never enable Start+Stop at once (unhealthy used to enable both → "stuck" UI).
-  // - Start: only when fully stopped / failed start (retry)
-  // - Stop: when running, or unhealthy (free the port / kill orphan)
+  // Exclusive buttons — never Start+Stop both active.
+  // unhealthy = process/port half-alive → only Stop (to recover).
+  // stopped/error = only Start.
   const canStart =
     !transitional &&
-    !running &&
-    st !== "unavailable" &&
-    st !== "unhealthy" &&
-    st !== "starting" &&
-    st !== "stopping" &&
-    service.binary_present;
+    service.binary_present &&
+    (st === "stopped" || st === "error");
   const canStop =
     !transitional &&
     (running || st === "unhealthy" || st === "starting" || st === "stopping");

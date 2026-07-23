@@ -918,6 +918,99 @@ fn best_effort_cleanup_spawn(spec: &ServiceSpec, spawn_pid: u32) {
 
 // ── Start / stop ────────────────────────────────────────────────────
 
+/// Ensure at least one PHP-FPM dep is Running and its socket exists before nginx.
+/// Auto-starts missing PHP-FPM deps. Hard-fails if none can start (prevents 502 / stuck unhealthy).
+async fn ensure_nginx_php_deps(
+    inner: &mut SupervisorInner,
+    nginx_spec: &ServiceSpec,
+    notes: &mut Vec<String>,
+) -> Result<(), String> {
+    let deps: Vec<String> = nginx_spec
+        .depends_on
+        .iter()
+        .filter(|d| d.starts_with("php-fpm-"))
+        .cloned()
+        .collect();
+
+    if deps.is_empty() {
+        // No discovered PHP — still block if no sock on disk for common tags.
+        if let Ok(paths) = build_runtime_paths() {
+            let sock74 = PathBuf::from(&paths.socks).join("php74.sock");
+            let sock84 = PathBuf::from(&paths.socks).join("php84.sock");
+            if !sock74.exists() && !sock84.exists() {
+                return Err(
+                    "cannot start nginx: no PHP-FPM available (no php74/php84). \
+                     Install PHP or start php-fpm first"
+                        .into(),
+                );
+            }
+        }
+        return Ok(());
+    }
+
+    let mut any_running = false;
+    for dep in &deps {
+        let running = find_spec(&inner.specs, dep)
+            .map(|s| matches!(probe_running(s), ServiceStatus::Running { .. }))
+            .unwrap_or(false);
+        if running {
+            any_running = true;
+            notes.push(format!("php dep ok: {dep} already running"));
+            continue;
+        }
+        notes.push(format!("auto-starting PHP dependency {dep} before nginx…"));
+        // Nested start — clone id, drop borrow of nginx_spec deps.
+        let dep_id = dep.clone();
+        match Box::pin(start_one(inner, &dep_id, notes)).await {
+            Ok(r) if matches!(r.status, ServiceStatus::Running { .. }) => {
+                any_running = true;
+                notes.push(format!("php dep started: {dep_id}"));
+            }
+            Ok(r) => {
+                notes.push(format!(
+                    "php dep {dep_id} did not reach Running: {}",
+                    r.message
+                ));
+            }
+            Err(e) => {
+                notes.push(format!("php dep {dep_id} start failed: {e}"));
+            }
+        }
+    }
+
+    // Verify at least one Badami FPM socket exists (nginx fastcgi_pass needs it).
+    if let Ok(paths) = build_runtime_paths() {
+        let socks_dir = PathBuf::from(&paths.socks);
+        let has_sock = deps.iter().any(|d| {
+            // php-fpm-7.4 → tag 74, php-fpm-8.4 → 84
+            let ver = d.strip_prefix("php-fpm-").unwrap_or("");
+            let tag: String = ver.chars().filter(|c| c.is_ascii_digit()).collect();
+            if tag.is_empty() {
+                return false;
+            }
+            socks_dir.join(format!("php{tag}.sock")).exists()
+        }) || socks_dir.join("php74.sock").exists()
+            || socks_dir.join("php84.sock").exists();
+
+        if !has_sock {
+            return Err(
+                "cannot start nginx: PHP-FPM socket missing under local-dev/socks \
+                 (start php-fpm-7.4 or php-fpm-8.4 first). Nginx alone causes 502."
+                    .into(),
+            );
+        }
+    }
+
+    if !any_running {
+        return Err(format!(
+            "cannot start nginx: required PHP-FPM not running (need one of: {}). \
+             Start PHP-FPM first, then nginx.",
+            deps.join(", ")
+        ));
+    }
+    Ok(())
+}
+
 async fn start_one(
     inner: &mut SupervisorInner,
     service_id: &str,
@@ -930,13 +1023,18 @@ async fn start_one(
         .cloned()
         .ok_or_else(|| format!("unknown service_id: {service_id}"))?;
 
-    // Soft depends_on: warn if deps are not Running (do not auto-start them here).
-    for dep in &spec.depends_on {
-        if let Some(dep_spec) = find_spec(&inner.specs, dep) {
-            if !matches!(probe_running(dep_spec), ServiceStatus::Running { .. }) {
-                notes.push(format!(
-                    "depends_on: {dep} is not running — start it first or use ld_stack_start"
-                ));
+    // Hard depends_on for nginx → php-fpm: auto-start missing PHP-FPM first, else refuse.
+    // Soft warn for other services.
+    if matches!(spec.kind, ServiceKind::Nginx) {
+        ensure_nginx_php_deps(inner, &spec, notes).await?;
+    } else {
+        for dep in &spec.depends_on {
+            if let Some(dep_spec) = find_spec(&inner.specs, dep) {
+                if !matches!(probe_running(dep_spec), ServiceStatus::Running { .. }) {
+                    notes.push(format!(
+                        "depends_on: {dep} is not running — start it first or use ld_stack_start"
+                    ));
+                }
             }
         }
     }
@@ -967,6 +1065,8 @@ async fn start_one(
                 // Port busy — if it's *our* master (root Mode B), adopt instead of hard-fail.
                 if let Some(pid) = find_our_nginx_master(&spec) {
                     let _ = write_pid_file(&spec.pid_file, pid);
+                    // Still ensure PHP is up so site is not 502 "unhealthy" forever.
+                    let _ = ensure_nginx_php_deps(inner, &spec, notes).await;
                     let status = ServiceStatus::Running { pid };
                     let rt = inner.runtimes.entry(service_id.to_string()).or_default();
                     rt.status = status.clone();

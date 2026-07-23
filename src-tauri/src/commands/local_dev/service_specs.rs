@@ -273,13 +273,27 @@ fn build_nginx_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> ServiceSp
         ],
     };
 
-    // php-fpm soft deps (nginx can start without them but depends_on for order).
+    // Hard deps: nginx must not start without PHP-FPM (else 502 / stuck unhealthy).
+    // Prefer 7.4 when present (legacy office_* apps); include all available versions.
     let mut depends_on = Vec::new();
     for v in &report.herd.php_versions {
         if v.available {
             depends_on.push(format!("php-fpm-{}", v.version));
         }
     }
+    // Prefer php-fpm-7.4 first in list for auto-start priority.
+    depends_on.sort_by(|a, b| {
+        let rank = |s: &str| {
+            if s.contains("7.4") {
+                0
+            } else if s.contains("8.4") {
+                1
+            } else {
+                2
+            }
+        };
+        rank(a).cmp(&rank(b)).then_with(|| a.cmp(b))
+    });
 
     ServiceSpec {
         kind: ServiceKind::Nginx,
