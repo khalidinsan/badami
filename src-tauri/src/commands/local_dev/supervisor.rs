@@ -841,18 +841,35 @@ async fn spawn_service(spec: &ServiceSpec) -> Result<u32, String> {
     // Intentionally drop Child with kill_on_drop(false) so services outlive the app.
     drop(child);
 
-    if pid != 0 {
-        // Services that daemonize rewrite their own pid file; still seed ours.
+    // dnsmasq / php-fpm daemonize: parent exits and rewrites pid-file. Do NOT seed
+    // the parent pid — it goes dead and confuses health (UI "failed health checks").
+    let daemonizes = matches!(
+        spec.kind,
+        ServiceKind::DnsMasq | ServiceKind::PhpFpm { .. } | ServiceKind::Nginx
+    );
+    if pid != 0 && !daemonizes {
         let _ = write_pid_file(&spec.pid_file, pid);
     }
 
     // Health poll — hard checks (port/socket) prove readiness; pid from file after daemonize.
-    for _ in 0..HEALTH_POLL_ATTEMPTS {
+    // Give daemonizing services more time (dnsmasq fork + bind).
+    let attempts = if matches!(spec.kind, ServiceKind::DnsMasq) {
+        HEALTH_POLL_ATTEMPTS * 2
+    } else {
+        HEALTH_POLL_ATTEMPTS
+    };
+    for _ in 0..attempts {
         tokio::time::sleep(Duration::from_millis(HEALTH_POLL_INTERVAL_MS)).await;
+        // Drop stale dead pid from file so we re-read after daemon rewrite.
+        if let Some(p) = read_pid_file(&spec.pid_file) {
+            if !pid_is_alive(p) {
+                clear_stale_pid_safe(&spec.pid_file);
+            }
+        }
         let live_pid = read_pid_file(&spec.pid_file)
             .filter(|p| pid_is_alive(*p))
             .or({
-                if pid != 0 && pid_is_alive(pid) {
+                if !daemonizes && pid != 0 && pid_is_alive(pid) {
                     Some(pid)
                 } else {
                     None
@@ -862,15 +879,22 @@ async fn spawn_service(spec: &ServiceSpec) -> Result<u32, String> {
         let hard_ok = hard_health_ok(&spec.health)
             || matches!(spec.health, HealthCheck::PidAlive) && live_pid.is_some();
 
-        if hard_ok {
-            if let Some(final_pid) = live_pid.or(if pid != 0 { Some(pid) } else { None }) {
+        // dnsmasq: accept live pid-file alone (UDP-only builds may fail TCP probe).
+        let dns_ok = matches!(spec.kind, ServiceKind::DnsMasq) && live_pid.is_some();
+
+        if hard_ok || dns_ok {
+            if let Some(final_pid) = live_pid.or(if pid != 0 && !daemonizes {
+                Some(pid)
+            } else {
+                None
+            }) {
                 if final_pid != 0 {
                     let _ = write_pid_file(&spec.pid_file, final_pid);
                 }
                 return Ok(final_pid);
             }
             // Hard health green right after our spawn but pid file delayed — accept spawn pid.
-            if pid != 0 {
+            if pid != 0 && !daemonizes {
                 return Ok(pid);
             }
         }

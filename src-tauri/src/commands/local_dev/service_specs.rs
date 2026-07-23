@@ -546,6 +546,29 @@ fn build_redis_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> ServiceSp
     }
 }
 
+/// Parse `port=N` from Badami dnsmasq.conf (default 53535 for Mode A unprivileged).
+pub fn parse_dnsmasq_port(paths: &RuntimePaths) -> u16 {
+    let conf = PathBuf::from(&paths.local_dev_root)
+        .join("dnsmasq")
+        .join("dnsmasq.conf");
+    if let Ok(text) = std::fs::read_to_string(&conf) {
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some(rest) = line.strip_prefix("port=") {
+                if let Ok(p) = rest.trim().parse::<u16>() {
+                    if p > 0 {
+                        return p;
+                    }
+                }
+            }
+        }
+    }
+    53535 // Mode A default — port 53 needs root
+}
+
 fn build_dnsmasq_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> ServiceSpec {
     let binary = report
         .herd
@@ -560,21 +583,28 @@ fn build_dnsmasq_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> Service
         .join("dnsmasq.conf");
     let pid_file = PathBuf::from(&paths.pids).join("dnsmasq.pid");
     let log_file = PathBuf::from(&paths.logs).join("dnsmasq.log");
+    let dns_port = parse_dnsmasq_port(paths);
 
-    // dnsmasq keeps foreground unless --keep-in-foreground is omitted and we
-    // pass --pid-file; default is daemonize. Use argv only.
+    // Conf already has pid-file / log-facility / port. Only pass --conf-file so we
+    // don't fight daemonize + double flags. dnsmasq daemonizes by default.
     let args = vec![
         "--conf-file".into(),
         conf.to_string_lossy().into_owned(),
-        "--pid-file".into(),
-        pid_file.to_string_lossy().into_owned(),
-        "--log-facility".into(),
-        log_file.to_string_lossy().into_owned(),
     ];
 
-    // DNS health is complex (resolve probe); for status use PidAlive + optional port.
-    // Port 53 may not be bindable unprivileged — best-effort.
-    let health = HealthCheck::PidAlive;
+    // dnsmasq daemonizes: parent exits immediately; health must re-read pid-file.
+    // Prefer TCP probe on configured port (dnsmasq often binds both UDP+TCP).
+    // If TCP fails on some builds, spawn_service still accepts a live pid-file.
+    let _ = dns_port; // used by health probe below
+    let health = HealthCheck::Composite {
+        checks: vec![
+            HealthCheck::PidAlive,
+            HealthCheck::Tcp {
+                host: "127.0.0.1".into(),
+                port: dns_port,
+            },
+        ],
+    };
 
     ServiceSpec {
         kind: ServiceKind::DnsMasq,

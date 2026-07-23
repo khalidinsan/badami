@@ -477,6 +477,8 @@ pub fn write_dnsmasq_conf(
             ("{{LISTEN_ADDRESS}}", loopback),
             ("{{DNS_PORT}}", &port_s),
             ("{{LOOPBACK}}", loopback),
+            ("{{PIDS_DIR}}", &paths.pids),
+            ("{{LOGS_DIR}}", &paths.logs),
         ],
     );
     write_file(&dir.join("dnsmasq.conf"), &body, written)
@@ -607,7 +609,8 @@ pub fn generate_configs(req: GenerateConfigsRequest) -> Result<GenerateConfigsRe
     let nginx_as_root = req
         .nginx_as_root
         .unwrap_or(http_port > 0 && http_port < 1024);
-    let dns_port = req.dns_port.unwrap_or(53);
+    // Mode A: high port (no root). Port 53 only when explicitly requested (Mode B).
+    let dns_port = req.dns_port.unwrap_or(53535);
     let park_paths = req.park_paths.unwrap_or_default();
 
     let mut written = Vec::new();
