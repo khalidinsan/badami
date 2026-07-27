@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   HardDrive,
   Import,
@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ServicesPanel } from "@/components/local-dev/ServicesPanel";
 import { LogViewer } from "@/components/local-dev/LogViewer";
 import { DnsDegradedBanner } from "@/components/local-dev/DnsDegradedBanner";
+import { HerdConflictBanner } from "@/components/local-dev/HerdConflictBanner";
 import { SitesPanel } from "@/components/local-dev/SitesPanel";
 import { ImportHerdWizard } from "@/components/local-dev/ImportHerdWizard";
 import { DoctorPanel } from "@/components/local-dev/DoctorPanel";
@@ -23,23 +24,61 @@ export const Route = createFileRoute("/local-dev/")({
   component: () => null,
 });
 
+type LocalDevTab = "services" | "sites" | "import" | "doctor" | "settings";
+
 export function LocalDevPage() {
   const mac = isMacOS();
   const discover = useLocalDevStore((s) => s.discover);
   const discovery = useLocalDevStore((s) => s.discovery);
   const loadSettings = useLocalDevStore((s) => s.loadSettings);
+  const listSites = useLocalDevStore((s) => s.listSites);
+  const loadHerdStatus = useLocalDevStore((s) => s.loadHerdStatus);
+  const loadBootstrapStatus = useLocalDevStore((s) => s.loadBootstrapStatus);
+  const probeDns = useLocalDevStore((s) => s.probeDns);
+  const [tab, setTab] = useState<LocalDevTab>("services");
+  /** In the store so a failed service action can reveal the pane on its own. */
+  const logsOpen = useLocalDevStore((s) => s.logsOpen);
   /** Only poll while a local-dev tab is the active (visible) tab — not keep-alive hidden. */
   const localDevActive = useAppTabStore((s) => {
-    const tab = s.tabs.find((t) => t.id === s.activeTabId);
-    return tab?.type === "local-dev";
+    const t = s.tabs.find((x) => x.id === s.activeTabId);
+    return t?.type === "local-dev";
   });
 
   useEffect(() => {
     if (!mac || !localDevActive) return;
     void discover();
     void loadSettings();
+    // Sites feed the required-PHP-version set behind the honest service counts,
+    // so the Services tab needs them too — not just the Sites tab.
+    void listSites();
+    void loadHerdStatus();
+    // The infra strip reports DNS and the effective HTTP port from these two:
+    // bootstrap status carries the real listen/bind ports, and the probe is the
+    // only proof that resolution works.
+    void loadBootstrapStatus();
+    void probeDns();
     return acquireStatusPolling();
-  }, [mac, localDevActive, discover, loadSettings]);
+  }, [
+    mac,
+    localDevActive,
+    discover,
+    loadSettings,
+    listSites,
+    loadHerdStatus,
+    loadBootstrapStatus,
+    probeDns,
+  ]);
+
+  const openDoctor = useCallback(() => setTab("doctor"), []);
+  const openBootstrap = useCallback(() => setTab("settings"), []);
+  /**
+   * Doctor's "View nginx log" — select the service and expand the log pane.
+   * Asking for a log is explicit, so overriding the collapsed default is right.
+   */
+  const showServiceLog = useCallback((serviceId: string) => {
+    useLocalDevStore.getState().revealServiceLog(serviceId);
+    setTab("services");
+  }, []);
 
   if (!mac) {
     return (
@@ -67,9 +106,19 @@ export function LocalDevPage() {
         </div>
       </div>
 
-      <DnsDegradedBanner />
+      {/* Herd running is a hard conflict (ports + datadir); Herd merely being
+          installed is not. This banner only fires on the former. */}
+      <HerdConflictBanner />
 
-      <Tabs defaultValue="services" className="flex min-h-0 flex-1 flex-col gap-0">
+      {/* The Services tab carries its own always-on DNS strip, so the banner
+          would be redundant there. */}
+      {tab !== "services" && <DnsDegradedBanner />}
+
+      <Tabs
+        value={tab}
+        onValueChange={(v) => setTab(v as LocalDevTab)}
+        className="flex min-h-0 flex-1 flex-col gap-0"
+      >
         <div className="border-b border-border/40 px-4 pt-2">
           <TabsList variant="line" className="h-9">
             <TabsTrigger value="services" className="gap-1.5 text-xs">
@@ -97,11 +146,12 @@ export function LocalDevPage() {
 
         <TabsContent value="services" className="mt-0 min-h-0 flex-1 data-[state=inactive]:hidden">
           <div className="flex h-full min-h-0 flex-col">
-            <div className="min-h-0 flex-[3]">
-              <ServicesPanel />
+            <div className="min-h-0 flex-1">
+              <ServicesPanel onOpenDoctor={openDoctor} onOpenBootstrap={openBootstrap} />
             </div>
-            <div className="min-h-[160px] flex-[2]">
-              <LogViewer className="h-full" />
+            {/* Collapsed: a single header bar. Expanded: takes back its pane. */}
+            <div className={logsOpen ? "min-h-[180px] flex-[2] shrink-0" : "shrink-0"}>
+              <LogViewer className="h-full" active={localDevActive && tab === "services"} />
             </div>
           </div>
         </TabsContent>
@@ -115,7 +165,7 @@ export function LocalDevPage() {
         </TabsContent>
 
         <TabsContent value="doctor" className="mt-0 min-h-0 flex-1 data-[state=inactive]:hidden">
-          <DoctorPanel />
+          <DoctorPanel onOpenBootstrap={openBootstrap} onShowServiceLog={showServiceLog} />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-0 min-h-0 flex-1 data-[state=inactive]:hidden">

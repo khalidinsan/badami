@@ -33,6 +33,8 @@
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "autostart:default",
+    "updater:default",
+    "process:default",
     "window-state:default",
     "core:window:default",
     "core:window:allow-set-always-on-top",

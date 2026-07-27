@@ -1,19 +1,26 @@
-use ssh2::{Channel, Session};
+use ssh2::{Channel, ErrorCode, Session};
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::TcpStream;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
 // All blocking SSH operations time out after this many seconds.
 const SSH_TIMEOUT_SECS: u32 = 30;
-// Send SSH keepalive every N seconds of inactivity to prevent server-side idle disconnect.
+// Default SSH keepalive interval (seconds of inactivity).
 const SSH_KEEPALIVE_SECS: u32 = 15;
+// How often the read loop polls when idle. 1ms keeps typing echo snappy
+// without burning a full core (we only spin this hard while the session lives).
+const READ_POLL_MS: u64 = 1;
+// Max bytes drained/emitted per read-loop wake to bound event size.
+const READ_BUF_SIZE: usize = 32 * 1024;
+// How long a non-blocking write may retry on WouldBlock before giving up.
+const WRITE_RETRY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// A live SSH shell session with a PTY channel.
 struct LiveSshSession {
@@ -22,6 +29,8 @@ struct LiveSshSession {
     _tcp: TcpStream,
     /// Set to true to signal the read thread to stop.
     cancel: Arc<AtomicBool>,
+    /// Configured keepalive interval (seconds).
+    keepalive_secs: u32,
 }
 
 // SAFETY: ssh2::Session and Channel are internally reference-counted.
@@ -48,6 +57,25 @@ impl Default for SshState {
     }
 }
 
+/// libssh2 `LIBSSH2_ERROR_EAGAIN` (-37) — operation would block in non-blocking mode.
+fn is_again(err: &ssh2::Error) -> bool {
+    // Prefer the typed code; fall back to message for older bindings.
+    match err.code() {
+        ErrorCode::Session(-37) => true,
+        _ => {
+            let msg = err.message();
+            msg.contains("would block") || msg.contains("EAGAIN")
+        }
+    }
+}
+
+/// True when an I/O error is the non-blocking "try again" signal.
+fn io_would_block(err: &std::io::Error) -> bool {
+    err.kind() == ErrorKind::WouldBlock
+        || err.kind() == ErrorKind::TimedOut
+        || err.to_string().contains("would block")
+}
+
 /// Connect to an SSH server, open a PTY, and start streaming output back
 /// to the frontend via Tauri events.
 #[tauri::command]
@@ -63,7 +91,14 @@ pub async fn ssh_connect(
     passphrase: Option<String>,
     cols: u32,
     rows: u32,
+    keepalive_secs: Option<u32>,
 ) -> Result<String, String> {
+    // Clamp to a sane range; treat None/0 as the default.
+    let keepalive_interval = match keepalive_secs {
+        Some(s) if s > 0 => s.clamp(5, 300),
+        _ => SSH_KEEPALIVE_SECS,
+    };
+
     // Cancel + evict any existing session with the same ID so the old read
     // thread stops before we start a new one.
     {
@@ -84,15 +119,20 @@ pub async fn ssh_connect(
         let tcp = TcpStream::connect(&addr)
             .map_err(|e| format!("Connection failed: {}", e))?;
 
+        // Disable Nagle so interactive keystrokes are not delayed.
+        tcp.set_nodelay(true).ok();
+
         // Keep a clone for the session (ssh2 needs the stream to stay alive)
-        let tcp_clone = tcp.try_clone()
+        let tcp_clone = tcp
+            .try_clone()
             .map_err(|e| format!("TCP clone failed: {}", e))?;
 
-        let mut session = Session::new()
-            .map_err(|e| format!("SSH session error: {}", e))?;
-        // ssh2-level timeout for every blocking operation (milliseconds).
-        // This ensures ssh_resize (which temporarily sets blocking mode) cannot
-        // hang forever on a dead connection and starve the tokio thread pool.
+        let mut session =
+            Session::new().map_err(|e| format!("SSH session error: {}", e))?;
+        // Timeout only matters for the rare ops we still run blocking
+        // (handshake/auth above, exec_command). The interactive path stays
+        // non-blocking forever after connect — flipping modes races the
+        // reader and was a source of spurious "Connection lost".
         session.set_timeout(SSH_TIMEOUT_SECS * 1_000);
         session.set_tcp_stream(tcp);
         session
@@ -127,8 +167,10 @@ pub async fn ssh_connect(
             return Err("Authentication failed".to_string());
         }
 
-        // Enable SSH-level keepalive so the server does not drop idle sessions.
-        session.set_keepalive(false, SSH_KEEPALIVE_SECS);
+        // want_reply=false: we only need to keep NAT/firewall mappings warm.
+        // want_reply=true in non-blocking mode returns EAGAIN mid-flight and
+        // previously killed sessions when we treated any Err as fatal.
+        session.set_keepalive(false, keepalive_interval);
 
         // Open a PTY channel
         let mut channel = session
@@ -143,7 +185,7 @@ pub async fn ssh_connect(
             .shell()
             .map_err(|e| format!("Shell request failed: {}", e))?;
 
-        // Set channel to non-blocking for the read loop
+        // Interactive path is non-blocking for the lifetime of the session.
         session.set_blocking(false);
 
         Ok(LiveSshSession {
@@ -151,12 +193,14 @@ pub async fn ssh_connect(
             channel,
             _tcp: tcp_clone,
             cancel: Arc::new(AtomicBool::new(false)),
+            keepalive_secs: keepalive_interval,
         })
     })
     .await
     .map_err(|e| format!("Task error: {}", e))??;
 
     let cancel = Arc::clone(&live.cancel);
+    let keepalive_secs = live.keepalive_secs;
     let live = Arc::new(Mutex::new(live));
 
     // Store session
@@ -173,22 +217,109 @@ pub async fn ssh_connect(
     let read_cancel = Arc::clone(&cancel);
     thread::spawn(move || {
         let event_name = format!("ssh-output-{}", read_sid);
-        let mut buf = [0u8; 4096];
+        let mut buf = vec![0u8; READ_BUF_SIZE];
+        // First keepalive check soon after connect, then honor returned seconds.
+        let mut next_keepalive = Instant::now() + Duration::from_secs(keepalive_secs.max(5) as u64);
+
+        enum Tick {
+            /// Coalesced payload ready to emit (may be empty if only keepalive ran).
+            Chunk(String),
+            Eof,
+            Idle,
+            Dead(&'static str),
+        }
+
         loop {
-            // Stop if cancelled (happens when ssh_disconnect is called or a new
-            // connection replaces this session).
             if read_cancel.load(Ordering::SeqCst) {
                 break;
             }
 
-            let result = {
-                let mut live = read_live.lock().unwrap();
-                live.channel.read(&mut buf)
+            let tick = {
+                let mut live = match read_live.lock() {
+                    Ok(g) => g,
+                    Err(_) => break,
+                };
+
+                // Keepalive on a timer — NEVER every poll tick. In non-blocking
+                // mode keepalive_send returns EAGAIN when a packet is in flight;
+                // that is normal and must not kill the session.
+                if Instant::now() >= next_keepalive {
+                    match live.session.keepalive_send() {
+                        Ok(secs_until_next) => {
+                            let wait = (secs_until_next as u64).clamp(1, keepalive_secs.max(5) as u64);
+                            next_keepalive = Instant::now() + Duration::from_secs(wait);
+                        }
+                        Err(ref e) if is_again(e) => {
+                            // Packet in flight — retry shortly.
+                            next_keepalive = Instant::now() + Duration::from_secs(1);
+                        }
+                        Err(_) => {
+                            // Real failure (socket dead, etc.)
+                            // Fall through only if channel also looks dead; a
+                            // lone keepalive error while the channel still
+                            // reads is rare — treat as soft and back off.
+                            next_keepalive = Instant::now() + Duration::from_secs(5);
+                        }
+                    }
+                }
+
+                // Drain as much as is immediately available so a burst of
+                // shell output becomes one IPC event instead of dozens.
+                let mut acc = Vec::new();
+                let mut saw_eof = false;
+                let mut fatal: Option<&'static str> = None;
+
+                loop {
+                    match live.channel.read(&mut buf) {
+                        Ok(0) => {
+                            // libssh2 reports EOF as Ok(0) only when channel.eof().
+                            saw_eof = true;
+                            break;
+                        }
+                        Ok(n) => {
+                            acc.extend_from_slice(&buf[..n]);
+                            // Cap one emit so we release the lock & emit promptly.
+                            if acc.len() >= READ_BUF_SIZE {
+                                break;
+                            }
+                        }
+                        Err(ref e) if io_would_block(e) => break,
+                        Err(ref e)
+                            if e.kind() == ErrorKind::ConnectionReset
+                                || e.kind() == ErrorKind::BrokenPipe
+                                || e.kind() == ErrorKind::ConnectionAborted =>
+                        {
+                            fatal = Some("Connection reset by peer");
+                            break;
+                        }
+                        Err(_) => {
+                            // Many libssh2 transient codes map to Other. Only
+                            // declare death if the channel has actually EOFed
+                            // or the socket is gone — otherwise keep polling.
+                            if live.channel.eof() {
+                                saw_eof = true;
+                            } else {
+                                // Soft error: don't kill. Brief idle.
+                                fatal = None;
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(reason) = fatal {
+                    Tick::Dead(reason)
+                } else if saw_eof && acc.is_empty() {
+                    Tick::Eof
+                } else if acc.is_empty() {
+                    Tick::Idle
+                } else {
+                    Tick::Chunk(String::from_utf8_lossy(&acc).into_owned())
+                }
             };
 
-            match result {
-                Ok(0) => {
-                    // Channel EOF — remote closed
+            match tick {
+                Tick::Eof => {
                     let _ = app_handle.emit(&event_name, "\r\n[Connection closed]\r\n");
                     let _ = app_handle.emit(
                         &format!("ssh-status-{}", read_sid),
@@ -198,18 +329,18 @@ pub async fn ssh_connect(
                     sessions.remove(&read_sid);
                     break;
                 }
-                Ok(n) => {
-                    // Convert bytes to string (terminal data may be partial UTF-8, so use lossy)
-                    let data = String::from_utf8_lossy(&buf[..n]).to_string();
+                Tick::Chunk(data) => {
                     let _ = app_handle.emit(&event_name, &data);
+                    // Hot path: don't sleep — immediately try to read more.
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    // Non-blocking: no data yet, sleep briefly
-                    thread::sleep(std::time::Duration::from_millis(10));
+                Tick::Idle => {
+                    thread::sleep(Duration::from_millis(READ_POLL_MS));
                 }
-                Err(_) => {
-                    // Read error — connection likely dead
-                    let _ = app_handle.emit(&event_name, "\r\n[Connection lost]\r\n");
+                Tick::Dead(reason) => {
+                    let _ = app_handle.emit(
+                        &event_name,
+                        &format!("\r\n[{}]\r\n", reason),
+                    );
                     let _ = app_handle.emit(
                         &format!("ssh-status-{}", read_sid),
                         "disconnected",
@@ -229,6 +360,9 @@ pub async fn ssh_connect(
 }
 
 /// Write user input to the SSH channel.
+///
+/// Stays in non-blocking mode for the whole call. Flipping to blocking on
+/// every keystroke raced the reader and added multi-ms latency per char.
 #[tauri::command]
 pub fn ssh_write(
     app: AppHandle,
@@ -236,22 +370,50 @@ pub fn ssh_write(
     data: String,
 ) -> Result<(), String> {
     let state = app.state::<SshState>();
-    // Clone the Arc then release the sessions lock before blocking on SSH I/O.
-    let live = {
+    let live_arc = {
         let sessions = state.sessions.lock().unwrap();
         sessions
             .get(&session_id)
             .ok_or("Session not found")?
             .clone()
     };
-    let mut live = live.lock().unwrap();
-    live.session.set_blocking(true);
-    let result = live.channel
-        .write_all(data.as_bytes())
-        .and_then(|_| live.channel.flush())
-        .map_err(|e| format!("Write failed: {}", e));
-    live.session.set_blocking(false);
-    result
+
+    let bytes = data.into_bytes();
+    if bytes.is_empty() {
+        return Ok(());
+    }
+
+    let deadline = Instant::now() + WRITE_RETRY_TIMEOUT;
+    let mut offset = 0usize;
+
+    while offset < bytes.len() {
+        // Scope the lock so we can drop it on WouldBlock and let the reader run
+        // (which frees SSH window space the write may be waiting on).
+        let write_result = {
+            let mut live = live_arc
+                .lock()
+                .map_err(|_| "Session lock poisoned".to_string())?;
+            live.session.set_blocking(false);
+            live.channel.write(&bytes[offset..])
+        };
+
+        match write_result {
+            Ok(0) => return Err("Write returned 0 bytes".into()),
+            Ok(n) => offset += n,
+            Err(ref e) if io_would_block(e) => {
+                if Instant::now() >= deadline {
+                    return Err("Write timed out".into());
+                }
+                thread::sleep(Duration::from_micros(200));
+            }
+            Err(e) => return Err(format!("Write failed: {}", e)),
+        }
+    }
+
+    // Do NOT flush on every keystroke — libssh2 already pushes data on write
+    // for interactive channels, and flush is a full round-trip that made
+    // typing feel lagged.
+    Ok(())
 }
 
 /// Resize the PTY window.
@@ -270,18 +432,23 @@ pub fn ssh_resize(
             .ok_or("Session not found")?
             .clone()
     };
-    let mut live = live.lock().unwrap();
-    // Temporarily enable blocking mode for the resize request.
-    // IMPORTANT: restore non-blocking BEFORE returning, regardless of outcome,
-    // so subsequent reads/writes use the correct mode.
-    live.session.set_blocking(true);
-    let result = live
-        .channel
-        .request_pty_size(cols, rows, None, None)
-        .map_err(|e| format!("Resize failed: {}", e));
-    // Always restore non-blocking, even when the operation failed or timed out.
+    let mut live = live.lock().map_err(|_| "Session lock poisoned".to_string())?;
+
+    // Non-blocking resize with a short retry — avoids the blocking-mode flip.
     live.session.set_blocking(false);
-    result
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        match live.channel.request_pty_size(cols, rows, None, None) {
+            Ok(()) => return Ok(()),
+            Err(ref e) if is_again(e) => {
+                if Instant::now() >= deadline {
+                    return Err("Resize timed out".into());
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+            Err(e) => return Err(format!("Resize failed: {}", e)),
+        }
+    }
 }
 
 /// Disconnect an SSH session.
@@ -296,9 +463,10 @@ pub fn ssh_disconnect(
         if let Ok(mut live) = live.lock() {
             // Signal read thread to stop
             live.cancel.store(true, Ordering::SeqCst);
+            // Best-effort close; ignore errors on a half-dead socket.
+            live.session.set_blocking(false);
             let _ = live.channel.send_eof();
             let _ = live.channel.close();
-            let _ = live.channel.wait_close();
         }
     }
     drop(sessions);
@@ -324,27 +492,36 @@ pub async fn ssh_exec_command(
     };
 
     let result = tokio::task::spawn_blocking(move || -> Result<String, String> {
-        let mut live = live.lock().unwrap();
+        let mut live = live.lock().map_err(|_| "Session lock poisoned".to_string())?;
+        // Exec needs blocking semantics; isolate it and always restore.
         live.session.set_blocking(true);
-        let mut channel = live.session.channel_session()
-            .map_err(|e| format!("Channel error: {e}"))?;
-        channel.exec(&command).map_err(|e| format!("Exec error: {e}"))?;
+        let exec_result = (|| {
+            let mut channel = live
+                .session
+                .channel_session()
+                .map_err(|e| format!("Channel error: {e}"))?;
+            channel
+                .exec(&command)
+                .map_err(|e| format!("Exec error: {e}"))?;
 
-        let mut output = String::new();
-        channel.read_to_string(&mut output).map_err(|e| format!("Read error: {e}"))?;
+            let mut output = String::new();
+            channel
+                .read_to_string(&mut output)
+                .map_err(|e| format!("Read error: {e}"))?;
 
-        // Also read stderr
-        let mut stderr_out = String::new();
-        channel.stderr().read_to_string(&mut stderr_out).ok();
+            let mut stderr_out = String::new();
+            channel.stderr().read_to_string(&mut stderr_out).ok();
 
-        channel.wait_close().ok();
+            channel.wait_close().ok();
+
+            if !stderr_out.is_empty() && output.is_empty() {
+                Ok(stderr_out)
+            } else {
+                Ok(output)
+            }
+        })();
         live.session.set_blocking(false);
-
-        if !stderr_out.is_empty() && output.is_empty() {
-            Ok(stderr_out)
-        } else {
-            Ok(output)
-        }
+        exec_result
     })
     .await
     .map_err(|e| format!("Task error: {e}"))??;

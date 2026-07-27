@@ -32,7 +32,10 @@ interface ProjectSitePanelProps {
  */
 export function ProjectSitePanel({ projectId }: ProjectSitePanelProps) {
   const sitesResult = useLocalDevStore((s) => s.sitesResult);
-  const sitesBusy = useLocalDevStore((s) => s.sitesBusy);
+  const sitesLoading = useLocalDevStore((s) => s.sitesLoading);
+  const nginxRunning = useLocalDevStore(
+    (s) => s.services.find((x) => x.id === "nginx")?.status.status === "running",
+  );
   const listSites = useLocalDevStore((s) => s.listSites);
   const openSiteUrl = useLocalDevStore((s) => s.openSiteUrl);
   const linkSiteToProject = useLocalDevStore((s) => s.linkSiteToProject);
@@ -111,11 +114,21 @@ export function ProjectSitePanel({ projectId }: ProjectSitePanelProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 px-4 py-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">Local sites</span>
           {linked.length > 0 && (
             <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
               {linked.length}
+            </Badge>
+          )}
+          {/* Same honesty as the Sites tab: with nginx down these URLs refuse
+              connections, so say it rather than letting Open look functional. */}
+          {linked.length > 0 && !nginxRunning && (
+            <Badge
+              variant="outline"
+              className="h-5 px-1.5 text-[10px] border-amber-500/40 text-amber-700 dark:text-amber-400"
+            >
+              nginx stopped
             </Badge>
           )}
         </div>
@@ -123,7 +136,7 @@ export function ProjectSitePanel({ projectId }: ProjectSitePanelProps) {
           size="sm"
           variant="ghost"
           className="h-8 gap-1.5 text-xs"
-          disabled={loading || sitesBusy}
+          disabled={loading || sitesLoading}
           onClick={() => void reload()}
         >
           <RefreshCw className="h-3.5 w-3.5" />
@@ -191,7 +204,7 @@ export function ProjectSitePanel({ projectId }: ProjectSitePanelProps) {
                           size="sm"
                           variant="ghost"
                           className="h-7 gap-1 px-2 text-[11px]"
-                          disabled={linkBusy || sitesBusy}
+                          disabled={linkBusy}
                           onClick={() => void openSiteUrl(row.name)}
                         >
                           <ExternalLink className="h-3 w-3" />

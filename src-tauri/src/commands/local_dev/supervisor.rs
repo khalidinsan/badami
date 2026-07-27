@@ -822,10 +822,27 @@ async fn spawn_service(spec: &ServiceSpec) -> Result<u32, String> {
     cmd.args(&spec.args);
     cmd.kill_on_drop(false);
     cmd.stdin(std::process::Stdio::null());
-    // stdout/stderr discarded — early spawn failures surface only via health timeout
-    // and the service log file (when the binary opens it). See error text below.
-    cmd.stdout(std::process::Stdio::null());
-    cmd.stderr(std::process::Stdio::null());
+    // Capture startup output to a file instead of discarding it.
+    //
+    // A binary that rejects its own argv exits *before* it opens `log_file`, so
+    // the only symptom used to be a health-check timeout pointing at an empty
+    // log. That is how a malformed dnsmasq flag stayed invisible: the real
+    // message ("junk found in command line") went to a null stderr and had to be
+    // reproduced by hand. A file works where a pipe would not — these services
+    // daemonize and outlive the app, so nobody is left to drain a pipe.
+    match std::fs::File::create(spawn_log_path(spec)) {
+        Ok(file) => {
+            match file.try_clone() {
+                Ok(dup) => cmd.stdout(dup),
+                Err(_) => cmd.stdout(std::process::Stdio::null()),
+            };
+            cmd.stderr(file);
+        }
+        Err(_) => {
+            cmd.stdout(std::process::Stdio::null());
+            cmd.stderr(std::process::Stdio::null());
+        }
+    }
     if let Some(ref wd) = spec.working_dir {
         cmd.current_dir(wd);
     }
@@ -909,11 +926,54 @@ async fn spawn_service(spec: &ServiceSpec) -> Result<u32, String> {
     // MariaDB also gets SIGTERM here — admin shutdown is for intentional stop_one.
     best_effort_cleanup_spawn(spec, pid);
 
-    Err(format!(
-        "{} started but failed health checks within timeout (see {}; spawn stderr was discarded)",
-        spec.id,
-        spec.log_file.display()
-    ))
+    // Surface what the process actually said. When a binary rejects its argv this
+    // is the whole diagnosis, and it is the only place it exists.
+    let startup = read_spawn_log(spec);
+    Err(match startup {
+        Some(output) => format!(
+            "{} failed to start: {} (startup output from {})",
+            spec.id,
+            output,
+            spawn_log_path(spec).display()
+        ),
+        None => format!(
+            "{} started but failed health checks within timeout — see {}",
+            spec.id,
+            spec.log_file.display()
+        ),
+    })
+}
+
+/// Where a service's startup stdout/stderr is captured, next to its log.
+fn spawn_log_path(spec: &ServiceSpec) -> PathBuf {
+    let dir = spec
+        .log_file
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    dir.join(format!("{}.spawn.log", spec.id))
+}
+
+/// Startup output, collapsed to one line for an error message. `None` when the
+/// process said nothing — a genuine health timeout rather than a startup refusal.
+fn read_spawn_log(spec: &ServiceSpec) -> Option<String> {
+    const MAX: usize = 400;
+    let text = fs::read_to_string(spawn_log_path(spec)).ok()?;
+    let joined = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join(" · ");
+    if joined.is_empty() {
+        return None;
+    }
+    Some(if joined.chars().count() > MAX {
+        let head: String = joined.chars().take(MAX).collect();
+        format!("{head}…")
+    } else {
+        joined
+    })
 }
 
 /// SIGTERM tracked PIDs after failed health (no SIGKILL — MariaDB included).
@@ -1734,6 +1794,30 @@ pub async fn ld_service_restart(
     start_one(&mut inner, &service_id, &mut notes).await
 }
 
+/// Rebuild every service spec from the config currently on disk.
+///
+/// Specs are cached for the life of the app (`ensure_specs` only builds when the
+/// list is empty), and the status poller uses that cache. So a config rewrite —
+/// a new dnsmasq port, a new nginx listen port — is invisible to status until
+/// something rebuilds: the poller keeps probing a port nothing listens on and
+/// reports a healthy service as stopped. Callers that write config must call this.
+#[tauri::command]
+pub async fn ld_refresh_specs(
+    state: tauri::State<'_, LocalDevState>,
+) -> Result<Vec<ServiceStatusReport>, String> {
+    let mut inner = state.inner.lock().await;
+    inner.refresh_specs()?;
+    let specs: Vec<ServiceSpec> = inner.specs.clone();
+    let mut out = Vec::new();
+    for spec in specs {
+        let rt = inner.runtimes.entry(spec.id.clone()).or_default();
+        let report = status_report(&spec, rt);
+        rt.status = report.status.clone();
+        out.push(report);
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 pub async fn ld_service_status(
     state: tauri::State<'_, LocalDevState>,
@@ -1909,6 +1993,157 @@ pub async fn ld_stack_stop(
     })
 }
 
+// ── Problems (cross-service error scan) ─────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProblemLevel {
+    Error,
+    Warn,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProblemLine {
+    pub level: ProblemLevel,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceProblems {
+    pub service_id: String,
+    pub label: String,
+    pub log_file: String,
+    /// Lines examined for this service (tail window, not whole file).
+    pub scanned: usize,
+    /// Newest last, capped per service.
+    pub problems: Vec<ProblemLine>,
+    pub errors: usize,
+    pub warnings: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProblemsReport {
+    pub services: Vec<ServiceProblems>,
+    pub total_errors: usize,
+    pub total_warnings: usize,
+    pub notes: Vec<String>,
+}
+
+/// Classify a log line. Covers the three formats this stack emits: nginx
+/// (`[error]`), PHP / PHP-FPM (`PHP Fatal error`, `WARNING:`), MariaDB
+/// (`[ERROR]`).
+fn classify_log_line(line: &str) -> Option<ProblemLevel> {
+    let lower = line.to_ascii_lowercase();
+    if lower.contains("[error]")
+        || lower.contains("[crit]")
+        || lower.contains("[alert]")
+        || lower.contains("[emerg]")
+        || lower.contains("php fatal error")
+        || lower.contains("php parse error")
+        || lower.contains("fatal")
+    {
+        return Some(ProblemLevel::Error);
+    }
+    if lower.contains("[warn]")
+        || lower.contains("[warning]")
+        || lower.starts_with("warning:")
+        || lower.contains("php warning")
+        || lower.contains("deprecated")
+    {
+        return Some(ProblemLevel::Warn);
+    }
+    None
+}
+
+/// Newest error/warning lines from **every** service log, grouped per service.
+///
+/// Answers "what is broken?" without making the user pick a service first —
+/// which the per-service tail requires you to already know. Deliberately **not**
+/// a merged chronological stream: nginx, FPM and MariaDB timestamp differently,
+/// so interleaving them without parsing each format would present an ordering
+/// that is simply wrong. Grouping avoids claiming an order that was not measured.
+///
+/// Filtering runs here rather than in the UI so a scan of several thousand lines
+/// does not cross the IPC boundary just to be discarded.
+#[tauri::command]
+pub async fn ld_log_problems(
+    state: tauri::State<'_, LocalDevState>,
+    scan_lines: Option<u32>,
+    max_per_service: Option<u32>,
+) -> Result<ProblemsReport, String> {
+    let scan = scan_lines.unwrap_or(400).min(5000) as usize;
+    let cap = max_per_service.unwrap_or(20).min(200) as usize;
+
+    let mut inner = state.inner.lock().await;
+    inner.ensure_specs()?;
+    let specs: Vec<ServiceSpec> = inner.specs.clone();
+    drop(inner);
+
+    let mut services = Vec::new();
+    let mut total_errors = 0usize;
+    let mut total_warnings = 0usize;
+    let mut notes = Vec::new();
+
+    for spec in specs {
+        let path = Path::new(&spec.log_file);
+        let (lines, _truncated) = match read_log_tail(path, scan) {
+            Ok(v) => v,
+            Err(e) => {
+                notes.push(format!("{}: {e}", spec.id));
+                continue;
+            }
+        };
+        let scanned = lines.len();
+
+        let mut problems: Vec<ProblemLine> = Vec::new();
+        let mut errors = 0usize;
+        let mut warnings = 0usize;
+        for line in &lines {
+            if let Some(level) = classify_log_line(line) {
+                match level {
+                    ProblemLevel::Error => errors += 1,
+                    ProblemLevel::Warn => warnings += 1,
+                }
+                problems.push(ProblemLine {
+                    level,
+                    text: line.clone(),
+                });
+            }
+        }
+        // Keep the newest `cap` — a log that has been failing for hours would
+        // otherwise bury today's failure under its own history.
+        if problems.len() > cap {
+            problems.drain(..problems.len() - cap);
+        }
+
+        if errors == 0 && warnings == 0 {
+            continue;
+        }
+        total_errors += errors;
+        total_warnings += warnings;
+        services.push(ServiceProblems {
+            service_id: spec.id.clone(),
+            label: spec.label.clone(),
+            log_file: spec.log_file.to_string_lossy().into_owned(),
+            scanned,
+            problems,
+            errors,
+            warnings,
+        });
+    }
+
+    // Worst first, so the thing to act on is at the top.
+    services.sort_by(|a, b| b.errors.cmp(&a.errors).then(b.warnings.cmp(&a.warnings)));
+    notes.push(format!("scanned the last {scan} lines per service log"));
+
+    Ok(ProblemsReport {
+        services,
+        total_errors,
+        total_warnings,
+        notes,
+    })
+}
+
 #[tauri::command]
 pub async fn ld_log_tail(
     state: tauri::State<'_, LocalDevState>,
@@ -1943,6 +2178,36 @@ pub async fn ld_log_tail(
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn classifies_lines_from_each_log_format() {
+        // nginx
+        assert!(matches!(
+            classify_log_line("2026/07/27 10:00:00 [error] 123#0: *1 connect() failed"),
+            Some(ProblemLevel::Error)
+        ));
+        assert!(matches!(
+            classify_log_line("2026/07/27 10:00:00 [warn] 123#0: conflicting server name"),
+            Some(ProblemLevel::Warn)
+        ));
+        // PHP-FPM / PHP
+        assert!(matches!(
+            classify_log_line("PHP Fatal error:  Uncaught Error: Class not found"),
+            Some(ProblemLevel::Error)
+        ));
+        assert!(matches!(
+            classify_log_line("WARNING: [pool www] server reached pm.max_children"),
+            Some(ProblemLevel::Warn)
+        ));
+        // MariaDB
+        assert!(matches!(
+            classify_log_line("2026-07-27 10:00:00 0 [ERROR] InnoDB: Unable to lock ibdata1"),
+            Some(ProblemLevel::Error)
+        ));
+        // Ordinary lines must not be reported as problems.
+        assert!(classify_log_line("2026/07/27 10:00:00 [notice] start worker process").is_none());
+        assert!(classify_log_line("127.0.0.1 - GET / 200").is_none());
+    }
 
     #[test]
     fn rotate_log_shifts_and_caps_at_two() {

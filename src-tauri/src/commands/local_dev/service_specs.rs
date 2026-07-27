@@ -587,10 +587,13 @@ fn build_dnsmasq_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> Service
 
     // Conf already has pid-file / log-facility / port. Only pass --conf-file so we
     // don't fight daemonize + double flags. dnsmasq daemonizes by default.
-    let args = vec![
-        "--conf-file".into(),
-        conf.to_string_lossy().into_owned(),
-    ];
+    //
+    // The `=` form is required: dnsmasq does not accept a space-separated value
+    // here. Passing `--conf-file` and the path as two argv entries makes it treat
+    // the path as a positional argument and exit with "junk found in command
+    // line" — before it opens its log, so the failure surfaced only as a health
+    // check timeout with an empty log file.
+    let args = vec![format!("--conf-file={}", conf.to_string_lossy())];
 
     // dnsmasq daemonizes: parent exits immediately; health must re-read pid-file.
     // Prefer TCP probe on configured port (dnsmasq often binds both UDP+TCP).
@@ -758,5 +761,21 @@ mod tests {
         let maria = specs.iter().find(|s| s.id == "mariadb").expect("mariadb");
         assert!(!maria.auto_restart, "MariaDB must never auto_restart");
         assert!(matches!(maria.kind, ServiceKind::MariaDb));
+
+        // Regression: dnsmasq rejects a space-separated value here and exits with
+        // "junk found in command line" *before* opening its log, so the only
+        // symptom is a health-check timeout against an empty file.
+        let dns = specs.iter().find(|s| s.id == "dnsmasq").expect("dnsmasq");
+        assert_eq!(dns.args.len(), 1, "conf-file must be a single argv entry");
+        assert!(
+            dns.args[0].starts_with("--conf-file="),
+            "dnsmasq needs the `=` form, got {:?}",
+            dns.args
+        );
+        assert!(
+            dns.args[0].ends_with("dnsmasq.conf"),
+            "conf path must be attached to the flag, got {:?}",
+            dns.args
+        );
     }
 }

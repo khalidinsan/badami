@@ -18,8 +18,8 @@ import { Route as SettingsIndexRouteImport } from "./routes/settings/index"
 import { Route as ServersIndexRouteImport } from "./routes/servers/index"
 import { Route as ProjectsIndexRouteImport } from "./routes/projects/index"
 import { Route as PlanningIndexRouteImport } from "./routes/planning/index"
-import { Route as DatabaseIndexRouteImport } from "./routes/database/index"
 import { Route as LocalDevIndexRouteImport } from "./routes/local-dev/index"
+import { Route as DatabaseIndexRouteImport } from "./routes/database/index"
 import { Route as CredentialsIndexRouteImport } from "./routes/credentials/index"
 import { Route as ApiIndexRouteImport } from "./routes/api/index"
 import { Route as AiIndexRouteImport } from "./routes/ai/index"
@@ -73,14 +73,14 @@ const PlanningIndexRoute = PlanningIndexRouteImport.update({
   path: "/planning/",
   getParentRoute: () => rootRouteImport,
 } as any)
-const DatabaseIndexRoute = DatabaseIndexRouteImport.update({
-  id: "/database/",
-  path: "/database/",
-  getParentRoute: () => rootRouteImport,
-} as any)
 const LocalDevIndexRoute = LocalDevIndexRouteImport.update({
   id: "/local-dev/",
   path: "/local-dev/",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DatabaseIndexRoute = DatabaseIndexRouteImport.update({
+  id: "/database/",
+  path: "/database/",
   getParentRoute: () => rootRouteImport,
 } as any)
 const CredentialsIndexRoute = CredentialsIndexRouteImport.update({
@@ -326,18 +326,18 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof PlanningIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    "/database/": {
-      id: "/database/"
-      path: "/database"
-      fullPath: "/database/"
-      preLoaderRoute: typeof DatabaseIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     "/local-dev/": {
       id: "/local-dev/"
       path: "/local-dev"
       fullPath: "/local-dev/"
       preLoaderRoute: typeof LocalDevIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/database/": {
+      id: "/database/"
+      path: "/database"
+      fullPath: "/database/"
+      preLoaderRoute: typeof DatabaseIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/credentials/": {

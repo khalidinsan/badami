@@ -16,6 +16,7 @@
 
 use super::discovery::{build_runtime_paths, discover};
 use super::doctor::{launchd_unit_info, parse_resolver_port, LD_DNSMASQ_LABEL, LD_NGINX_LABEL};
+use super::service_specs::{parse_dnsmasq_port, parse_nginx_http_port};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -131,6 +132,15 @@ pub struct BootstrapStatus {
     pub resolver_port: Option<u16>,
     pub dns_bootstrap_complete: bool,
     pub http_bootstrap_complete: bool,
+    /// Port nginx is actually configured to listen on (from the generated conf).
+    pub nginx_listen_port: u16,
+    /// Port `dnsmasq.conf` is actually configured to bind.
+    pub dnsmasq_conf_port: u16,
+    /// Port macOS will query for `*.tld` — a resolver file with no `port` line
+    /// means 53.
+    pub resolver_effective_port: u16,
+    /// The resolver file and `dnsmasq.conf` disagree, so DNS can never resolve.
+    pub dns_port_mismatch: bool,
     /// Recommended next package for the user.
     pub recommended_package: String,
     pub notes: Vec<String>,
@@ -159,8 +169,20 @@ pub fn bootstrap_status(tld: Option<&str>) -> Result<BootstrapStatus, String> {
         None
     };
 
+    let nginx_listen_port = parse_nginx_http_port(&paths);
+    let dnsmasq_conf_port = parse_dnsmasq_port(&paths);
+    // No `port` line in a resolver file means the default, 53.
+    let resolver_effective_port = resolver_port.unwrap_or(53);
+    // Only meaningful once a resolver file exists; without one macOS never
+    // consults dnsmasq at all, which is a different problem.
+    let dns_port_mismatch = resolver_present && resolver_effective_port != dnsmasq_conf_port;
+
     let dns_bootstrap_complete = dnsmasq.system_plist_present || dnsmasq.loaded;
-    let http_bootstrap_complete = nginx.system_plist_present || nginx.loaded;
+    // Unit presence alone used to count as done, which reported a green check
+    // while nginx was still configured for :8080. The listen port is the fact
+    // that decides whether Mode B is actually in effect.
+    let http_bootstrap_complete =
+        (nginx.system_plist_present || nginx.loaded) && nginx_listen_port == 80;
 
     let mut notes = Vec::new();
     notes.push(
@@ -191,6 +213,10 @@ pub fn bootstrap_status(tld: Option<&str>) -> Result<BootstrapStatus, String> {
         resolver_port,
         dns_bootstrap_complete,
         http_bootstrap_complete,
+        nginx_listen_port,
+        dnsmasq_conf_port,
+        resolver_effective_port,
+        dns_port_mismatch,
         recommended_package: recommended_package.into(),
         notes,
         launchd_dir,

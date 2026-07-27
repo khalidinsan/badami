@@ -1,0 +1,119 @@
+# Build Badami, publish a GitHub Release, and upload `latest.json` so the
+# in-app updater (tauri-plugin-updater) can pull signed artifacts from:
+#   https://github.com/khalidinsan/badami/releases/latest/download/latest.json
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   TAURI_SIGNING_PRIVATE_KEY          — full contents of ~/.tauri/badami.key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — leave empty if the key has no password
+#
+# Optional Apple signing / notarization (unsigned mac builds still work for
+# private use; Gatekeeper may require right-click → Open on first launch):
+#   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+#   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
+#
+# How to cut a release:
+#   1. Bump version in package.json + src-tauri/tauri.conf.json + Cargo.toml
+#   2. Commit, then:  git tag v1.14.0 && git push origin v1.14.0
+#   3. Or: Actions → Release → Run workflow
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+            rust_targets: aarch64-apple-darwin
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+            rust_targets: x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            args: ""
+            rust_targets: ""
+          - platform: windows-latest
+            args: ""
+            rust_targets: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and upload release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          # __VERSION__ is replaced with the app version from tauri.conf / Cargo
+          tagName: v__VERSION__
+          releaseName: Badami v__VERSION__
+          releaseBody: |
+            ## Badami v__VERSION__
+
+            Download the installer for your platform below.
+            The in-app updater reads `latest.json` from this release.
+
+            ### Assets
+            - **macOS** — `.dmg` for first install; `.app.tar.gz` used by updater
+            - **Windows** — NSIS setup
+            - **Linux** — AppImage / deb when available
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true

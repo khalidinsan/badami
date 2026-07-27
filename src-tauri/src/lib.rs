@@ -72,6 +72,8 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_window_state::Builder::new()
                 // Intentionally exclude SIZE: tauri-plugin-window-state has a
@@ -196,6 +198,7 @@ pub fn run() {
             commands::local_dev::ld_get_paths,
             commands::local_dev::ld_install_runtime_resources,
             commands::local_dev::ld_generate_configs,
+            commands::local_dev::ld_generate_dnsmasq_conf,
             commands::local_dev::ld_generate_isolated_site,
             commands::local_dev::ld_mariadb_preflight,
             commands::local_dev::ld_probe_mariadb_auth,
@@ -215,14 +218,19 @@ pub fn run() {
             commands::local_dev::supervisor::ld_service_stop,
             commands::local_dev::supervisor::ld_service_restart,
             commands::local_dev::supervisor::ld_service_status,
+            commands::local_dev::supervisor::ld_refresh_specs,
             commands::local_dev::supervisor::ld_stack_start,
             commands::local_dev::supervisor::ld_stack_stop,
             commands::local_dev::supervisor::ld_log_tail,
+            commands::local_dev::supervisor::ld_log_problems,
             // Local Dev (Phase A — doctor + Mode B / DNS bootstrap scaffolds)
             commands::local_dev::ld_doctor,
             commands::local_dev::ld_dns_probe,
             commands::local_dev::ld_bootstrap_status,
             commands::local_dev::ld_bootstrap_install,
+            // Local Dev (Herd coexistence — read-only scan + graceful app quit)
+            commands::local_dev::herd_conflict::ld_herd_status,
+            commands::local_dev::herd_conflict::ld_herd_quit,
         ])
         .manage(commands::ssh::SshState::new())
         .manage(commands::sftp::SftpState::new())

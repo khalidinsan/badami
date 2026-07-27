@@ -3,6 +3,7 @@ import { ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import logoImg from "/logo.png";
+import { UpdateChecker } from "@/components/updater/UpdateChecker";
 
 export const Route = createFileRoute("/about/")({
   component: () => null,
@@ -35,6 +36,14 @@ export function AboutPage() {
           A personal productivity desktop app — tasks, planning, notes, server
           management, credentials, and REST API tools in one place.
         </p>
+
+        {/* Updates */}
+        <div className="rounded-xl border border-border/60 bg-card/50 p-4">
+          <p className="mb-3 text-center text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
+            Updates
+          </p>
+          <UpdateChecker />
+        </div>
 
         {/* Divider */}
         <div className="border-t border-border/50" />

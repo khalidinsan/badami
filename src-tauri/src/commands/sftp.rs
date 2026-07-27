@@ -5,7 +5,11 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
+use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -14,6 +18,9 @@ use tauri::{AppHandle, Emitter, Manager};
 const SSH_TIMEOUT_SECS: u32 = 30;
 // Send an SSH keepalive every N seconds to prevent server-side idle disconnect.
 const SSH_KEEPALIVE_SECS: u32 = 60;
+// How often the background keepalive thread wakes to call keepalive_send.
+// libssh2 only actually sends when the configured interval has elapsed.
+const KEEPALIVE_POLL_SECS: u64 = 5;
 
 /// Represents a remote file/directory entry.
 #[derive(Debug, Clone, Serialize)]
@@ -33,6 +40,8 @@ pub struct FileEntry {
 struct SftpConnection {
     session: Session,
     _tcp: TcpStream,
+    /// Set to true to signal the keepalive thread to stop.
+    cancel: Arc<AtomicBool>,
 }
 
 unsafe impl Send for SftpConnection {}
@@ -83,6 +92,11 @@ fn format_time(secs: u64) -> String {
 }
 
 /// Connect to an SSH server for SFTP operations.
+///
+/// `keepalive_secs` optionally overrides the SSH keepalive interval (clamped
+/// to 5..=300). Defaults to `SSH_KEEPALIVE_SECS` (60). A background thread
+/// periodically calls `keepalive_send()` because SFTP has no read loop that
+/// would otherwise drive libssh2 keepalives.
 #[tauri::command]
 pub async fn sftp_connect(
     app: AppHandle,
@@ -94,14 +108,24 @@ pub async fn sftp_connect(
     password: Option<String>,
     pem_content: Option<String>,
     passphrase: Option<String>,
+    keepalive_secs: Option<u32>,
 ) -> Result<String, String> {
     let sid = session_id.clone();
+    // None/0 → default; otherwise clamp to a sane range.
+    let keepalive_interval = match keepalive_secs {
+        Some(s) if s > 0 => s.clamp(5, 300),
+        _ => SSH_KEEPALIVE_SECS,
+    };
 
-    // Cancel any existing session with the same ID
+    // Cancel any existing session with the same ID so its keepalive thread exits.
     {
         let state = app.state::<SftpState>();
         let mut sessions = state.sessions.lock().unwrap();
-        sessions.remove(&sid);
+        if let Some(old) = sessions.remove(&sid) {
+            if let Ok(old) = old.lock() {
+                old.cancel.store(true, Ordering::SeqCst);
+            }
+        }
     }
 
     let conn = tokio::task::spawn_blocking(move || -> Result<SftpConnection, String> {
@@ -116,6 +140,7 @@ pub async fn sftp_connect(
             .map_err(|e| format!("TCP read timeout error: {}", e))?;
         tcp.set_write_timeout(timeout)
             .map_err(|e| format!("TCP write timeout error: {}", e))?;
+        let _ = tcp.set_nodelay(true);
 
         let tcp_clone = tcp.try_clone()
             .map_err(|e| format!("TCP clone failed: {}", e))?;
@@ -156,9 +181,9 @@ pub async fn sftp_connect(
             return Err("Authentication failed".to_string());
         }
 
-        // Enable SSH-level keepalive so the server does not drop idle sessions.
-        // This fires every SSH_KEEPALIVE_SECS seconds of inactivity.
-        session.set_keepalive(false, SSH_KEEPALIVE_SECS);
+        // Enable SSH-level keepalive (want_reply = true). Actual packets are
+        // sent by the background thread via keepalive_send().
+        session.set_keepalive(true, keepalive_interval);
 
         // Verify SFTP subsystem works
         session
@@ -168,14 +193,63 @@ pub async fn sftp_connect(
         Ok(SftpConnection {
             session,
             _tcp: tcp_clone,
+            cancel: Arc::new(AtomicBool::new(false)),
         })
     })
     .await
     .map_err(|e| format!("Task error: {}", e))??;
 
+    let cancel = Arc::clone(&conn.cancel);
+    let conn = Arc::new(Mutex::new(conn));
+
     let state = app.state::<SftpState>();
-    let mut sessions = state.sessions.lock().unwrap();
-    sessions.insert(sid.clone(), Arc::new(Mutex::new(conn)));
+    {
+        let mut sessions = state.sessions.lock().unwrap();
+        sessions.insert(sid.clone(), Arc::clone(&conn));
+    }
+
+    // SFTP has no read loop, so spawn a background thread that drives
+    // keepalive_send(). libssh2 only transmits when the interval is due.
+    let ka_sid = sid.clone();
+    let ka_conn = Arc::clone(&conn);
+    let ka_sessions = Arc::clone(&state.sessions);
+    let ka_cancel = Arc::clone(&cancel);
+    thread::spawn(move || {
+        loop {
+            if ka_cancel.load(Ordering::SeqCst) {
+                break;
+            }
+
+            thread::sleep(Duration::from_secs(KEEPALIVE_POLL_SECS));
+
+            if ka_cancel.load(Ordering::SeqCst) {
+                break;
+            }
+
+            let result = {
+                let conn = match ka_conn.lock() {
+                    Ok(c) => c,
+                    Err(_) => break,
+                };
+                conn.session.keepalive_send()
+            };
+
+            match result {
+                Ok(_) => {}
+                // Non-blocking EAGAIN is normal — packet still in flight.
+                Err(ref e)
+                    if matches!(e.code(), ssh2::ErrorCode::Session(-37))
+                        || e.message().contains("would block") => {}
+                Err(_) => {
+                    // Real failure — drop the session so callers notice.
+                    ka_cancel.store(true, Ordering::SeqCst);
+                    let mut sessions = ka_sessions.lock().unwrap();
+                    sessions.remove(&ka_sid);
+                    break;
+                }
+            }
+        }
+    });
 
     Ok(sid)
 }
@@ -185,7 +259,11 @@ pub async fn sftp_connect(
 pub fn sftp_disconnect(app: AppHandle, session_id: String) -> Result<(), String> {
     let state = app.state::<SftpState>();
     let mut sessions = state.sessions.lock().unwrap();
-    sessions.remove(&session_id);
+    if let Some(conn) = sessions.remove(&session_id) {
+        if let Ok(conn) = conn.lock() {
+            conn.cancel.store(true, Ordering::SeqCst);
+        }
+    }
     Ok(())
 }
 

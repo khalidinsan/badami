@@ -6,6 +6,7 @@
 pub mod bootstrap;
 pub mod config_gen;
 pub mod discovery;
+pub mod herd_conflict;
 pub mod import_herd;
 pub mod doctor;
 pub mod mariadb_guard;
@@ -80,6 +81,35 @@ pub async fn ld_generate_configs(
         .map_err(|e| format!("ld_generate_configs task failed: {e}"))?
 }
 
+/// Rewrite **only** `dnsmasq/dnsmasq.conf`, at a caller-chosen port.
+///
+/// Split out from [`ld_generate_configs`] on purpose: repairing DNS must not
+/// silently re-emit nginx and FPM config as a side effect. The port that matters
+/// is whatever `/etc/resolver/<tld>` already tells macOS to query — a conf
+/// generated before a default change (`:53` → `:53535`) leaves DNS permanently
+/// dead, since the two halves disagree and `:53` needs root anyway.
+#[tauri::command]
+pub async fn ld_generate_dnsmasq_conf(
+    tld: Option<String>,
+    loopback: Option<String>,
+    dns_port: u16,
+) -> Result<GenerateConfigsResult, String> {
+    tokio::task::spawn_blocking(move || {
+        let paths = build_runtime_paths()?;
+        let tld = tld.unwrap_or_else(|| "test".into());
+        let loopback = loopback.unwrap_or_else(|| "127.0.0.1".into());
+        let mut written = Vec::new();
+        config_gen::write_dnsmasq_conf(&paths, &tld, &loopback, dns_port, &mut written)?;
+        Ok(GenerateConfigsResult {
+            local_dev_root: paths.local_dev_root,
+            written,
+            notes: vec![format!("dnsmasq.conf rewritten for *.{tld} on port {dns_port}")],
+        })
+    })
+    .await
+    .map_err(|e| format!("ld_generate_dnsmasq_conf task failed: {e}"))?
+}
+
 /// Write an isolated-site nginx conf with a **static** unix socket (no njs).
 #[tauri::command]
 pub async fn ld_generate_isolated_site(
@@ -134,6 +164,9 @@ pub async fn ld_import_herd(
         .await
         .map_err(|e| format!("ld_import_herd task failed: {e}"))?
 }
+
+// Herd coexistence (`ld_herd_status`, `ld_herd_quit`) — see `herd_conflict`.
+// Read-only scan plus a graceful app-level quit; never signals Herd services.
 
 // Site park / link / isolate / open / nginx reload — see `sites` module
 // (`ld_list_sites`, `ld_park`, `ld_unpark`, `ld_link`, `ld_unlink`,

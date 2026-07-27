@@ -10,7 +10,9 @@ use super::mariadb_guard::{
     run_preflight, tcp_accepting, unix_socket_accepting, MariadbPreflight, MariadbPreflightRequest,
     MariadbPreflightReport,
 };
-use super::service_specs::{build_specs_from_discovery, parse_nginx_http_port, ServiceSpec};
+use super::service_specs::{
+    build_specs_from_discovery, parse_dnsmasq_port, parse_nginx_http_port, ServiceSpec,
+};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::net::ToSocketAddrs;
@@ -610,6 +612,27 @@ pub fn run_doctor(req: DoctorRequest) -> Result<DoctorReport, String> {
                     .into(),
             ),
         });
+
+        // Far more specific, and far more common after a default change: the two
+        // halves of DNS name different ports, so nothing can ever resolve. Emit
+        // this alongside `dns.unhealthy` because the generic advice above would
+        // otherwise send the user to install a :53 LaunchDaemon they don't need.
+        let conf_port = parse_dnsmasq_port(&paths);
+        let resolver_effective = dns.resolver_port;
+        if dns.resolver_present && resolver_effective != conf_port {
+            findings.push(DoctorFinding {
+                id: "dns.port_mismatch".into(),
+                severity: FindingSeverity::Error,
+                category: "dns".into(),
+                message: format!(
+                    "{} points at port {} but dnsmasq.conf binds {}",
+                    dns.resolver_path, resolver_effective, conf_port
+                ),
+                hint: Some(format!(
+                    "Regenerate dnsmasq.conf on port {resolver_effective} to match the resolver file. No admin needed — the resolver file is already in place."
+                )),
+            });
+        }
     } else if dns.healthy {
         findings.push(DoctorFinding {
             id: "dns.healthy".into(),
@@ -619,7 +642,15 @@ pub fn run_doctor(req: DoctorRequest) -> Result<DoctorReport, String> {
                 "DNS resolve probe OK: {} → {:?} (mode {:?})",
                 dns.hostname, dns.resolved, dns.mode
             ),
-            hint: None,
+            // This probe goes through the *system* resolver, which is the only
+            // thing `/etc/resolver/<tld>` governs. A browser doing DNS-over-HTTPS
+            // sends queries straight to its own provider, which has never heard
+            // of `.test` — so it fails while this check stays green. Worth saying
+            // out loud, because nothing Badami can measure would reveal it.
+            hint: Some(
+                "Measured via the system resolver. If a browser still cannot reach *.test, turn off its secure DNS / DNS-over-HTTPS — that bypasses /etc/resolver entirely (Chrome: Settings → Privacy → Use secure DNS)."
+                    .into(),
+            ),
         });
     }
     if dns.resolver_present && !dns.healthy && !skip_live {

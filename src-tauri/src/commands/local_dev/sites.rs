@@ -1321,7 +1321,9 @@ mod tests {
         assert!(Path::new(&conf).is_file());
         let body = fs::read_to_string(&conf).unwrap();
         assert!(body.contains("ISOLATED_PHP_VERSION=7.4"));
-        assert!(body.contains("fastcgi_pass unix:"));
+        // Quoted since c050354 — socket paths under "Application Support" contain
+        // a space, so `fastcgi_pass unix:…` unquoted is a config error.
+        assert!(body.contains("fastcgi_pass \"unix:"));
         assert!(!body.contains("js_import"));
 
         let un = unisolate_site_at(&tmp.paths, "badami_iso_test").expect("unisolate");

@@ -18,6 +18,7 @@ import {
   type LocalDevSettingKey,
 } from "@/types/localDev";
 import { BootstrapCard } from "@/components/local-dev/BootstrapCard";
+import { cn } from "@/lib/utils";
 
 function settingValue(
   settings: Record<string, string>,
@@ -33,6 +34,8 @@ export function BinarySettings() {
   const loadSettings = useLocalDevStore((s) => s.loadSettings);
   const saveSetting = useLocalDevStore((s) => s.saveSetting);
   const discover = useLocalDevStore((s) => s.discover);
+  const bootstrapStatus = useLocalDevStore((s) => s.bootstrapStatus);
+  const applyHttpPort = useLocalDevStore((s) => s.applyHttpPort);
 
   const [httpPort, setHttpPort] = useState("8080");
   const [defaultPhp, setDefaultPhp] = useState("8.4");
@@ -57,8 +60,21 @@ export function BinarySettings() {
 
   const paths = discovery?.runtime_paths;
 
+  /** Port nginx is really listening on, read from the generated conf. */
+  const effectivePort = bootstrapStatus?.nginx_listen_port ?? null;
+  const requestedPort = Number(httpPort.trim() || "8080");
+  const portDrifted = effectivePort != null && effectivePort !== requestedPort;
+
   const saveAll = async () => {
-    await saveSetting("http_port", httpPort.trim() || "8080");
+    // Saving the port used to write the setting and stop there, leaving nginx on
+    // the old port with no sign anything was unfinished. Route it through the
+    // action that actually applies it: regenerate base config, re-emit every
+    // isolated site conf, then restart nginx.
+    if (effectivePort != null && requestedPort !== effectivePort) {
+      await applyHttpPort(requestedPort);
+    } else {
+      await saveSetting("http_port", String(requestedPort));
+    }
     await saveSetting("default_php_version", defaultPhp);
     await saveSetting("tld", tld.trim() || "test");
     await saveSetting("loopback", loopback.trim() || "127.0.0.1");
@@ -81,8 +97,9 @@ export function BinarySettings() {
               HTTP & DNS
             </CardTitle>
             <CardDescription className="text-xs">
-              Mode A uses an unprivileged http_port (default 8080). Changing port requires
-              regenerating configs (Import or generate).
+              Mode A uses an unprivileged http_port (default 8080). Saving a new port
+              regenerates config and restarts nginx; port 80 additionally needs the
+              LaunchDaemon below.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 px-4 sm:grid-cols-2">
@@ -97,6 +114,20 @@ export function BinarySettings() {
                 className="h-8 text-xs"
                 inputMode="numeric"
               />
+              {effectivePort != null && (
+                <p
+                  className={cn(
+                    "text-[10px]",
+                    portDrifted
+                      ? "text-amber-700 dark:text-amber-400"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {portDrifted
+                    ? `nginx is currently on :${effectivePort} — save to apply :${requestedPort}`
+                    : `nginx is listening on :${effectivePort}`}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Default PHP</Label>
