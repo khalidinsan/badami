@@ -64,6 +64,8 @@ export function RemoteIDE({ server }: Props) {
     setConnectError("");
   }, [server.id]);
 
+  const keepaliveSecs = Number(getSetting("ssh_keepalive_interval", "30")) || 30;
+
   // Reconnect helper — re-establishes SFTP using the same credentials
   const reconnect = useCallback(async () => {
     setReconnecting(true);
@@ -92,13 +94,14 @@ export function RemoteIDE({ server }: Props) {
         password,
         pemContent,
         passphrase,
+        keepaliveSecs,
       });
 
       connectedRef.current = true;
     } finally {
       setReconnecting(false);
     }
-  }, [server, sessionId]);
+  }, [server, sessionId, keepaliveSecs]);
 
   // Establish SFTP connection on mount
   useEffect(() => {
@@ -129,6 +132,7 @@ export function RemoteIDE({ server }: Props) {
           password,
           pemContent,
           passphrase,
+          keepaliveSecs,
         });
 
         // Also connect SSH for shell command execution
@@ -143,6 +147,7 @@ export function RemoteIDE({ server }: Props) {
           passphrase,
           cols: 80,
           rows: 24,
+          keepaliveSecs,
         }).catch(() => {}); // Non-critical — tools degrade gracefully
 
         if (!cancelled) { setConnected(true); connectedRef.current = true; }

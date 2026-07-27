@@ -107,7 +107,8 @@ async fn migrate_tables(src: &Connection, dst: &Connection) {
         WHERE type='table' \
           AND name NOT LIKE 'sqlite_%' \
           AND name NOT LIKE 'libsql_%' \
-          AND name != 'settings'";
+          AND name != 'settings' \
+          AND name NOT LIKE 'local_dev_%'";
 
     let mut tables_rows = match src.query(tables_sql, ()).await {
         Ok(r) => r,

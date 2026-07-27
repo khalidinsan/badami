@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Settings, Timer, Monitor, Rocket, Moon, Sun, KeyRound, Terminal, FolderOpen, Lock, ShieldCheck, RefreshCw, Bot } from "lucide-react";
+import { Settings, Timer, Monitor, Rocket, Moon, Sun, KeyRound, Terminal, FolderOpen, Lock, ShieldCheck, RefreshCw, Bot, Download } from "lucide-react";
+import { UpdateChecker } from "@/components/updater/UpdateChecker";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,7 @@ const SECTIONS = [
   { id: "pomodoro", label: "Pomodoro", icon: Timer },
   { id: "today", label: "Today Window", icon: Monitor },
   { id: "system", label: "System", icon: Rocket },
+  { id: "updates", label: "Updates", icon: Download },
   { id: "terminal", label: "SSH Terminal", icon: Terminal },
   { id: "filemanager", label: "File Manager", icon: FolderOpen },
   { id: "ai", label: "AI Assistant", icon: Bot },
@@ -150,6 +152,25 @@ export function SettingsPage() {
               <Row label="Show app in Dock" desc="Display Badami icon in the macOS Dock">
                 <Switch checked={showDockIcon === "true"} onCheckedChange={(c) => setSetting("show_dock_icon", c ? "true" : "false")} />
               </Row>
+            </Section>
+          )}
+
+          {activeSection === "updates" && (
+            <Section title="Updates" icon={Download}>
+              <p className="text-xs text-muted-foreground">
+                Badami checks{" "}
+                <a
+                  href="https://github.com/khalidinsan/badami/releases"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline"
+                >
+                  GitHub Releases
+                </a>{" "}
+                for signed builds produced by CI. Download & install restarts the app.
+              </p>
+              <Separator />
+              <UpdateChecker compact />
             </Section>
           )}
 

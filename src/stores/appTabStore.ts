@@ -10,6 +10,7 @@ export type AppTabType =
   | "tasks"
   | "servers"
   | "server"
+  | "local-dev"
   | "credentials"
   | "api"
   | "database"

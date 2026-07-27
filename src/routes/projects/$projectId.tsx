@@ -77,11 +77,13 @@ import { ServerList } from "@/components/server/ServerList";
 import { CredentialList } from "@/components/credentials/CredentialList";
 import { ProjectApiPanel } from "@/components/api/ProjectApiPanel";
 import { ProjectDatabasePanel } from "@/components/database/ProjectDatabasePanel";
+import { ProjectSitePanel } from "@/components/local-dev/ProjectSitePanel";
 import * as projectQueries from "@/db/queries/projects";
 import * as pageQueries from "@/db/queries/pages";
 import * as taskQueries from "@/db/queries/tasks";
 import type { ProjectRow, PageRow, TaskRow } from "@/types/db";
 import type { CalendarEventData } from "@/db/queries/planning";
+import { isMacOS } from "@/lib/platform";
 
 export const Route = createFileRoute("/projects/$projectId")({
   component: ProjectLayout,
@@ -127,7 +129,14 @@ const PRIORITY_CONFIG: Record<
   none:   { icon: Minus, color: "text-muted-foreground/30" },
 };
 
-type ActiveTab = "content" | "tasks" | "servers" | "credentials" | "api" | "database";
+type ActiveTab =
+  | "content"
+  | "tasks"
+  | "servers"
+  | "credentials"
+  | "api"
+  | "database"
+  | "local-sites";
 type TaskView = "list" | "board" | "calendar";
 
 export function ProjectLayout() {
@@ -614,6 +623,19 @@ export function ProjectLayout() {
             >
               Database
             </button>
+            {isMacOS() && (
+              <button
+                onClick={() => setActiveTab("local-sites")}
+                className={cn(
+                  "h-7 rounded-md px-3 text-xs font-medium transition-all",
+                  activeTab === "local-sites"
+                    ? "bg-background shadow-sm text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Local sites
+              </button>
+            )}
           </div>
         </div>
 
@@ -644,6 +666,12 @@ export function ProjectLayout() {
         {activeTab === "database" && (
           <div className="flex flex-1 flex-col overflow-hidden">
             <ProjectDatabasePanel projectId={projectId} />
+          </div>
+        )}
+
+        {activeTab === "local-sites" && isMacOS() && (
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <ProjectSitePanel projectId={projectId} />
           </div>
         )}
 

@@ -61,6 +61,7 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
   const fontSize = Number(getSetting("ssh_terminal_font_size", "13"));
   const fontFamily = getSetting("ssh_terminal_font_family", "JetBrains Mono");
   const themeName = getSetting("ssh_terminal_theme", "dark");
+  const keepaliveSecs = Number(getSetting("ssh_keepalive_interval", "30")) || 30;
 
   const handleOutput = useCallback((data: string) => {
     xtermRef.current?.write(data);
@@ -80,8 +81,9 @@ export function SshTerminal({ server, onStatusChange, onOpenFileManager, initial
     authType: server.auth_type,
     onOutput: handleOutput,
     onStatusChange,
-    autoReconnect: getSetting("ssh_auto_reconnect", "false") === "true",
+    autoReconnect: getSetting("ssh_auto_reconnect", "true") === "true",
     maxReconnectAttempts: Number(getSetting("ssh_auto_reconnect_max_attempts", "5")) || 5,
+    keepaliveSecs,
   });
 
   // Send correct terminal size to PTY once connected

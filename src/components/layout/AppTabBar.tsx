@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bot,
+  HardDrive,
 } from "lucide-react";
 import {
   DndContext,
@@ -47,6 +48,7 @@ import {
 import { useAppTabStore, type AppTab, type AppTabType } from "@/stores/appTabStore";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import { isMacOS } from "@/lib/platform";
 import { Input } from "@/components/ui/input";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 
@@ -55,6 +57,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   FolderKanban,
   CheckSquare,
   Server,
+  HardDrive,
   KeyRound,
   Globe,
   Database,
@@ -64,11 +67,18 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Bot,
 };
 
-const NEW_TAB_OPTIONS: { type: AppTabType; title: string; icon: string; route: string }[] = [
+const NEW_TAB_OPTIONS_ALL: {
+  type: AppTabType;
+  title: string;
+  icon: string;
+  route: string;
+  macOnly?: boolean;
+}[] = [
   { type: "planning", title: "Planning", icon: "CalendarDays", route: "/planning" },
   { type: "projects", title: "Projects", icon: "FolderKanban", route: "/projects" },
   { type: "tasks", title: "Tasks", icon: "CheckSquare", route: "/tasks" },
   { type: "servers", title: "Servers", icon: "Server", route: "/servers" },
+  { type: "local-dev", title: "Local Dev", icon: "HardDrive", route: "/local-dev", macOnly: true },
   { type: "credentials", title: "Credentials", icon: "KeyRound", route: "/credentials" },
   { type: "api", title: "API", icon: "Globe", route: "/api" },
   { type: "database", title: "Database", icon: "Database", route: "/database" },
@@ -76,6 +86,8 @@ const NEW_TAB_OPTIONS: { type: AppTabType; title: string; icon: string; route: s
   { type: "stats", title: "Statistics", icon: "BarChart3", route: "/stats" },
   { type: "settings", title: "Settings", icon: "Settings", route: "/settings" },
 ];
+
+const NEW_TAB_OPTIONS = NEW_TAB_OPTIONS_ALL.filter((o) => !o.macOnly || isMacOS());
 
 export function AppTabBar() {
   const { tabs, activeTabId, setActiveTab, closeTab, closeOtherTabs, closeTabsToRight, closeAllTabs, openTab, renameTab, reorderTabs, pinTab, unpinTab } =

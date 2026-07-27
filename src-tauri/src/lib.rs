@@ -72,6 +72,8 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_window_state::Builder::new()
                 // Intentionally exclude SIZE: tauri-plugin-window-state has a
@@ -190,6 +192,45 @@ pub fn run() {
             commands::db_transfer::dbc_import_csv,
             commands::db_transfer::dbc_import_sql,
             commands::db_transfer::dbc_preview_csv,
+            // Local Dev (Phase A — discovery, resources, config gen, guards, import)
+            commands::local_dev::ld_discover,
+            commands::local_dev::ld_get_runtime_paths,
+            commands::local_dev::ld_get_paths,
+            commands::local_dev::ld_install_runtime_resources,
+            commands::local_dev::ld_generate_configs,
+            commands::local_dev::ld_generate_dnsmasq_conf,
+            commands::local_dev::ld_generate_isolated_site,
+            commands::local_dev::ld_mariadb_preflight,
+            commands::local_dev::ld_probe_mariadb_auth,
+            commands::local_dev::ld_import_herd,
+            // Local Dev (Phase A — sites: park / link / isolate / open / nginx reload)
+            commands::local_dev::sites::ld_list_sites,
+            commands::local_dev::sites::ld_park,
+            commands::local_dev::sites::ld_unpark,
+            commands::local_dev::sites::ld_link,
+            commands::local_dev::sites::ld_unlink,
+            commands::local_dev::sites::ld_isolate_php,
+            commands::local_dev::sites::ld_unisolate,
+            commands::local_dev::sites::ld_open_site_url,
+            commands::local_dev::sites::ld_reload_nginx,
+            // Local Dev (Phase A — process supervisor)
+            commands::local_dev::supervisor::ld_service_start,
+            commands::local_dev::supervisor::ld_service_stop,
+            commands::local_dev::supervisor::ld_service_restart,
+            commands::local_dev::supervisor::ld_service_status,
+            commands::local_dev::supervisor::ld_refresh_specs,
+            commands::local_dev::supervisor::ld_stack_start,
+            commands::local_dev::supervisor::ld_stack_stop,
+            commands::local_dev::supervisor::ld_log_tail,
+            commands::local_dev::supervisor::ld_log_problems,
+            // Local Dev (Phase A — doctor + Mode B / DNS bootstrap scaffolds)
+            commands::local_dev::ld_doctor,
+            commands::local_dev::ld_dns_probe,
+            commands::local_dev::ld_bootstrap_status,
+            commands::local_dev::ld_bootstrap_install,
+            // Local Dev (Herd coexistence — read-only scan + graceful app quit)
+            commands::local_dev::herd_conflict::ld_herd_status,
+            commands::local_dev::herd_conflict::ld_herd_quit,
         ])
         .manage(commands::ssh::SshState::new())
         .manage(commands::sftp::SftpState::new())
@@ -197,7 +238,8 @@ pub fn run() {
         .manage(commands::vault::VaultState::new())
         .manage(commands::db::DbState::new())
         .manage(commands::file_watch::FileWatchState::new())
-        .manage(commands::db_connection::DbClientState::new());
+        .manage(commands::db_connection::DbClientState::new())
+        .manage(commands::local_dev::supervisor::LocalDevState::new());
 
     #[cfg(debug_assertions)]
     {

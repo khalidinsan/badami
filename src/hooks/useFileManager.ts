@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { FileEntry } from "@/types/server";
 import type { ServerCredentialRow } from "@/types/db";
 import * as serverQueries from "@/db/queries/servers";
+import { useSettingsStore } from "@/stores/settingsStore";
 import {
   isPermissionGranted,
   requestPermission,
@@ -52,6 +53,8 @@ export function useFileManager({ server }: UseFileManagerOptions) {
   const [loading, setLoading] = useState(false);
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
   const statusRef = useRef<FileManagerStatus>("idle");
+  const { getSetting } = useSettingsStore();
+  const keepaliveSecs = Number(getSetting("ssh_keepalive_interval", "30")) || 30;
 
   const isSSH = server.protocol === "ssh";
   const isFTP = server.protocol === "ftp" || server.protocol === "ftps";
@@ -103,6 +106,7 @@ export function useFileManager({ server }: UseFileManagerOptions) {
           password: password ?? null,
           pemContent: pemContent ?? null,
           passphrase: passphrase ?? null,
+          keepaliveSecs,
         });
       } else if (isFTP) {
         password = await invoke<string>("get_server_password", { serverId: server.id }).catch(() => "");
@@ -125,7 +129,7 @@ export function useFileManager({ server }: UseFileManagerOptions) {
       updateStatus("disconnected");
       throw err;
     }
-  }, [sessionId, server, isSSH, isFTP, updateStatus]);
+  }, [sessionId, server, isSSH, isFTP, updateStatus, keepaliveSecs]);
 
   // Disconnect
   const disconnect = useCallback(async () => {

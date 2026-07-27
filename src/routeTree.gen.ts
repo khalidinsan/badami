@@ -18,6 +18,7 @@ import { Route as SettingsIndexRouteImport } from "./routes/settings/index"
 import { Route as ServersIndexRouteImport } from "./routes/servers/index"
 import { Route as ProjectsIndexRouteImport } from "./routes/projects/index"
 import { Route as PlanningIndexRouteImport } from "./routes/planning/index"
+import { Route as LocalDevIndexRouteImport } from "./routes/local-dev/index"
 import { Route as DatabaseIndexRouteImport } from "./routes/database/index"
 import { Route as CredentialsIndexRouteImport } from "./routes/credentials/index"
 import { Route as ApiIndexRouteImport } from "./routes/api/index"
@@ -72,6 +73,11 @@ const PlanningIndexRoute = PlanningIndexRouteImport.update({
   path: "/planning/",
   getParentRoute: () => rootRouteImport,
 } as any)
+const LocalDevIndexRoute = LocalDevIndexRouteImport.update({
+  id: "/local-dev/",
+  path: "/local-dev/",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DatabaseIndexRoute = DatabaseIndexRouteImport.update({
   id: "/database/",
   path: "/database/",
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   "/api/": typeof ApiIndexRoute
   "/credentials/": typeof CredentialsIndexRoute
   "/database/": typeof DatabaseIndexRoute
+  "/local-dev/": typeof LocalDevIndexRoute
   "/planning/": typeof PlanningIndexRoute
   "/projects/": typeof ProjectsIndexRoute
   "/servers/": typeof ServersIndexRoute
@@ -142,6 +149,7 @@ export interface FileRoutesByTo {
   "/api": typeof ApiIndexRoute
   "/credentials": typeof CredentialsIndexRoute
   "/database": typeof DatabaseIndexRoute
+  "/local-dev": typeof LocalDevIndexRoute
   "/planning": typeof PlanningIndexRoute
   "/projects": typeof ProjectsIndexRoute
   "/servers": typeof ServersIndexRoute
@@ -162,6 +170,7 @@ export interface FileRoutesById {
   "/api/": typeof ApiIndexRoute
   "/credentials/": typeof CredentialsIndexRoute
   "/database/": typeof DatabaseIndexRoute
+  "/local-dev/": typeof LocalDevIndexRoute
   "/planning/": typeof PlanningIndexRoute
   "/projects/": typeof ProjectsIndexRoute
   "/servers/": typeof ServersIndexRoute
@@ -183,6 +192,7 @@ export interface FileRouteTypes {
     | "/api/"
     | "/credentials/"
     | "/database/"
+    | "/local-dev/"
     | "/planning/"
     | "/projects/"
     | "/servers/"
@@ -201,6 +211,7 @@ export interface FileRouteTypes {
     | "/api"
     | "/credentials"
     | "/database"
+    | "/local-dev"
     | "/planning"
     | "/projects"
     | "/servers"
@@ -220,6 +231,7 @@ export interface FileRouteTypes {
     | "/api/"
     | "/credentials/"
     | "/database/"
+    | "/local-dev/"
     | "/planning/"
     | "/projects/"
     | "/servers/"
@@ -240,6 +252,7 @@ export interface RootRouteChildren {
   ApiIndexRoute: typeof ApiIndexRoute
   CredentialsIndexRoute: typeof CredentialsIndexRoute
   DatabaseIndexRoute: typeof DatabaseIndexRoute
+  LocalDevIndexRoute: typeof LocalDevIndexRoute
   PlanningIndexRoute: typeof PlanningIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
   ServersIndexRoute: typeof ServersIndexRoute
@@ -311,6 +324,13 @@ declare module "@tanstack/react-router" {
       path: "/planning"
       fullPath: "/planning/"
       preLoaderRoute: typeof PlanningIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/local-dev/": {
+      id: "/local-dev/"
+      path: "/local-dev"
+      fullPath: "/local-dev/"
+      preLoaderRoute: typeof LocalDevIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/database/": {
@@ -395,6 +415,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiIndexRoute: ApiIndexRoute,
   CredentialsIndexRoute: CredentialsIndexRoute,
   DatabaseIndexRoute: DatabaseIndexRoute,
+  LocalDevIndexRoute: LocalDevIndexRoute,
   PlanningIndexRoute: PlanningIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
   ServersIndexRoute: ServersIndexRoute,

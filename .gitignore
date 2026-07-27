@@ -18,7 +18,8 @@ src-tauri/gen/
 
 # ─── Rust ─────────────────────────────────────────────────────
 **/*.rs.bk
-Cargo.lock
+# Commit src-tauri/Cargo.lock for reproducible CI release builds.
+# (Library crates may still ignore lockfiles; this is an application.)
 
 # ─── macOS ────────────────────────────────────────────────────
 .DS_Store
@@ -60,6 +61,8 @@ logs/
 
 # ─── Project planning / internal docs ──────────────────────
 plan-*.md
+# Ship Local Dev design with the feature (v1.13.0 / PR 11)
+!plan-local-dev.md
 CHECKLIST.md
 CHECKLIST-2.md
 overview.md
@@ -68,4 +71,4 @@ crash.txt
 # ─── Misc ─────────────────────────────────────────────────────
 *.local
 .tanstack/
-package-lock.json
+# package-lock.json is committed for reproducible npm ci in release CI.
