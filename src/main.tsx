@@ -7,17 +7,41 @@ import { invoke } from "@tauri-apps/api/core";
 import { initDatabase } from "@/db/client";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useSyncStore } from "@/stores/syncStore";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import "@fontsource-variable/plus-jakarta-sans";
 import "./index.css";
 
-// Disable native browser right-click context menu globally
+// Disable native browser right-click context menu globally.
+// App UI provides its own context menus + ErrorBoundary "Reload" when needed.
 document.addEventListener("contextmenu", (e) => e.preventDefault());
 
 // Apply theme immediately from localStorage (no db wait needed)
 const savedTheme = localStorage.getItem("app_theme") ?? "dark";
 applyTheme(savedTheme);
 
-const router = createRouter({ routeTree });
+const router = createRouter({
+  routeTree,
+  defaultErrorComponent: ({ error }) => (
+    <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3 p-8 text-center">
+      <p className="text-sm font-medium text-foreground">Navigation error</p>
+      <p className="max-w-md break-all font-mono text-[11px] text-muted-foreground">
+        {error instanceof Error ? error.message : String(error)}
+      </p>
+      <button
+        type="button"
+        className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+        onClick={() => window.location.reload()}
+      >
+        Reload app
+      </button>
+    </div>
+  ),
+  defaultNotFoundComponent: () => (
+    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      Page not found
+    </div>
+  ),
+});
 
 declare module "@tanstack/react-router" {
   interface Register {
@@ -111,7 +135,9 @@ function AppWrapper() {
   }
 
   return (
-    <RouterProvider router={router} />
+    <ErrorBoundary label="application">
+      <RouterProvider router={router} />
+    </ErrorBoundary>
   );
 }
 

@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,12 @@ const CATEGORIES = [
 ];
 
 function PageDetail() {
-  const { projectId, pageId } = Route.useParams();
+  const params = useParams({
+    from: "/projects/$projectId/pages/$pageId",
+    shouldThrow: false,
+  });
+  const projectId = params?.projectId ?? "";
+  const pageId = params?.pageId ?? "";
   const navigate = useNavigate();
   const [page, setPage] = useState<PageRow | null>(null);
   const [title, setTitle] = useState("");
@@ -47,6 +52,7 @@ function PageDetail() {
   const titleTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
+    if (!pageId) return;
     pageQueries.getPageById(pageId).then((p) => {
       if (p) {
         setPage(p);

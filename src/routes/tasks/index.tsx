@@ -1,4 +1,9 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  useNavigate,
+  useSearch,
+  useRouterState,
+} from "@tanstack/react-router";
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -63,9 +68,31 @@ export const Route = createFileRoute("/tasks/")({
   }),
 });
 
+type TasksSearch = {
+  selected?: string;
+  list?: SmartListType;
+};
+
+/**
+ * Tasks is rendered inside tab keep-alive (often while the URL is NOT /tasks).
+ * `Route.useSearch()` throws "Invariant failed" when `/tasks/` is not an active
+ * match — that blanked the whole app. Read search with shouldThrow:false and
+ * only apply URL → store sync while the router is actually on /tasks.
+ */
 export function TasksPage() {
-  const { selected, list } = Route.useSearch();
   const navigate = useNavigate();
+  const isTasksRoute = useRouterState({
+    select: (s) => {
+      const p = s.location.pathname;
+      return p === "/tasks" || p === "/tasks/" || p.startsWith("/tasks/");
+    },
+  });
+  // Soft read: undefined when /tasks is not the active match (keep-alive safe).
+  const routeSearch = useSearch({
+    from: "/tasks/",
+    shouldThrow: false,
+  }) as TasksSearch | undefined;
+
   const {
     tasks,
     labels,
@@ -94,39 +121,56 @@ export function TasksPage() {
     bulkMoveToProject,
   } = useTasks();
 
-  // Sync URL search param → store
+  // Last URL search we applied while on /tasks — used when writing navigate()
+  // so we don't depend on a live match.
+  const lastSearchRef = useRef<TasksSearch>({});
+  if (isTasksRoute && routeSearch) {
+    lastSearchRef.current = {
+      selected: routeSearch.selected,
+      list: routeSearch.list,
+    };
+  }
+
+  // Sync URL search param → store (only while this route is active)
   useEffect(() => {
+    if (!isTasksRoute) return;
+    const selected = routeSearch?.selected;
     if (selected && selected !== selectedTaskId) {
       setSelectedTaskId(selected);
     }
-  }, [selected]);
+  }, [isTasksRoute, routeSearch?.selected, selectedTaskId, setSelectedTaskId]);
 
-  // Handle Smart List param
+  // Handle Smart List param (only while on /tasks — do NOT clear filters when
+  // the user merely switches to another keep-alive tab).
   useEffect(() => {
+    if (!isTasksRoute) return;
+    const list = routeSearch?.list;
     if (list) {
       setFilters({ smart_list: list });
       loadTasks({ smart_list: list });
-    } else {
-      // Clear smart list filter when navigating to plain /tasks
-      if (filters.smart_list) {
-        setFilters({});
-        loadTasks({});
-      }
+    } else if (filters.smart_list) {
+      // Plain /tasks with no ?list= — clear smart list filter
+      setFilters({});
+      loadTasks({});
     }
-  }, [list]);
+    // intentionally not depending on filters.smart_list to avoid loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTasksRoute, routeSearch?.list]);
 
   const handleSelectTask = useCallback(
     (id: string) => {
       setSelectedTaskId(id);
-      navigate({ to: "/tasks", search: (prev) => ({ list: prev.list, selected: id }) });
+      const list = lastSearchRef.current.list ?? routeSearch?.list;
+      navigate({ to: "/tasks", search: { list, selected: id } });
     },
-    [setSelectedTaskId, navigate],
+    [setSelectedTaskId, navigate, routeSearch?.list],
   );
 
   const handleCloseDrawer = useCallback(() => {
     setSelectedTaskId(null);
-    navigate({ to: "/tasks", search: (prev) => ({ list: prev.list, selected: undefined }) });
-  }, [setSelectedTaskId, navigate]);
+    const list = lastSearchRef.current.list ?? routeSearch?.list;
+    navigate({ to: "/tasks", search: { list, selected: undefined } });
+  }, [setSelectedTaskId, navigate, routeSearch?.list]);
 
   const [newTitle, setNewTitle] = useState("");
   const [taskSidebarOpen, setTaskSidebarOpen] = useState(true);
@@ -143,8 +187,10 @@ export function TasksPage() {
   }, []);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Keyboard navigation and task shortcuts
+  // Keyboard navigation and task shortcuts — only while Tasks is the active route
+  // (keep-alive mounts this page under other URLs too).
   useEffect(() => {
+    if (!isTasksRoute) return;
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       const isEditable =
@@ -196,7 +242,7 @@ export function TasksPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [tasks, selectedTaskId, handleSelectTask, handleCloseDrawer, toggleTask, toggleStar, deleteTask]);
+  }, [isTasksRoute, tasks, selectedTaskId, handleSelectTask, handleCloseDrawer, toggleTask, toggleStar, deleteTask]);
 
   const handleCreateTask = async () => {
     const title = newTitle.trim();

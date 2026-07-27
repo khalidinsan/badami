@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/khalidinsan/badami/releases/tag/v1.14.0"><code>v1.14.0</code></a>
+  <a href="https://github.com/khalidinsan/badami/releases/tag/v1.14.1"><code>v1.14.1</code></a>
   ·
   <a href="https://github.com/khalidinsan/badami/releases">Releases</a>
 </p>
@@ -35,8 +35,8 @@ Builds are signed for the **in-app updater** but not Apple-notarized yet, so Gat
 
 ```bash
 # DMG
-xattr -cr ~/Downloads/badami_1.14.0_aarch64.dmg
-open ~/Downloads/badami_1.14.0_aarch64.dmg
+xattr -cr ~/Downloads/badami_1.14.1_aarch64.dmg
+open ~/Downloads/badami_1.14.1_aarch64.dmg
 
 # After dragging to Applications
 xattr -cr /Applications/badami.app
@@ -195,8 +195,8 @@ Pushing a version tag runs [`.github/workflows/release.yml`](./.github/workflows
 
 ```bash
 # Bump version in package.json, src-tauri/tauri.conf.json, and Cargo.toml (keep in sync)
-git tag v1.14.0
-git push origin v1.14.0
+git tag v1.14.1
+git push origin v1.14.1
 ```
 
 Required secret: `TAURI_SIGNING_PRIVATE_KEY` (and optional password).  

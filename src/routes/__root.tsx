@@ -11,6 +11,7 @@ import { useAppTabStore } from "@/stores/appTabStore";
 import { CommandPalette } from "@/components/search/CommandPalette";
 import { Toaster } from "@/components/ui/sonner";
 import { OnboardingDialog } from "@/components/OnboardingDialog";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { register, unregisterAll } from "@tauri-apps/plugin-global-shortcut";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -133,14 +134,18 @@ function RootComponent() {
 
   return (
     <MainLayout>
-      {/* Keep-alive tabs */}
-      <div className={isRouterTab ? "hidden" : "h-full"}>
-        <TabContentArea />
-      </div>
-      {/* Router Outlet — project detail renders here, other routes return null */}
-      <div className={isRouterTab ? "h-full" : "hidden"}>
-        <Outlet />
-      </div>
+      <ErrorBoundary label="app shell">
+        {/* Keep-alive tabs — each panel has its own boundary inside TabContentArea */}
+        <div className={isRouterTab ? "hidden" : "h-full"}>
+          <TabContentArea />
+        </div>
+        {/* Router Outlet — project detail renders here, other routes return null */}
+        <div className={isRouterTab ? "h-full" : "hidden"}>
+          <ErrorBoundary label="project view">
+            <Outlet />
+          </ErrorBoundary>
+        </div>
+      </ErrorBoundary>
       <CommandPalette
         open={paletteOpen}
         onOpenChange={setPaletteOpen}

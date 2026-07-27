@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
 import { BlockNoteEditor } from "@/components/editor/BlockNoteEditor";
 import * as projectQueries from "@/db/queries/projects";
@@ -9,10 +9,15 @@ export const Route = createFileRoute("/projects/$projectId/")({
 });
 
 function ProjectOverview() {
-  const { projectId } = Route.useParams();
+  const params = useParams({
+    from: "/projects/$projectId/",
+    shouldThrow: false,
+  });
+  const projectId = params?.projectId ?? "";
   const [project, setProject] = useState<ProjectRow | null>(null);
 
   useEffect(() => {
+    if (!projectId) return;
     projectQueries.getProjectById(projectId).then((p) => {
       if (p) setProject(p);
     });
@@ -20,12 +25,13 @@ function ProjectOverview() {
 
   const handleContentChange = useCallback(
     async (content: string) => {
+      if (!projectId) return;
       await projectQueries.updateProject(projectId, { content });
     },
     [projectId],
   );
 
-  if (!project) return null;
+  if (!projectId || !project) return null;
 
   return (
     <div className="py-2">

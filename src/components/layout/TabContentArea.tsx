@@ -1,5 +1,6 @@
 import { lazy, memo, Suspense, useEffect, useState } from "react";
 import { useAppTabStore, type AppTabType } from "@/stores/appTabStore";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Lazy-loaded page components from route files
 const PlanningPage = lazy(() => import("@/routes/planning/index").then((m) => ({ default: m.PlanningPage })));
@@ -33,6 +34,22 @@ const TAB_COMPONENT_MAP: Partial<Record<AppTabType, SimplePageComponent>> = {
   about: AboutPage,
 };
 
+const TAB_LABELS: Partial<Record<AppTabType, string>> = {
+  planning: "Planning",
+  projects: "Projects",
+  tasks: "Tasks",
+  servers: "Servers",
+  server: "Server",
+  "local-dev": "Local Dev",
+  credentials: "Credentials",
+  api: "API",
+  database: "Database",
+  ai: "AI Chat",
+  stats: "Statistics",
+  settings: "Settings",
+  about: "About",
+};
+
 // Tab types rendered by TanStack Router's <Outlet> (project detail)
 export const ROUTER_RENDERED_TABS: Set<AppTabType> = new Set(["project"]);
 
@@ -48,19 +65,23 @@ function TabLoading() {
 const TabPanel = memo(function TabPanel({
   type,
   isActive,
+  title,
 }: {
   tabId: string;
   type: AppTabType;
   isActive: boolean;
+  title: string;
 }) {
   const Component = TAB_COMPONENT_MAP[type];
   if (!Component) return null;
 
   return (
-    <div className={isActive ? "h-full" : "hidden"}>
-      <Suspense fallback={<TabLoading />}>
-        <Component />
-      </Suspense>
+    <div className={isActive ? "h-full" : "hidden"} aria-hidden={!isActive}>
+      <ErrorBoundary label={title || TAB_LABELS[type] || type} compact>
+        <Suspense fallback={<TabLoading />}>
+          <Component />
+        </Suspense>
+      </ErrorBoundary>
     </div>
   );
 });
@@ -107,6 +128,7 @@ export function TabContentArea() {
             key={tab.id}
             tabId={tab.id}
             type={tab.type}
+            title={tab.title}
             isActive={tab.id === activeTabId}
           />
         );

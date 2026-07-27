@@ -1,4 +1,9 @@
-import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Outlet,
+  useNavigate,
+  useParams,
+} from "@tanstack/react-router";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   ArrowLeft,
@@ -140,7 +145,13 @@ type ActiveTab =
 type TaskView = "list" | "board" | "calendar";
 
 export function ProjectLayout() {
-  const { projectId } = Route.useParams();
+  // Soft params: avoid "Invariant failed" if match is briefly missing during
+  // tab switches (Outlet is also wrapped in an ErrorBoundary).
+  const params = useParams({
+    from: "/projects/$projectId",
+    shouldThrow: false,
+  });
+  const projectId = params?.projectId ?? "";
   const navigate = useNavigate();
   const [project, setProject] = useState<ProjectRow | null>(null);
   const [pages, setPages] = useState<PageRow[]>([]);
@@ -164,6 +175,10 @@ export function ProjectLayout() {
   const taskInputRef = useRef<HTMLInputElement>(null);
 
   const loadProject = useCallback(async () => {
+    if (!projectId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const p = await projectQueries.getProjectById(projectId);
     if (p) {
@@ -181,6 +196,11 @@ export function ProjectLayout() {
   useEffect(() => {
     loadProject();
   }, [loadProject]);
+
+  // No match (tab switch race) — don't render a half-broken layout
+  if (!projectId) {
+    return null;
+  }
 
   const handleUpdate = async (data: {
     name: string;
