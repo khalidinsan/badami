@@ -318,7 +318,9 @@ pub fn run() {
         .expect("error building tauri application")
         .run(|app, event| {
             match event {
-                // macOS dock icon click when all windows are hidden → show main
+                // macOS dock icon click when all windows are hidden → show main.
+                // `RunEvent::Reopen` is macOS-only in Tauri.
+                #[cfg(target_os = "macos")]
                 tauri::RunEvent::Reopen { .. } => {
                     if let Some(win) = app.get_webview_window("main") {
                         let _ = win.show();

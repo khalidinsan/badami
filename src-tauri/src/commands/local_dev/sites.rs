@@ -24,9 +24,25 @@ use super::service_specs::parse_nginx_http_port;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// Create a symlink. Local Dev is macOS-first; Windows gets a best-effort path
+/// so the crate still compiles in the multi-platform release matrix.
+fn make_symlink(target: &Path, link: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, link)
+    }
+    #[cfg(windows)]
+    {
+        if target.is_dir() {
+            std::os::windows::fs::symlink_dir(target, link)
+        } else {
+            std::os::windows::fs::symlink_file(target, link)
+        }
+    }
+}
 
 // ── DTOs ────────────────────────────────────────────────────────────
 
@@ -603,7 +619,7 @@ pub fn link_site_at(
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or(target.clone());
 
-    symlink(&abs_target, &link_path).map_err(|e| {
+    make_symlink(Path::new(&abs_target), &link_path).map_err(|e| {
         format!(
             "symlink {} → {}: {e}",
             link_path.display(),

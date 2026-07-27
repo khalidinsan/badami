@@ -2,19 +2,16 @@
 # in-app updater (tauri-plugin-updater) can pull signed artifacts from:
 #   https://github.com/khalidinsan/badami/releases/latest/download/latest.json
 #
-# Required repo secrets (Settings → Secrets and variables → Actions):
+# Required repo secrets:
 #   TAURI_SIGNING_PRIVATE_KEY          — full contents of ~/.tauri/badami.key
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — leave empty if the key has no password
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — empty if the key has no password
 #
-# Optional Apple signing / notarization (unsigned mac builds still work for
-# private use; Gatekeeper may require right-click → Open on first launch):
+# Optional Apple signing (omit until configured — empty values break codesign):
 #   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
 #   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
 #
-# How to cut a release:
-#   1. Bump version in package.json + src-tauri/tauri.conf.json + Cargo.toml
-#   2. Commit, then:  git tag v1.14.0 && git push origin v1.14.0
-#   3. Or: Actions → Release → Run workflow
+# Trigger: git tag vX.Y.Z && git push origin vX.Y.Z
+#   or Actions → Release → Run workflow
 
 name: Release
 
@@ -37,12 +34,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Primary target (Apple Silicon). Intel mac skipped for now — cross
+          # compile needs a dedicated OpenSSL sysroot on the arm64 runner.
           - platform: macos-latest
             args: --target aarch64-apple-darwin
             rust_targets: aarch64-apple-darwin
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
-            rust_targets: x86_64-apple-darwin
           - platform: ubuntu-22.04
             args: ""
             rust_targets: ""
@@ -81,7 +77,9 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            xdg-utils
+            xdg-utils \
+            libssl-dev \
+            pkg-config
 
       - name: Install frontend dependencies
         run: npm ci
@@ -92,14 +90,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Intentionally NO APPLE_* here until real certs are configured.
+          # Empty APPLE_CERTIFICATE makes `security import` fail the bundle step.
         with:
-          # __VERSION__ is replaced with the app version from tauri.conf / Cargo
           tagName: v__VERSION__
           releaseName: Badami v__VERSION__
           releaseBody: |
@@ -109,7 +102,7 @@ jobs:
             The in-app updater reads `latest.json` from this release.
 
             ### Assets
-            - **macOS** — `.dmg` for first install; `.app.tar.gz` used by updater
+            - **macOS (Apple Silicon)** — `.dmg` first install; `.app.tar.gz` for updater
             - **Windows** — NSIS setup
             - **Linux** — AppImage / deb when available
           releaseDraft: false

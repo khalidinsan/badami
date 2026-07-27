@@ -13,5 +13,6 @@ pub mod password_gen;
 pub mod session_manager;
 pub mod sftp;
 pub mod ssh;
+pub mod ssh_auth;
 pub mod totp;
 pub mod vault;

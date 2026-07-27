@@ -35,16 +35,16 @@ pub async fn test_server_connection(
             }
             "pem_file" | "pem_saved" => {
                 let pem = pem_content.ok_or("PEM key content required")?;
-                session
-                    .userauth_pubkey_memory(&username, None, &pem, None)
-                    .map_err(|e| format!("Auth failed: {}", e))?;
+                super::ssh_auth::userauth_pubkey_pem(&session, &username, &pem, None)?;
             }
             "pem_passphrase" => {
                 let pem = pem_content.ok_or("PEM key content required")?;
-                let pp = passphrase.as_deref();
-                session
-                    .userauth_pubkey_memory(&username, None, &pem, pp)
-                    .map_err(|e| format!("Auth failed: {}", e))?;
+                super::ssh_auth::userauth_pubkey_pem(
+                    &session,
+                    &username,
+                    &pem,
+                    passphrase.as_deref(),
+                )?;
             }
             _ => return Err(format!("Unknown auth type: {}", auth_type)),
         }
