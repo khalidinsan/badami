@@ -481,6 +481,15 @@ section {
   border-radius: var(--radius);
 }
 
+/* Card-like blocks carry the same bottom margin a paragraph does. Without it a
+   table or a callout that follows another block sits flush against it, since
+   only p, ul, and pre declared one. */
+.docs-body .table-scroll,
+.docs-body .note,
+.docs-body .grid {
+  margin: 0 0 14px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -761,8 +770,12 @@ pre code {
   margin-left: auto;
 }
 
+/* The wrapper carries the block's outer margin, because below 560px it turns
+   into a flex container and the inner pre keeps its own spacing only on wide
+   screens. */
 .code-wrap {
   position: relative;
+  margin: 0 0 14px;
 }
 
 .code-wrap .copy-btn {
@@ -812,6 +825,7 @@ pre code {
 
   .code-wrap pre {
     padding-right: 16px;
+    margin-bottom: 0;
   }
 }
 
@@ -925,7 +939,11 @@ pre code {
   font-weight: 700;
 }
 
-.docs-body h2:first-of-type {
+/* The heading that follows the page subtitle needs no top margin, because the
+   subtitle already supplies the gap. Keyed on the subtitle rather than
+   :first-of-type, so a callout or table sitting between them still gets its
+   own space above the heading. */
+.docs-body .sub + h2 {
   margin-top: 0;
 }
 
