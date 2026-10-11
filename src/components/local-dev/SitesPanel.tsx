@@ -98,7 +98,7 @@ export function SitesPanel() {
 
   const phpOptions = useMemo(() => {
     const fromDiscovery =
-      discovery?.herd.php_versions
+      discovery?.badami?.php_versions
         ?.filter((v) => v.available)
         .map((v) => v.version) ?? [];
     const defaults = ["8.4", "8.3", "8.2", "8.1", "8.0", "7.4"];
@@ -265,7 +265,7 @@ export function SitesPanel() {
               {sitesLoading ? "Loading sites…" : "No sites yet"}
             </p>
             <p className="mb-4 max-w-sm text-xs text-muted-foreground/70">
-              Park a directory or link a project path. Import from Herd to seed parks and
+              Park a directory or link a project path to serve it locally and
               isolates.
             </p>
             <Button size="sm" variant="outline" onClick={() => void listSites()}>
@@ -584,7 +584,7 @@ export function SitesPanel() {
             <DialogTitle>Link to project · {projectLinkSite?.name}</DialogTitle>
             <DialogDescription>
               Sets <span className="font-mono text-[11px]">local_dev_sites.project_id</span> so
-              the site appears on the project&apos;s Local sites tab. Does not modify Herd.
+              the site appears on the project&apos;s Local sites tab.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">

@@ -1,24 +1,20 @@
-//! Read-only discovery of Herd leftovers, PHP/nginx/MariaDB/Redis binaries,
-//! ports, and Badami local-dev runtime paths.
+//! Read-only discovery of the Badami local-dev runtime: provisioned binaries,
+//! MariaDB datadirs, ports, and runtime paths.
 //!
 //! **Safety:** this module never starts/stops processes, never writes configs,
 //! and never mutates or deletes MariaDB datadirs.
 
+use super::runtime_manifest::{self, RuntimeComponent};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-const PRIVILEGED_HELPER: &str = "/Library/PrivilegedHelperTools/de.beyondco.herd.helper";
-const SHARED_HERD_SERVICES: &str = "/Users/Shared/Herd/services";
-const HERD_APP_RESOURCES: &str = "/Applications/Herd.app/Contents/Resources";
 const RESOLVER_TEST: &str = "/etc/resolver/test";
 
 /// Ports checked for an accepting TCP listener (read-only connect probe).
 const SCAN_PORTS: &[u16] = &[80, 8080, 3306, 6379, 53];
-
-// ── Public types ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimePaths {
@@ -33,6 +29,14 @@ pub struct RuntimePaths {
     pub pids: String,
     pub logs: String,
     pub import: String,
+    /// Badami-owned binaries at `<root>/runtime/<role>/<version>/`.
+    ///
+    /// Populated by [`super::provision`]; absent on a pre-standalone install.
+    pub runtime: String,
+    /// Badami-owned service data at `<root>/data/` (MariaDB datadir lives here).
+    pub data: String,
+    /// Per-version php.ini scan dirs at `<root>/config/php/<tag>/`.
+    pub php_config: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,62 +76,6 @@ pub struct PhpVersionInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FpmConfInfo {
-    pub path: String,
-    pub version: String,
-    pub has_matching_binary: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NginxSiteConf {
-    pub path: String,
-    pub site_name: String,
-    /// Parsed from `# ISOLATED_PHP_VERSION=7.4` if present.
-    pub isolated_php_version: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RedisInfo {
-    pub shared_path: Option<String>,
-    pub version: Option<String>,
-    pub redis_server: Option<String>,
-    pub redis_cli: Option<String>,
-    pub dump_rdb: Option<String>,
-    pub service_conf: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValetInfo {
-    pub config_path: Option<String>,
-    pub tld: Option<String>,
-    pub loopback: Option<String>,
-    pub paths: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HerdInventory {
-    pub detected: bool,
-    pub app_path: Option<String>,
-    pub home_path: Option<String>,
-    pub config_path: Option<String>,
-    pub bin_path: Option<String>,
-    pub shared_services_path: Option<String>,
-    pub resources_path: Option<String>,
-    pub privileged_helper_present: bool,
-    pub privileged_helper_path: String,
-    pub mariadb_candidates: Vec<MariadbCandidate>,
-    pub park_paths: Vec<String>,
-    pub php_versions: Vec<PhpVersionInfo>,
-    pub fpm_confs: Vec<FpmConfInfo>,
-    pub nginx_site_confs: Vec<NginxSiteConf>,
-    pub redis: Option<RedisInfo>,
-    pub valet: Option<ValetInfo>,
-    pub nginx_binary: Option<String>,
-    pub dnsmasq_binary: Option<String>,
-    pub server_php: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BinaryCandidate {
     pub role: String,
     pub path: String,
@@ -152,12 +100,36 @@ pub struct ResolverInfo {
     pub content: Option<String>,
 }
 
+/// Badami-owned runtime binaries, verified against `runtime/manifest.json`.
+///
+/// Every entry passed [`runtime_manifest::verify`], so a stale or tampered
+/// binary is never advertised here even when it is still on disk.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BadamiRuntimeInventory {
+    pub root: String,
+    pub detected: bool,
+    pub components: Vec<RuntimeComponent>,
+    pub nginx_binary: Option<String>,
+    pub dnsmasq_binary: Option<String>,
+    pub php_versions: Vec<PhpVersionInfo>,
+    pub mariadb_binary: Option<String>,
+    /// MariaDB `basedir` (the version dir holding `bin/` and `lib/`).
+    pub mariadb_basedir: Option<String>,
+    pub redis_server: Option<String>,
+    /// MariaDB datadir adopted by a completed migration, when one already ran.
+    pub data_dir: Option<String>,
+    pub datadir_adopted: bool,
+    /// Datadirs found under `<local-dev>/data`, best candidate first.
+    pub mariadb_candidates: Vec<MariadbCandidate>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoveryReport {
     pub platform: String,
     pub arch: String,
     pub runtime_paths: RuntimePaths,
-    pub herd: HerdInventory,
+    /// Badami's own provisioned binaries; the only binary source.
+    pub badami: BadamiRuntimeInventory,
     pub candidates: Vec<BinaryCandidate>,
     pub ports_in_use: Vec<PortInUse>,
     pub resolver: ResolverInfo,
@@ -165,13 +137,11 @@ pub struct DiscoveryReport {
     pub notes: Vec<String>,
 }
 
-// ── Path helpers ────────────────────────────────────────────────────
-
 fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
 }
 
-/// Arch suffix used by Herd.app Resources binaries (`nginx-arm64` / `nginx-x86`).
+/// Arch suffix for arch-tagged resource names (`nginx-arm64` / `nginx-x86`).
 pub fn preferred_suffix() -> &'static str {
     match std::env::consts::ARCH {
         "aarch64" => "arm64",
@@ -188,7 +158,7 @@ pub fn platform_name() -> &'static str {
     }
 }
 
-/// Canonical Badami local-dev runtime root (path string only — does not mkdir).
+/// Canonical Badami local-dev runtime root (path string only, does not mkdir).
 pub fn local_dev_root() -> Result<PathBuf, String> {
     let home = home_dir().ok_or_else(|| "HOME is not set".to_string())?;
     Ok(home
@@ -215,6 +185,9 @@ pub fn runtime_paths_from_root(root: PathBuf) -> RuntimePaths {
         pids: s(root.join("pids")),
         logs: s(root.join("logs")),
         import: s(root.join("import")),
+        runtime: s(root.join("runtime")),
+        data: s(root.join("data")),
+        php_config: s(root.join("config").join("php")),
     }
 }
 
@@ -222,20 +195,7 @@ pub fn build_runtime_paths() -> Result<RuntimePaths, String> {
     Ok(runtime_paths_from_root(local_dev_root()?))
 }
 
-fn herd_home() -> Option<PathBuf> {
-    home_dir().map(|h| h.join("Library").join("Application Support").join("Herd"))
-}
-
-fn path_if_exists(p: impl AsRef<Path>) -> Option<String> {
-    let p = p.as_ref();
-    if p.exists() {
-        Some(p.to_string_lossy().into_owned())
-    } else {
-        None
-    }
-}
-
-/// Coarse datadir size for scoring/UI — **not** a full recursive tree sum.
+/// Coarse datadir size for scoring/UI, **not** a full recursive tree sum.
 ///
 /// Safety/performance:
 /// - never follows symlinks (avoids cycles and escapes)
@@ -255,7 +215,7 @@ fn estimate_datadir_bytes(path: &Path) -> u64 {
         let Ok(ft) = entry.file_type() else {
             continue;
         };
-        // Never follow symlinks — prevents cycles and walks outside the datadir.
+        // Never follow symlinks; prevents cycles and walks outside the datadir.
         if ft.is_symlink() {
             continue;
         }
@@ -307,8 +267,6 @@ fn modified_secs_ago(path: &Path) -> Option<u64> {
     Some(elapsed.as_secs())
 }
 
-// ── my.cnf parsing ──────────────────────────────────────────────────
-
 fn parse_my_cnf(path: &Path) -> Option<MyCnfInfo> {
     let content = fs::read_to_string(path).ok()?;
     let mut basedir = None;
@@ -355,8 +313,6 @@ fn strip_quotes(s: &str) -> String {
     }
 }
 
-// ── MariaDB UUID scoring ────────────────────────────────────────────
-
 fn score_mariadb_candidate(dir: &Path, uuid: &str) -> MariadbCandidate {
     let ibdata1 = dir.join("ibdata1");
     let mysql_schema = dir.join("mysql");
@@ -369,7 +325,7 @@ fn score_mariadb_candidate(dir: &Path, uuid: &str) -> MariadbCandidate {
         None
     };
 
-    // Cheap size estimate (no deep recursive walk — see estimate_datadir_bytes).
+    // Cheap size estimate (no deep recursive walk, see estimate_datadir_bytes).
     let bytes = estimate_datadir_bytes(dir);
     let modified = modified_secs_ago(dir);
 
@@ -422,11 +378,11 @@ fn looks_like_mariadb_datadir(dir: &Path) -> bool {
             }
         }
     }
-    // Redis service UUID dirs hold redis.conf only — skip those.
+    // Redis service UUID dirs hold redis.conf only; skip those.
     if dir.join("redis.conf").is_file() {
         return false;
     }
-    // Empty / near-empty UUID shells may be unused MariaDB slots — keep for inventory.
+    // Empty / near-empty UUID shells may be unused MariaDB slots; keep for inventory.
     // Any non-dot entry means this is not an empty shell (and not already matched above).
     let Ok(entries) = fs::read_dir(dir) else {
         return false;
@@ -441,33 +397,8 @@ fn looks_like_mariadb_datadir(dir: &Path) -> bool {
     true
 }
 
-fn discover_mariadb_candidates(services_dir: &Path) -> Vec<MariadbCandidate> {
-    let mut out = Vec::new();
-    let Ok(entries) = fs::read_dir(services_dir) else {
-        return out;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy().into_owned();
-        // UUID-like service dirs
-        if name.len() < 8 || !name.contains('-') {
-            continue;
-        }
-        if !looks_like_mariadb_datadir(&path) {
-            continue;
-        }
-        out.push(score_mariadb_candidate(&path, &name));
-    }
-    out.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| b.bytes.cmp(&a.bytes)));
-    out
-}
-
-// ── PHP versions ────────────────────────────────────────────────────
-
 /// Convert compact tag `74` / `84` / `82` → `7.4` / `8.4` / `8.2`.
+#[cfg(test)]
 fn tag_to_version(tag: &str) -> Option<String> {
     if tag.len() == 2 && tag.chars().all(|c| c.is_ascii_digit()) {
         let major = &tag[0..1];
@@ -483,328 +414,9 @@ fn tag_to_version(tag: &str) -> Option<String> {
     None
 }
 
-/// Parse `7.4` / `8.4` from fpm conf filename like `7.4-fpm.conf`.
-fn version_from_fpm_filename(name: &str) -> Option<String> {
-    // strip -fpm.conf / -fpm-debug.conf
-    let base = name
-        .strip_suffix("-fpm-debug.conf")
-        .or_else(|| name.strip_suffix("-fpm.conf"))?;
-    if base.chars().all(|c| c.is_ascii_digit() || c == '.') {
-        Some(base.to_string())
-    } else {
-        None
-    }
-}
-
 fn version_to_tag(version: &str) -> String {
     version.replace('.', "")
 }
-
-fn discover_php_versions(
-    bin_dir: &Path,
-    fpm_dir: Option<&Path>,
-) -> (Vec<PhpVersionInfo>, Vec<FpmConfInfo>) {
-    use std::collections::{BTreeMap, BTreeSet};
-
-    let mut tags: BTreeSet<String> = BTreeSet::new();
-    let mut cli: BTreeMap<String, PathBuf> = BTreeMap::new();
-    let mut fpm: BTreeMap<String, PathBuf> = BTreeMap::new();
-
-    if let Ok(entries) = fs::read_dir(bin_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            // Accept regular files and symlinks that resolve to files; reject dirs.
-            let Ok(ft) = entry.file_type() else {
-                continue;
-            };
-            if ft.is_dir() {
-                continue;
-            }
-            // `is_file()` follows one symlink level; rejects broken links and dirs.
-            if !path.is_file() {
-                continue;
-            }
-
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if !name.starts_with("php") {
-                continue;
-            }
-            // php74, php74-fpm, php84, php84-fpm (skip bare `php` symlink)
-            if let Some(rest) = name.strip_prefix("php") {
-                if rest.is_empty() {
-                    continue;
-                }
-                if let Some(tag) = rest.strip_suffix("-fpm") {
-                    if tag.chars().all(|c| c.is_ascii_digit()) {
-                        tags.insert(tag.to_string());
-                        fpm.insert(tag.to_string(), path);
-                    }
-                } else if rest.chars().all(|c| c.is_ascii_digit()) {
-                    tags.insert(rest.to_string());
-                    cli.insert(rest.to_string(), path);
-                }
-            }
-        }
-    }
-
-    let mut fpm_confs = Vec::new();
-    let mut conf_by_version: BTreeMap<String, PathBuf> = BTreeMap::new();
-
-    if let Some(fpm_dir) = fpm_dir {
-        if let Ok(entries) = fs::read_dir(fpm_dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().into_owned();
-                if name.contains("-debug") {
-                    continue;
-                }
-                if let Some(ver) = version_from_fpm_filename(&name) {
-                    let tag = version_to_tag(&ver);
-                    tags.insert(tag.clone());
-                    conf_by_version.insert(ver.clone(), entry.path());
-                    let has_bin = fpm.contains_key(&tag) || cli.contains_key(&tag);
-                    fpm_confs.push(FpmConfInfo {
-                        path: entry.path().to_string_lossy().into_owned(),
-                        version: ver,
-                        has_matching_binary: has_bin,
-                    });
-                }
-            }
-        }
-    }
-    fpm_confs.sort_by(|a, b| a.version.cmp(&b.version));
-
-    let mut versions = Vec::new();
-    for tag in tags {
-        let Some(version) = tag_to_version(&tag) else {
-            continue;
-        };
-        let cli_path = cli.get(&tag).map(|p| p.to_string_lossy().into_owned());
-        let fpm_path = fpm.get(&tag).map(|p| p.to_string_lossy().into_owned());
-        let fpm_conf_path = conf_by_version
-            .get(&version)
-            .map(|p| p.to_string_lossy().into_owned());
-
-        let (available, reason) = match (&cli_path, &fpm_path) {
-            (Some(_), Some(_)) => (true, None),
-            (None, None) => (false, Some("missing_binary".to_string())),
-            (Some(_), None) => (false, Some("missing_fpm_binary".to_string())),
-            (None, Some(_)) => (false, Some("missing_cli_binary".to_string())),
-        };
-
-        // Conf without any binary still surfaces as unavailable
-        let reason =
-            if !available && fpm_conf_path.is_some() && cli_path.is_none() && fpm_path.is_none() {
-                Some("missing_binary".to_string())
-            } else {
-                reason
-            };
-
-        versions.push(PhpVersionInfo {
-            version,
-            tag,
-            available,
-            reason,
-            cli_path,
-            fpm_path,
-            fpm_conf_path,
-        });
-    }
-    versions.sort_by(|a, b| a.version.cmp(&b.version));
-    (versions, fpm_confs)
-}
-
-// ── Valet / parks / site confs ──────────────────────────────────────
-
-fn discover_valet(config_path: &Path) -> Option<ValetInfo> {
-    if !config_path.is_file() {
-        return None;
-    }
-    let content = fs::read_to_string(config_path).ok()?;
-    let json: serde_json::Value = serde_json::from_str(&content).ok()?;
-    let tld = json
-        .get("tld")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let loopback = json
-        .get("loopback")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let mut paths = Vec::new();
-    if let Some(arr) = json.get("paths").and_then(|v| v.as_array()) {
-        for p in arr {
-            if let Some(s) = p.as_str() {
-                paths.push(s.to_string());
-            }
-        }
-    }
-    Some(ValetInfo {
-        config_path: Some(config_path.to_string_lossy().into_owned()),
-        tld,
-        loopback,
-        paths,
-    })
-}
-
-fn parse_isolated_php_version(content: &str) -> Option<String> {
-    for line in content.lines() {
-        let trimmed = line.trim().trim_start_matches('#').trim();
-        if let Some(rest) = trimmed.strip_prefix("ISOLATED_PHP_VERSION=") {
-            let v = rest.trim();
-            if !v.is_empty() {
-                return Some(v.to_string());
-            }
-        }
-        // also: fastcgi_pass $herd_sock_74;
-        if let Some(idx) = line.find("herd_sock_") {
-            let rest = &line[idx + "herd_sock_".len()..];
-            let tag: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-            if let Some(ver) = tag_to_version(&tag) {
-                return Some(ver);
-            }
-        }
-    }
-    None
-}
-
-fn discover_nginx_site_confs(dirs: &[&Path]) -> Vec<NginxSiteConf> {
-    let mut out = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-
-    for dir in dirs {
-        if !dir.is_dir() {
-            continue;
-        }
-        let Ok(entries) = fs::read_dir(dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            let name = entry.file_name().to_string_lossy().into_owned();
-            // Skip shared confs
-            if matches!(
-                name.as_str(),
-                "nginx.conf" | "fastcgi_params" | "herd.conf" | "mime.types"
-            ) {
-                continue;
-            }
-            // Prefer site-like names (*.test or known isolates)
-            let key = path.to_string_lossy().into_owned();
-            if !seen.insert(key.clone()) {
-                continue;
-            }
-            let content = fs::read_to_string(&path).unwrap_or_default();
-            // Only include if it looks like a server block or has isolation marker
-            let looks_like_site = content.contains("server_name")
-                || content.contains("ISOLATED_PHP_VERSION")
-                || name.contains(".test");
-            if !looks_like_site {
-                continue;
-            }
-            out.push(NginxSiteConf {
-                path: key,
-                site_name: name,
-                isolated_php_version: parse_isolated_php_version(&content),
-            });
-        }
-    }
-    out.sort_by(|a, b| a.site_name.cmp(&b.site_name));
-    out
-}
-
-// ── Redis ───────────────────────────────────────────────────────────
-
-fn discover_redis(herd_bin: Option<&Path>) -> Option<RedisInfo> {
-    let shared = Path::new(SHARED_HERD_SERVICES).join("redis");
-    if !shared.is_dir() && herd_bin.is_none() {
-        return None;
-    }
-
-    let mut version = None;
-    let mut shared_path = None;
-    let mut redis_server = None;
-    let mut redis_cli = None;
-
-    if shared.is_dir() {
-        shared_path = Some(shared.to_string_lossy().into_owned());
-        // pick first version dir
-        if let Ok(entries) = fs::read_dir(&shared) {
-            let mut vers: Vec<_> = entries.flatten().filter(|e| e.path().is_dir()).collect();
-            vers.sort_by_key(|e| e.file_name());
-            if let Some(v) = vers.last() {
-                version = Some(v.file_name().to_string_lossy().into_owned());
-                let bin = v.path().join("bin");
-                redis_server = path_if_exists(bin.join("redis-server"));
-                redis_cli = path_if_exists(bin.join("redis-cli"));
-            }
-        }
-    }
-
-    // Herd bin symlinks as fallback
-    if let Some(bin) = herd_bin {
-        if redis_server.is_none() {
-            redis_server = path_if_exists(bin.join("redis-server"));
-        }
-        if redis_cli.is_none() {
-            redis_cli = path_if_exists(bin.join("redis-cli"));
-        }
-    }
-
-    // Redis service conf under Herd config/services UUID
-    let mut service_conf = None;
-    let mut dump_from_service = None;
-    if let Some(home) = herd_home() {
-        let services = home.join("config").join("services");
-        if let Ok(entries) = fs::read_dir(services) {
-            for entry in entries.flatten() {
-                let dir = entry.path();
-                let conf = dir.join("redis.conf");
-                if conf.is_file() {
-                    service_conf = Some(conf.to_string_lossy().into_owned());
-                    // dump.rdb may live beside redis.conf in the service UUID dir
-                    if dump_from_service.is_none() {
-                        dump_from_service = path_if_exists(dir.join("dump.rdb"));
-                    }
-                }
-            }
-        }
-    }
-
-    // dump.rdb: service UUID → Shared redis tree → Herd bin (Herd sometimes keeps it in bin/)
-    let dump_rdb = dump_from_service
-        .or_else(|| {
-            version.as_ref().and_then(|ver| {
-                path_if_exists(
-                    Path::new(SHARED_HERD_SERVICES)
-                        .join("redis")
-                        .join(ver)
-                        .join("dump.rdb"),
-                )
-            })
-        })
-        .or_else(|| {
-            // Common data dirs under shared redis version root
-            version.as_ref().and_then(|ver| {
-                let base = Path::new(SHARED_HERD_SERVICES).join("redis").join(ver);
-                path_if_exists(base.join("var").join("dump.rdb"))
-                    .or_else(|| path_if_exists(base.join("data").join("dump.rdb")))
-            })
-        })
-        .or_else(|| herd_bin.and_then(|b| path_if_exists(b.join("dump.rdb"))));
-
-    Some(RedisInfo {
-        shared_path,
-        version,
-        redis_server,
-        redis_cli,
-        dump_rdb,
-        service_conf,
-    })
-}
-
-// ── Ports (read-only TCP connect) ───────────────────────────────────
 
 /// Probe whether something accepts TCP on loopback. IPv4 only; no `0.0.0.0` connect.
 fn port_listening(port: u16) -> bool {
@@ -820,15 +432,13 @@ fn scan_ports() -> Vec<PortInUse> {
             PortInUse {
                 port,
                 listening,
-                // PID/process deferred — require platform tooling; not resolved in Phase A.
+                // PID/process deferred, requires platform tooling; not resolved in Phase A.
                 pid: None,
                 process: None,
             }
         })
         .collect()
 }
-
-// ── Resolver ────────────────────────────────────────────────────────
 
 fn read_resolver() -> ResolverInfo {
     let path = Path::new(RESOLVER_TEST);
@@ -847,8 +457,6 @@ fn read_resolver() -> ResolverInfo {
         }
     }
 }
-
-// ── Homebrew / PATH fallbacks (filesystem only — no process spawn) ──
 
 fn brew_prefixes() -> Vec<PathBuf> {
     let mut prefixes = Vec::new();
@@ -919,7 +527,30 @@ fn discover_homebrew_candidates() -> Vec<BinaryCandidate> {
     out
 }
 
-// ── Main discovery ──────────────────────────────────────────────────
+/// Datadirs under `<local-dev>/data`, best candidate first. `data/mariadb` is
+/// the canonical destination; any other populated dir is a leftover copy.
+fn discover_badami_mariadb_candidates(data_root: &Path) -> Vec<MariadbCandidate> {
+    let mut out = Vec::new();
+    if let Ok(entries) = fs::read_dir(data_root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') || !looks_like_mariadb_datadir(&path) {
+                continue;
+            }
+            out.push(score_mariadb_candidate(&path, &name));
+        }
+    }
+    let mariadb = data_root.join("mariadb");
+    if mariadb.is_dir() && !out.iter().any(|c| c.path == mariadb.to_string_lossy()) {
+        out.push(score_mariadb_candidate(&mariadb, "mariadb"));
+    }
+    out.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| b.bytes.cmp(&a.bytes)));
+    out
+}
 
 pub fn discover() -> Result<DiscoveryReport, String> {
     let runtime_paths = build_runtime_paths()?;
@@ -929,269 +560,47 @@ pub fn discover() -> Result<DiscoveryReport, String> {
 
     if platform != "macos" {
         notes.push(format!(
-            "Local Dev MVP is macOS-only; returning empty Herd inventory on {platform}"
+            "Local Dev is macOS-only; inventory on {platform} is best-effort"
         ));
-        return Ok(DiscoveryReport {
-            platform,
-            arch,
-            runtime_paths,
-            herd: empty_herd(),
-            candidates: discover_homebrew_candidates(),
-            ports_in_use: scan_ports(),
-            resolver: read_resolver(),
-            notes,
-        });
     }
 
-    let suffix = preferred_suffix();
-    let home = herd_home();
-    let home_exists = home.as_ref().map(|p| p.is_dir()).unwrap_or(false);
-    let resources = Path::new(HERD_APP_RESOURCES);
-    let resources_exist = resources.is_dir();
-    let shared = Path::new(SHARED_HERD_SERVICES);
-    let shared_exists = shared.is_dir();
-    let helper_present = Path::new(PRIVILEGED_HELPER).is_file();
-
-    let detected = home_exists || resources_exist || shared_exists;
-
-    let app_path = if Path::new("/Applications/Herd.app").is_dir() {
-        Some("/Applications/Herd.app".to_string())
-    } else {
-        None
-    };
-
-    let config_path = home.as_ref().and_then(|h| path_if_exists(h.join("config")));
-    let bin_path = home.as_ref().and_then(|h| path_if_exists(h.join("bin")));
-    let home_path = home.as_ref().and_then(path_if_exists);
-
-    // MariaDB candidates under config/services/*
-    let mut mariadb_candidates = Vec::new();
-    if let Some(ref h) = home {
-        let services = h.join("config").join("services");
-        if services.is_dir() {
-            mariadb_candidates = discover_mariadb_candidates(&services);
-        }
-    }
-
-    // PHP + FPM
-    let (php_versions, fpm_confs) = if let Some(ref h) = home {
-        let bin = h.join("bin");
-        let fpm_dir = h.join("config").join("fpm");
-        if bin.is_dir() {
-            discover_php_versions(&bin, Some(fpm_dir.as_path()).filter(|p| p.is_dir()))
-        } else {
-            (Vec::new(), Vec::new())
-        }
-    } else {
-        (Vec::new(), Vec::new())
-    };
-
-    for v in &php_versions {
-        if !v.available {
+    let badami = build_badami_inventory(&runtime_paths, &mut notes);
+    for c in &badami.mariadb_candidates {
+        if !c.has_ibdata1 && !c.has_mysql_schema {
             notes.push(format!(
-                "PHP {} unavailable: {}",
-                v.version,
-                v.reason.as_deref().unwrap_or("unknown")
+                "MariaDB datadir {} has no ibdata1 or mysql schema yet",
+                c.path
             ));
         }
     }
 
-    // Valet parks
-    let valet = home
-        .as_ref()
-        .and_then(|h| discover_valet(&h.join("config").join("valet").join("config.json")));
-    let park_paths = valet.as_ref().map(|v| v.paths.clone()).unwrap_or_default();
-
-    // Per-site nginx confs (config/nginx + config/valet/Nginx)
-    let nginx_site_confs = if let Some(ref h) = home {
-        let nginx_dir = h.join("config").join("nginx");
-        let valet_nginx = h.join("config").join("valet").join("Nginx");
-        discover_nginx_site_confs(&[nginx_dir.as_path(), valet_nginx.as_path()])
-    } else {
-        Vec::new()
-    };
-
-    // Redis
-    let redis = discover_redis(home.as_ref().map(|h| h.join("bin")).as_deref());
-
-    // Nginx / dnsmasq / server.php from Herd.app Resources (arch-selected)
-    let nginx_binary = path_if_exists(resources.join(format!("nginx-{suffix}")));
-    let dnsmasq_binary = path_if_exists(resources.join(format!("dnsmasq-{suffix}")));
-    let server_php = path_if_exists(resources.join("valet").join("server.php"));
-
-    // Binary candidates list (Herd first, then brew/path)
+    // Provisioned Badami binaries are the only source; Homebrew and PATH stay
+    // as fallbacks until the user provisions.
     let mut candidates = Vec::new();
-
-    if let Some(ref p) = nginx_binary {
+    for c in &badami.components {
         candidates.push(BinaryCandidate {
-            role: "nginx".to_string(),
-            path: p.clone(),
-            version: None,
-            source: "herd_app".to_string(),
+            role: badami_candidate_role(c),
+            path: c.binary.clone(),
+            version: Some(c.version.clone()),
+            source: "badami_runtime".to_string(),
         });
     }
-    if let Some(ref p) = dnsmasq_binary {
-        candidates.push(BinaryCandidate {
-            role: "dnsmasq".to_string(),
-            path: p.clone(),
-            version: None,
-            source: "herd_app".to_string(),
-        });
-    }
-    if let Some(ref p) = server_php {
-        candidates.push(BinaryCandidate {
-            role: "server_php".to_string(),
-            path: p.clone(),
-            version: None,
-            source: "herd_app".to_string(),
-        });
-    }
-
-    // MariaDB binary from Shared services or best my.cnf basedir
-    if let Some(best) = mariadb_candidates.first() {
-        if let Some(ref cnf) = best.my_cnf {
-            if let Some(ref basedir) = cnf.basedir {
-                if let Some(p) = path_if_exists(Path::new(basedir).join("bin").join("mariadbd")) {
-                    candidates.push(BinaryCandidate {
-                        role: "mariadbd".to_string(),
-                        path: p,
-                        version: None,
-                        source: "herd_shared".to_string(),
-                    });
-                }
-                if let Some(p) =
-                    path_if_exists(Path::new(basedir).join("bin").join("mariadb-admin"))
-                {
-                    candidates.push(BinaryCandidate {
-                        role: "mariadb_admin".to_string(),
-                        path: p,
-                        version: None,
-                        source: "herd_shared".to_string(),
-                    });
-                }
-            }
-        }
-    }
-    // Fallback Shared Herd mariadb tree
-    let mariadb_shared = Path::new(SHARED_HERD_SERVICES).join("mariadb");
-    if mariadb_shared.is_dir() {
-        if let Ok(entries) = fs::read_dir(&mariadb_shared) {
-            let mut vers: Vec<_> = entries.flatten().filter(|e| e.path().is_dir()).collect();
-            vers.sort_by_key(|e| e.file_name());
-            if let Some(v) = vers.last() {
-                let ver = v.file_name().to_string_lossy().into_owned();
-                if let Some(p) = path_if_exists(v.path().join("bin").join("mariadbd")) {
-                    if !candidates.iter().any(|c| c.role == "mariadbd") {
-                        candidates.push(BinaryCandidate {
-                            role: "mariadbd".to_string(),
-                            path: p,
-                            version: Some(ver.clone()),
-                            source: "herd_shared".to_string(),
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    // PHP bins as candidates
-    for v in &php_versions {
-        if let Some(ref p) = v.cli_path {
-            candidates.push(BinaryCandidate {
-                role: format!("php{}", v.tag),
-                path: p.clone(),
-                version: Some(v.version.clone()),
-                source: "herd_bin".to_string(),
-            });
-        }
-        if let Some(ref p) = v.fpm_path {
-            candidates.push(BinaryCandidate {
-                role: format!("php{}-fpm", v.tag),
-                path: p.clone(),
-                version: Some(v.version.clone()),
-                source: "herd_bin".to_string(),
-            });
-        }
-    }
-
-    if let Some(ref r) = redis {
-        if let Some(ref p) = r.redis_server {
-            candidates.push(BinaryCandidate {
-                role: "redis-server".to_string(),
-                path: p.clone(),
-                version: r.version.clone(),
-                source: "herd_shared".to_string(),
-            });
-        }
-    }
-
-    // Herd bin symlinks for mariadbd
-    if let Some(ref h) = home {
-        let bin = h.join("bin");
-        if let Some(p) = path_if_exists(bin.join("mariadbd")) {
-            if !candidates.iter().any(|c| c.role == "mariadbd") {
-                candidates.push(BinaryCandidate {
-                    role: "mariadbd".to_string(),
-                    path: p,
-                    version: None,
-                    source: "herd_bin".to_string(),
-                });
-            }
-        }
-    }
-
-    // Homebrew / PATH fallbacks (do not replace Herd-sourced roles that already exist;
-    // still list them as alternate sources)
     for c in discover_homebrew_candidates() {
         candidates.push(c);
     }
 
-    if helper_present {
-        notes.push(
-            "Herd privileged helper present at /Library/PrivilegedHelperTools/de.beyondco.herd.helper — detect only; never invoke"
-                .to_string(),
-        );
+    if !badami.detected {
+        notes.push(format!(
+            "No Badami runtime provisioned under {}; using Homebrew / PATH fallbacks",
+            runtime_paths.runtime
+        ));
     }
-
-    if !detected {
-        notes.push("No Herd installation detected on this Mac".to_string());
-    }
-
-    let herd = HerdInventory {
-        detected,
-        app_path,
-        home_path,
-        config_path,
-        bin_path,
-        shared_services_path: if shared_exists {
-            Some(SHARED_HERD_SERVICES.to_string())
-        } else {
-            None
-        },
-        resources_path: if resources_exist {
-            Some(HERD_APP_RESOURCES.to_string())
-        } else {
-            None
-        },
-        privileged_helper_present: helper_present,
-        privileged_helper_path: PRIVILEGED_HELPER.to_string(),
-        mariadb_candidates,
-        park_paths,
-        php_versions,
-        fpm_confs,
-        nginx_site_confs,
-        redis,
-        valet,
-        nginx_binary,
-        dnsmasq_binary,
-        server_php,
-    };
 
     Ok(DiscoveryReport {
         platform,
         arch,
         runtime_paths,
-        herd,
+        badami,
         candidates,
         ports_in_use: scan_ports(),
         resolver: read_resolver(),
@@ -1199,28 +608,130 @@ pub fn discover() -> Result<DiscoveryReport, String> {
     })
 }
 
-fn empty_herd() -> HerdInventory {
-    HerdInventory {
+#[cfg(test)]
+fn empty_badami(root: &str) -> BadamiRuntimeInventory {
+    BadamiRuntimeInventory {
+        root: root.to_string(),
         detected: false,
-        app_path: None,
-        home_path: None,
-        config_path: None,
-        bin_path: None,
-        shared_services_path: None,
-        resources_path: None,
-        privileged_helper_present: false,
-        privileged_helper_path: PRIVILEGED_HELPER.to_string(),
-        mariadb_candidates: Vec::new(),
-        park_paths: Vec::new(),
-        php_versions: Vec::new(),
-        fpm_confs: Vec::new(),
-        nginx_site_confs: Vec::new(),
-        redis: None,
-        valet: None,
+        components: Vec::new(),
         nginx_binary: None,
         dnsmasq_binary: None,
-        server_php: None,
+        php_versions: Vec::new(),
+        mariadb_binary: None,
+        mariadb_basedir: None,
+        redis_server: None,
+        data_dir: None,
+        datadir_adopted: false,
+        mariadb_candidates: Vec::new(),
     }
+}
+
+/// Read `runtime/manifest.json` and keep only components whose binary still
+/// hashes correctly. A stale or tampered entry is treated as absent.
+pub(crate) fn build_badami_inventory(
+    runtime_paths: &RuntimePaths,
+    notes: &mut Vec<String>,
+) -> BadamiRuntimeInventory {
+    let root = runtime_paths.runtime.clone();
+    let manifest = runtime_manifest::load(Path::new(&root));
+    let mut components = Vec::new();
+    for c in &manifest.components {
+        if runtime_manifest::verify(c) {
+            components.push(c.clone());
+        } else {
+            notes.push(format!(
+                "Badami runtime {} {} ignored: binary missing or hash mismatch",
+                c.role, c.version
+            ));
+        }
+    }
+
+    // `fpm_path` is the component binary; the CLI sits next to it as `php<tag>`.
+    // Sort by version so the list is deterministic: the UI and the supervisor
+    // both treat the first entry as the default when nothing is pinned.
+    let mut php_versions: Vec<PhpVersionInfo> = components
+        .iter()
+        .filter(|c| c.role == "php")
+        .map(|c| {
+            let tag = version_to_tag(&c.version);
+            let cli = Path::new(&c.binary)
+                .parent()
+                .map(|dir| dir.join(format!("php{tag}")))
+                .filter(|p| p.is_file())
+                .map(|p| p.to_string_lossy().into_owned());
+            PhpVersionInfo {
+                version: c.version.clone(),
+                tag,
+                available: true,
+                reason: None,
+                cli_path: cli,
+                fpm_path: Some(c.binary.clone()),
+                fpm_conf_path: None,
+            }
+        })
+        .collect();
+    php_versions.sort_by(|a, b| a.version.cmp(&b.version));
+
+    let mariadb_binary = verified_component(&manifest, "mariadb").map(|c| c.binary.clone());
+    // The version dir is the MariaDB basedir: `<version>/bin/mariadbd`.
+    let mariadb_basedir = mariadb_binary.as_deref().and_then(|b| {
+        Path::new(b)
+            .parent()
+            .and_then(Path::parent)
+            .map(|p| p.to_string_lossy().into_owned())
+    });
+
+    let adopted = super::datadir_migration::adopted_datadir(Path::new(&runtime_paths.data));
+    let (data_dir, datadir_adopted) = match adopted {
+        Some(p) => (Some(p.to_string_lossy().into_owned()), true),
+        None => (None, false),
+    };
+
+    // Filled here rather than by the caller so every report carries the same
+    // datadir view, including the ones built directly in tests.
+    let mariadb_candidates = discover_badami_mariadb_candidates(Path::new(&runtime_paths.data));
+
+    BadamiRuntimeInventory {
+        root,
+        detected: !components.is_empty(),
+        components,
+        nginx_binary: verified_component(&manifest, "nginx").map(|c| c.binary.clone()),
+        dnsmasq_binary: verified_component(&manifest, "dnsmasq").map(|c| c.binary.clone()),
+        php_versions,
+        mariadb_binary,
+        mariadb_basedir,
+        mariadb_candidates,
+        redis_server: verified_component(&manifest, "redis").map(|c| c.binary.clone()),
+        data_dir,
+        datadir_adopted,
+    }
+}
+
+/// Candidate role name for a provisioned component (`php74`, `php74-fpm`, `mariadbd`).
+fn badami_candidate_role(c: &RuntimeComponent) -> String {
+    match c.role.as_str() {
+        "php" => format!("php{}", version_to_tag(&c.version)),
+        "mariadb" => "mariadbd".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// The component for `role`: the selected one, else the newest, but never one
+/// whose binary is missing or hashes differently.
+fn verified_component<'a>(
+    manifest: &'a runtime_manifest::RuntimeManifest,
+    role: &str,
+) -> Option<&'a RuntimeComponent> {
+    if let Some(c) = manifest
+        .selected_for(role, None)
+        .filter(|c| runtime_manifest::verify(c))
+    {
+        return Some(c);
+    }
+    manifest
+        .for_role(role)
+        .into_iter()
+        .find(|c| runtime_manifest::verify(c))
 }
 
 #[cfg(test)]
@@ -1252,13 +763,77 @@ mod tests {
         assert!(!report.runtime_paths.local_dev_root.is_empty());
         assert!(report.runtime_paths.local_dev_root.contains("local-dev"));
         assert_eq!(report.ports_in_use.len(), SCAN_PORTS.len());
-        // On the developer's Mac with Herd leftovers this is true; still valid if absent.
-        if report.herd.detected {
-            assert!(
-                report.herd.home_path.is_some()
-                    || report.herd.resources_path.is_some()
-                    || report.herd.shared_services_path.is_some()
-            );
+        assert_eq!(report.badami.root, report.runtime_paths.runtime);
+    }
+
+    #[test]
+    fn badami_candidates_come_from_the_data_dir() {
+        let root = std::env::temp_dir().join(format!("badami-cand-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let data = root.join("data");
+        let datadir = data.join("mariadb");
+        std::fs::create_dir_all(&datadir).unwrap();
+        std::fs::write(datadir.join("ibdata1"), b"x").unwrap();
+        std::fs::create_dir_all(datadir.join("mysql")).unwrap();
+
+        let cands = discover_badami_mariadb_candidates(&data);
+        assert_eq!(cands.len(), 1);
+        assert_eq!(cands[0].path, datadir.to_string_lossy());
+        assert!(cands[0].has_ibdata1 && cands[0].has_mysql_schema);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn fake_component(binary: &Path, sha256: &str) -> RuntimeComponent {
+        RuntimeComponent {
+            role: "nginx".into(),
+            version: "1.25.4".into(),
+            binary: binary.to_string_lossy().into_owned(),
+            sha256: sha256.into(),
+            source: "manual".into(),
+            arch: "arm64".into(),
+            installed_at: String::new(),
+            selected: true,
         }
+    }
+
+    #[test]
+    fn badami_inventory_ignores_tampered_component() {
+        let root = std::env::temp_dir().join(format!("badami-disc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let paths = runtime_paths_from_root(root.clone());
+        let dir = runtime_manifest::component_dir(Path::new(&paths.runtime), "nginx", "1.25.4");
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("nginx");
+        std::fs::write(&bin, b"real nginx").unwrap();
+
+        let mut manifest = runtime_manifest::RuntimeManifest::default();
+        manifest.upsert(fake_component(&bin, "deadbeef"));
+        runtime_manifest::save(Path::new(&paths.runtime), &manifest).unwrap();
+
+        let mut notes = Vec::new();
+        let inv = build_badami_inventory(&paths, &mut notes);
+        assert!(inv.nginx_binary.is_none(), "tampered binary must not be used");
+        assert!(!inv.detected);
+        assert!(notes.iter().any(|n| n.contains("hash mismatch")));
+
+        let good = runtime_manifest::hash_file(&bin).unwrap();
+        manifest.upsert(fake_component(&bin, &good));
+        runtime_manifest::save(Path::new(&paths.runtime), &manifest).unwrap();
+
+        let mut notes = Vec::new();
+        let inv = build_badami_inventory(&paths, &mut notes);
+        let expected = bin.to_string_lossy().into_owned();
+        assert_eq!(inv.nginx_binary.as_deref(), Some(expected.as_str()));
+        assert!(inv.detected);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn empty_badami_matches_no_manifest() {
+        let inv = empty_badami("/tmp/nowhere/runtime");
+        assert!(!inv.detected);
+        assert!(inv.components.is_empty());
+        assert!(inv.nginx_binary.is_none());
+        assert!(!inv.datadir_adopted);
     }
 }

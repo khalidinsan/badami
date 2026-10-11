@@ -5,8 +5,8 @@
 | **Title** | Badami Local Dev (Laravel Herd replacement) |
 | **Author** | TBD |
 | **Date** | 2026-07-22 |
-| **Status** | Implemented Phase B (rev 3 design; v1.15.0 — TLS, live logs, event stream, `ld_bootstrap_uninstall`, root-owned LaunchDaemon staging) |
-| **Target release** | v1.15.0 (Phase B) |
+| **Status** | Implemented Phase D (v1.16.0: Badami-owned runtime, no dependency on any other local dev tool) |
+| **Target release** | v1.16.0 (Phase D) |
 | **Platform (MVP)** | macOS (Apple Silicon primary; Intel binary selection supported) |
 | **Related modules** | Database Client, Projects, Servers (explicit non-overlap) |
 
@@ -16,9 +16,13 @@
 
 **Badami Local Dev** is a new menu module that replaces **Laravel Herd** for the user's local PHP development workflow on macOS. Herd's GUI is currently broken (cracked dylib `macked.app.dylib` segfault on macOS 27 beta), but **all data and binaries remain on disk**: ~15GB MariaDB data, PHP 7.4/8.4 FPM, nginx, dnsmasq, Redis, Valet park paths, and site isolation configs.
 
-MVP adopts a **manager / orchestrator model**: Badami does **not** bundle PHP/nginx/MariaDB binaries. It discovers, configures, and start/stops external binaries (existing Herd leftovers first, then Homebrew / manual paths). This preserves the 15GB database and restores `*.test` sites with minimal risk.
+MVP adopts a **manager / orchestrator model**: Badami does **not** bundle PHP/nginx/MariaDB binaries in the app package. It discovers, configures, and start/stops external binaries (existing Herd leftovers first, then Homebrew / manual paths). This preserves the 15GB database and restores `*.test` sites with minimal risk.
 
-Later phases may optionally download/bundle binaries (full Herd-like experience). That is documented as future work and is **not** required for productivity recovery.
+Phase C (v1.16.0) added a **Badami-owned runtime** on top of that model: binaries live in `runtime/<role>/<version>/` and the MariaDB datadir in `data/mariadb`, moved there with an APFS clone.
+
+**Phase D (v1.16.0) removed the last external dependency.** Badami no longer reads, imports from, or references any other local dev tool: its inventory, import wizard, conflict banner, and coexistence commands are gone, the third-party download source was dropped from the updater, and the binary resolution path is Badami runtime first with Homebrew and `PATH` as the only fallbacks. The section below documents the earlier design; where it mentions that other tool, treat it as history.
+
+Later phases may optionally bundle binaries inside the app package itself (full Herd-like experience with no post-install provisioning). That is documented as future work and is **not** required for productivity recovery.
 
 ---
 
@@ -78,7 +82,7 @@ Local Dev completes the "local + remote" developer loop without leaving Badami.
 
 ### Non-Goals (MVP)
 
-- Bundling PHP/nginx/MariaDB/Redis binaries inside Badami.
+- ~~Bundling PHP/nginx/MariaDB/Redis binaries inside Badami.~~ **Superseded in Phase C (v1.16.0):** Badami now owns its binaries under `runtime/` and can update them from upstream. Binaries are still not shipped inside the app bundle, so the installer stays small; they are provisioned on first run.
 - Windows / Linux local stack (stub UI only: "macOS only for now").
 - Full Herd Pro feature parity: MinIO, Mailpit/SMTP dump UI, Node version manager, share tunnels, dump server GUI.
 - Automatic migration of cracked/pirated Herd license or reverse-engineering Herd Pro.
@@ -94,8 +98,8 @@ Local Dev completes the "local + remote" developer loop without leaving Badami.
 | Phase | Scope |
 | --- | --- |
 | **B** | TLS (mkcert-style), live log subscribe, optional full-stack launchd autostart, site-level env overrides |
-| **C** | Optional binary download/bundle (versioned PHP/nginx/MariaDB), first-run without Herd leftovers |
-| **D** | Windows/Linux ports or explicit permanent non-support |
+| **C** | **Shipped in v1.16.0.** Badami-owned runtime: binaries under `runtime/<role>/<version>/` with a SHA-256 manifest, APFS-clone move of the MariaDB datadir into `data/mariadb`, and an upstream binary updater (static-php-cli for PHP 8.x, Homebrew bottle for dnsmasq) |
+| **D** | **Shipped in v1.16.0.** Removed every dependency on other local dev tools: no inventory, no import wizard, no conflict detection, no coexistence commands, no third-party download source. Badami resolves binaries from its own runtime, then Homebrew, then `PATH`. |
 
 ---
 
@@ -1609,7 +1613,25 @@ Generators must **not** embed these literals; resolve at runtime.
 | v1.13.0 | MVP Phase A (this document rev 3) — Local Dev module + docs |
 | v1.14.0 | Phase B interim — carried over to v1.15.0 (no public tag) |
 | **v1.15.0** | **Phase B shipped** — TLS (CA + per-site leaf, trust helper, `:8443` HTTPS), live log stream (`ld://log/{service_id}`), supervisor health loop + 6 `ld://service-*` events, `ld_bootstrap_uninstall`, root-owned LaunchDaemon staging (TOCTOU-safe install/resync), DNS-gated open-site with `force` override, identifier-derived LaunchDaemon labels. |
-| v1.16.0+ | Phase C optional binary bundle |
+| **v1.16.0** | **Phase C shipped**: Badami-owned runtime binaries under `runtime/<role>/<version>/` with a SHA-256 manifest (`runtime_manifest.rs`), binary copy from Herd (`provision.rs`), APFS-clone MariaDB datadir move into `data/mariadb` (`datadir_migration.rs`), upstream binary updater (`runtime_updater.rs`), Badami-first discovery with Herd as fallback, per-version php.ini scan dirs, and the Standalone runtime settings card. |
+
+### v1.16.0 release notes (Phase D)
+
+- **No external local dev tool.** The inventory, import wizard, conflict banner, and coexistence commands (`ld_herd_status`, `ld_herd_quit`, `ld_import_herd`) are deleted, along with their modules, types, store actions, and UI. Discovery reports only the Badami runtime.
+- **Updater sources are neutral.** The third-party service index is gone. PHP 8.x comes from static-php-cli and dnsmasq from the Homebrew bottle API. MariaDB and Redis have no neutral macOS arm64 upstream with a stable public URL, so the updater offers none rather than pointing at a third party.
+- **PHP 7.4 is install-only-by-copy.** There is no upstream static build (static-php-cli starts at 8.0), so the updater reports it unavailable rather than attempting a download.
+- **Binary resolution** is Badami runtime, then Homebrew, then `PATH`.
+- **Test isolation fix.** The config-generation smoke test wrote into the real Application Support tree and overwrote a developer's parked sites and ports. It now runs against a temporary root through `generate_configs_at`.
+- **`source_running` fix.** The datadir-in-use check read only the datadir's own pid file, which is stale when the server was started through another config. It now checks the file holders, so a migration cannot run while a server is writing.
+
+### v1.16.0 release notes (Phase C)
+
+- **Badami-owned runtime:** binaries live under `local-dev/runtime/<role>/<version>/`, recorded in `runtime/manifest.json` with a SHA-256 per component. A component whose hash no longer matches reads as absent, so a half-copied directory never gets advertised as installed.
+- **Binary copy from Herd (`provision.rs`):** `ld_provision_plan` lists what is available, `ld_provision_runtime` copies it, `ld_provision_status` reports per-role versions with a verified flag, `ld_provision_select` pins the version a role runs, `ld_provision_write_php_ini` writes the per-version ini. nginx, dnsmasq, and PHP are static builds that run from any path. MariaDB is the exception: its dylibs are referenced absolutely, so the copy rewrites them to `@loader_path` and re-signs ad hoc, and the install is refused if any reference into the Herd tree survives.
+- **Datadir move (`datadir_migration.rs`):** `ld_datadir_preflight` reports size, free space, clone support, and blockers; `ld_datadir_migrate` clones the datadir into `data/mariadb` with `cp -cR` on APFS (measured 0.9s for an 11 GB datadir, no extra blocks) and falls back to a real copy elsewhere. Verification hashes a bounded sample (always including `ibdata1`) in both trees. The Herd source is never written, and a verification mismatch returns `ok: false` rather than an error so the UI can offer a retry.
+- **Upstream updater (`runtime_updater.rs`):** `ld_runtime_sources` lists installable upstreams, `ld_runtime_install` downloads, checksum-verifies, extracts, smoke-tests, and only then commits; `ld_runtime_uninstall` refuses to remove the selected and only version of a role. Sources: static-php-cli for PHP 8.x, Homebrew bottle for dnsmasq, Herd CDN for MariaDB and Redis. **PHP 7.4 has no upstream build**, so it is reported unavailable and stays a Herd-copy-only role.
+- **Badami first, Herd as fallback:** `discovery` reports a `badami` inventory and puts Badami candidates ahead of every Herd source. `config_gen` accepts the Badami root and data dir as trusted MariaDB paths (the `allow_unverified_datadir` escape hatch is unchanged). `service_specs` prefers Badami binaries, merges PHP versions (Badami wins on a duplicate), and sets `PHP_INI_SCAN_DIR` to the Badami ini so the provisioned PHP no longer reads Herd's config.
+- **Frontend:** Standalone runtime card in Settings (per-role version list, verification state, version pinning, uninstall, datadir move with a confirm dialog), plus new runtime/data/php_config paths in the read-only path list.
 
 ### v1.13.0 release notes (docs)
 

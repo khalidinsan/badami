@@ -135,7 +135,7 @@ export function ServiceGroupCard({
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-xs text-[10px]">
                   No binary was found for any service in this group. Set paths in
-                  Settings, or run Import from Herd.
+                  Settings.
                 </TooltipContent>
               </Tooltip>
             )}

@@ -69,7 +69,7 @@ function dotClass(service: ServiceStatusReport): string {
  * turning versions off would 502 every isolated site. Per-site version choice
  * lives in the Sites tab.
  *
- * One chip per version keeps a Herd install's 6-8 versions to a single line
+ * One chip per version keeps a long version list to a single line
  * instead of a screenful of cards. Selecting a chip targets it for the log pane
  * and for the action buttons on the right, so every pool stays controllable
  * without N sets of buttons.

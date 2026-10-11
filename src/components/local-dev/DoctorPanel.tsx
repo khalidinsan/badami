@@ -107,8 +107,8 @@ function fixesFor(finding: DoctorFinding, actions: FixActions): FindingFix[] {
         },
       ];
     case finding.id === "mariadb.hard_fail":
-      // Almost always a live mysqld on the same datadir — usually Herd's.
-      return [{ label: "Check Herd processes", run: actions.recheckHerd }];
+      // Almost always a live mysqld holding the same datadir.
+      return [{ label: "Recheck running services", run: actions.recheckServices }];
     case finding.id === "logs.total_large" || finding.id.startsWith("logs.file_large."):
       return [{ label: "Reveal logs folder", run: actions.revealLogs }];
     default:
@@ -124,7 +124,7 @@ interface FixActions {
   generateConfigs: () => void;
   installResources: () => void;
   showNginxLog: () => void;
-  recheckHerd: () => void;
+  recheckServices: () => void;
   revealLogs: () => void;
 }
 
@@ -204,6 +204,7 @@ interface DoctorPanelProps {
 
 export function DoctorPanel({ onOpenBootstrap, onShowServiceLog }: DoctorPanelProps = {}) {
   const doctorReport = useLocalDevStore((s) => s.doctorReport);
+  const refreshSpecs = useLocalDevStore((s) => s.refreshSpecs);
   const doctorRanAt = useLocalDevStore((s) => s.doctorRanAt);
   const doctorBusy = useLocalDevStore((s) => s.doctorBusy);
   const fixBusy = useLocalDevStore((s) => s.fixBusy);
@@ -217,7 +218,6 @@ export function DoctorPanel({ onOpenBootstrap, onShowServiceLog }: DoctorPanelPr
   const generateConfigs = useLocalDevStore((s) => s.generateConfigs);
   const installRuntimeResources = useLocalDevStore((s) => s.installRuntimeResources);
   const revealLogsDir = useLocalDevStore((s) => s.revealLogsDir);
-  const loadHerdStatus = useLocalDevStore((s) => s.loadHerdStatus);
 
   // No `force` on mount: doctor probes ports and shells out to `nginx -t`, so
   // re-running it on every tab visit stalled the panel. The store reuses a
@@ -250,7 +250,7 @@ export function DoctorPanel({ onOpenBootstrap, onShowServiceLog }: DoctorPanelPr
     generateConfigs: () => void generateConfigs(),
     installResources: () => void installRuntimeResources(),
     showNginxLog: () => onShowServiceLog?.("nginx"),
-    recheckHerd: () => void loadHerdStatus(),
+    recheckServices: () => void refreshSpecs(),
     revealLogs: () => void revealLogsDir(),
   };
   const mergedFixBusy = { ...fixBusy, dnsmasq: !!serviceBusy["dnsmasq"] };
@@ -265,7 +265,7 @@ export function DoctorPanel({ onOpenBootstrap, onShowServiceLog }: DoctorPanelPr
               Doctor
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Read-only diagnostics. Never deletes Herd datadir or invokes the Herd helper.
+              Read-only diagnostics. Never modifies service data or starts anything.
               {doctorRanAt ? ` · ran ${relativeTime(doctorRanAt)}` : ""}
             </p>
           </div>
@@ -409,12 +409,6 @@ export function DoctorPanel({ onOpenBootstrap, onShowServiceLog }: DoctorPanelPr
                     </Badge>
                   ))}
                 </div>
-                {report.herd_helper.present && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Herd helper present at {report.herd_helper.path} — reported only, never
-                    invoked. {report.herd_helper.note}
-                  </p>
-                )}
               </CardContent>
             </Card>
 

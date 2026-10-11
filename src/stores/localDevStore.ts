@@ -13,10 +13,6 @@ import type {
   DnsProbeResult,
   DoctorReport,
   GenerateConfigsResult,
-  HerdQuitResult,
-  HerdRuntimeStatus,
-  ImportHerdRequest,
-  ImportResult,
   InstallResourcesResult,
   IsolateResult,
   LinkResult,
@@ -42,11 +38,16 @@ import type {
   TlsStatus,
   TrustCaResult,
   LocalDevSettingKey,
-  BinaryRole,
-  BinarySource,
   LocalDevServiceKind,
   SiteKind,
   SiteInfo,
+  ProvisionItem,
+  ProvisionReport,
+  ProvisionStatus,
+  MigrationPreflight,
+  MigrationResult,
+  RuntimeManifest,
+  UpdateSource,
 } from "@/types/localDev";
 import {
   computeStackHealth,
@@ -58,18 +59,14 @@ import {
 import {
   addEvent as dbAddEvent,
   clearEvents as dbClearEvents,
-  createBinary,
   createParkPath,
-  createService,
   createSite,
   getAllLocalDevSettings,
-  getBinaries,
   getLocalDevSettings,
   getParkPaths,
   getServiceByKind,
   getSiteByNameTld,
   getSitesByProject,
-  selectBinary,
   setLocalDevSetting,
   updateService,
   updateSite,
@@ -119,7 +116,6 @@ interface LocalDevState {
   services: ServiceStatusReport[];
   discovery: DiscoveryReport | null;
   sitesResult: ListSitesResult | null;
-  importResult: ImportResult | null;
   doctorReport: DoctorReport | null;
   /** `Date.now()` of the last successful doctor run (for TTL + "ran Xm ago"). */
   doctorRanAt: number | null;
@@ -127,7 +123,6 @@ interface LocalDevState {
   bootstrapResult: BootstrapInstallResult | null;
   /** Last uninstall report (surfaced in BootstrapCard after confirmation). */
   bootstrapUninstallResult: BootstrapUninstallResult | null;
-  herdStatus: HerdRuntimeStatus | null;
   /** Live DNS resolve probe — the only proof that `*.tld` actually resolves. */
   dnsProbe: DnsProbeResult | null;
   /** TLS CA + per-site cert snapshot from `ld_tls_status`. */
@@ -142,13 +137,11 @@ interface LocalDevState {
   sitesLoading: boolean;
   /** Per-action busy map — see `siteActionKey` / `parkActionKey`. */
   siteBusy: Record<string, boolean>;
-  importBusy: boolean;
   doctorBusy: boolean;
   bootstrapBusy: boolean;
   tlsBusy: boolean;
   settingsBusy: boolean;
   registerBusy: boolean;
-  herdBusy: boolean;
   fixBusy: Record<string, boolean>;
   loading: boolean;
   error: string | null;
@@ -195,9 +188,6 @@ interface LocalDevState {
   stopStack: () => Promise<void>;
   fetchLogs: (serviceId: string, lines?: number) => Promise<void>;
 
-  // Herd coexistence
-  loadHerdStatus: () => Promise<void>;
-  quitHerd: () => Promise<HerdQuitResult | null>;
 
   /**
    * Rebuild backend service specs from config on disk.
@@ -252,9 +242,28 @@ interface LocalDevState {
   // Recent events + clear
   clearRecentEvents: () => void;
 
+  // Standalone runtime (Badami-owned binaries + MariaDB datadir)
+  provisionStatus: ProvisionStatus | null;
+  provisionPlan: ProvisionItem[];
+  provisionBusy: boolean;
+  /** Role currently being provisioned, for per-row spinners. */
+  provisionActiveRole: string | null;
+  migrationPreflight: MigrationPreflight | null;
+  migrationResult: MigrationResult | null;
+  migrationBusy: boolean;
+  updateSources: UpdateSource[];
+
+  loadProvisionStatus: () => Promise<void>;
+  loadProvisionPlan: () => Promise<void>;
+  provisionRuntime: (roles?: string[]) => Promise<ProvisionReport | null>;
+  selectRuntimeVersion: (role: string, version: string) => Promise<void>;
+  loadDatadirPreflight: (source?: string) => Promise<void>;
+  migrateDatadir: (options?: { source?: string; confirm?: boolean }) => Promise<MigrationResult | null>;
+  loadUpdateSources: () => Promise<void>;
+  installRuntimeFromUpstream: (sourceId: string) => Promise<void>;
+  uninstallRuntimeVersion: (role: string, version: string) => Promise<void>;
+
   // Import
-  importHerd: (request?: ImportHerdRequest) => Promise<ImportResult | null>;
-  persistImportResult: (result: ImportResult) => Promise<void>;
 
   // Doctor / bootstrap
   runDoctor: (options?: { force?: boolean }) => Promise<void>;
@@ -310,6 +319,12 @@ function applyServices(services: ServiceStatusReport[]) {
   };
 }
 
+/** Installed PHP tags, deduped so a version is never listed twice. */
+function mergedPhpTags(discovery: DiscoveryReport | null): string[] {
+  const tags = (discovery?.badami?.php_versions ?? []).map((v) => v.tag);
+  return Array.from(new Set(tags));
+}
+
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -318,28 +333,32 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
   services: [],
   discovery: null,
   sitesResult: null,
-  importResult: null,
   doctorReport: null,
   doctorRanAt: null,
   bootstrapStatus: null,
   bootstrapResult: null,
   bootstrapUninstallResult: null,
-  herdStatus: null,
   dnsProbe: null,
   tlsStatus: null,
+  provisionStatus: null,
+  provisionPlan: [],
+  provisionBusy: false,
+  provisionActiveRole: null,
+  migrationPreflight: null,
+  migrationResult: null,
+  migrationBusy: false,
+  updateSources: [],
   settings: {},
   stackBusy: false,
   serviceBusy: {},
   groupBusy: {},
   sitesLoading: false,
   siteBusy: {},
-  importBusy: false,
   doctorBusy: false,
   bootstrapBusy: false,
   tlsBusy: false,
   settingsBusy: false,
   registerBusy: false,
-  herdBusy: false,
   fixBusy: {},
   loading: false,
   error: null,
@@ -593,53 +612,6 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
     }
   },
 
-  // ── Herd coexistence ───────────────────────────────────────────────
-
-  /** Read-only Herd process scan. Silent on failure — this is background info. */
-  loadHerdStatus: async () => {
-    try {
-      const herdStatus = await invoke<HerdRuntimeStatus>("ld_herd_status");
-      set({ herdStatus });
-    } catch (err) {
-      console.error("ld_herd_status failed", err);
-    }
-  },
-
-  /**
-   * Ask Herd.app to quit so Badami can take the ports and datadir.
-   *
-   * Graceful only — Rust sends an AppleScript quit and never signals Herd's
-   * service processes, so Herd shuts its own mysqld down cleanly. A non-empty
-   * `remaining` is a "you still need to act" result, not an error.
-   */
-  quitHerd: async () => {
-    set({ herdBusy: true });
-    try {
-      const result = await invoke<HerdQuitResult>("ld_herd_quit");
-      if (!result.requested) {
-        toast.message("Herd.app was not running", {
-          description: result.remaining.length
-            ? `${result.remaining.length} Herd service process(es) still alive — stop them from Herd`
-            : "Nothing to quit",
-        });
-      } else if (result.remaining.length === 0 && !result.app_running_after) {
-        toast.success("Herd stopped — ports released");
-      } else {
-        toast.warning("Herd did not fully stop", {
-          description: result.notes.slice(0, 2).join(" · ") || undefined,
-        });
-      }
-      await get().loadHerdStatus();
-      await get().refreshStatus().catch(() => undefined);
-      return result;
-    } catch (err) {
-      toast.error("Could not quit Herd", { description: errMessage(err) });
-      return null;
-    } finally {
-      set({ herdBusy: false });
-    }
-  },
-
   refreshSpecs: async () => {
     try {
       const services = await invoke<ServiceStatusReport[]>("ld_refresh_specs");
@@ -767,9 +739,7 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
 
       // 2. Base config. `nginx_as_root` derives from the port in Rust, so the
       // one value is enough.
-      const phpTags = (discovery?.herd.php_versions ?? [])
-        .filter((v) => v.available)
-        .map((v) => v.tag);
+      const phpTags = mergedPhpTags(discovery);
       const defaultVersion =
         settings.default_php_version || DEFAULT_LOCAL_DEV_SETTINGS.default_php_version;
       // Bootstrap status first: it carries the DNS port we must preserve.
@@ -863,9 +833,7 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
       const settings = get().settings;
       const sites = get().sitesResult;
       const discovery = get().discovery;
-      const phpTags = (discovery?.herd.php_versions ?? [])
-        .filter((v) => v.available)
-        .map((v) => v.tag);
+      const phpTags = mergedPhpTags(discovery);
       const defaultVersion =
         settings.default_php_version || DEFAULT_LOCAL_DEV_SETTINGS.default_php_version;
       await get().loadBootstrapStatus(settings.tld || undefined);
@@ -881,6 +849,7 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
           park_paths: sites?.park_paths ?? null,
           default_php_tag: defaultVersion.replace(".", "") || null,
           php_tags: phpTags.length > 0 ? phpTags : null,
+          // The datadir and basedir are resolved in Rust.
           dns_port: effectiveDnsPort(get()),
         },
       });
@@ -1266,160 +1235,161 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
 
   clearRecentEvents: () => set({ recentEvents: [] }),
 
-  // ── Import ─────────────────────────────────────────────────────────
+  // Standalone runtime
 
-  importHerd: async (request = {}) => {
-    set({ importBusy: true });
+  loadProvisionStatus: async () => {
     try {
-      const importResult = await invoke<ImportResult>("ld_import_herd", {
-        request: {
-          install_resources: request.install_resources ?? true,
-          generate_configs: request.generate_configs ?? true,
-          write_isolated_sites: request.write_isolated_sites ?? true,
-          http_port: request.http_port ?? null,
-          default_php_version: request.default_php_version ?? null,
-          dry_run: request.dry_run ?? false,
-        },
+      const provisionStatus = await invoke<ProvisionStatus>("ld_provision_status");
+      set({ provisionStatus });
+    } catch (err) {
+      console.error("ld_provision_status failed", err);
+    }
+  },
+
+  loadProvisionPlan: async () => {
+    try {
+      const provisionPlan = await invoke<ProvisionItem[]>("ld_provision_plan");
+      set({ provisionPlan });
+    } catch (err) {
+      console.error("ld_provision_plan failed", err);
+    }
+  },
+
+  provisionRuntime: async (roles) => {
+    set({ provisionBusy: true, provisionActiveRole: null });
+    try {
+      // Provisioning copies large binaries, so this blocks until the Rust side
+      // finishes; the busy flag drives the progress affordance.
+      const report = await invoke<ProvisionReport>("ld_provision_runtime", {
+        roles: roles ?? null,
       });
-      set({ importResult, importBusy: false });
-      if (!request.dry_run) {
-        try {
-          await get().persistImportResult(importResult);
-        } catch (persistErr) {
-          console.error(persistErr);
-          toast.warning("Import completed but DB persist had errors", {
-            description: errMessage(persistErr),
-          });
-        }
-        // Import generates nginx / FPM / dnsmasq config, so the cached specs
-        // (and their health probe ports) are stale from this point on.
-        if (importResult.configs) await get().refreshSpecs();
-        await get().listSites();
-        toast.success("Herd import complete", {
-          description: `${importResult.parks.length} parks · ${importResult.sites.length} sites · datadir not copied`,
+      const failed = report.outcomes.filter((o) => !o.ok);
+      if (failed.length === 0) {
+        toast.success("Runtime provisioned", {
+          description: `${report.outcomes.length} component${report.outcomes.length === 1 ? "" : "s"} now live under Badami.`,
         });
       } else {
-        toast.message("Dry-run import finished", {
-          description: "No configs written beyond snapshot",
+        toast.warning(`${failed.length} component${failed.length === 1 ? "" : "s"} failed`, {
+          description: failed
+            .map((o) => `${o.role} ${o.version}: ${o.error ?? "unknown error"}`)
+            .slice(0, 2)
+            .join(" · "),
         });
       }
-      return importResult;
+      set({ provisionBusy: false, provisionActiveRole: null });
+      await get().loadProvisionStatus();
+      await get().loadProvisionPlan();
+      await get().discover();
+      return report;
     } catch (err) {
-      set({ importBusy: false });
-      toast.error("Import failed", { description: errMessage(err) });
+      set({ provisionBusy: false, provisionActiveRole: null });
+      toast.error("Provisioning failed", { description: errMessage(err) });
       return null;
     }
   },
 
-  persistImportResult: async (result) => {
-    // Settings
-    const s = result.settings;
-    await setLocalDevSetting("tld", s.tld);
-    await setLocalDevSetting("loopback", s.loopback);
-    await setLocalDevSetting("http_port", String(s.http_port));
-    await setLocalDevSetting("default_php_version", s.default_php_version);
-    await setLocalDevSetting("mariadb_datadir_policy", s.mariadb_datadir_policy);
-    if (s.herd_import_path) {
-      await setLocalDevSetting("herd_import_path", s.herd_import_path);
+  selectRuntimeVersion: async (role, version) => {
+    try {
+      const manifest = await invoke<RuntimeManifest>("ld_provision_select", {
+        role,
+        version,
+      });
+      set((s) =>
+        s.provisionStatus ? { provisionStatus: { ...s.provisionStatus, manifest } } : {},
+      );
+      toast.success(`${role} pinned to ${version}`, {
+        description: "Restart the service to pick up the new binary.",
+      });
+      await get().loadProvisionStatus();
+      await get().discover();
+    } catch (err) {
+      toast.error("Could not switch version", { description: errMessage(err) });
     }
+  },
 
-    // Parks
-    const existingParks = await getParkPaths();
-    const parkSet = new Set(existingParks.map((p) => p.path));
-    for (const park of result.parks) {
-      if (!parkSet.has(park.path)) {
-        await createParkPath(park.path);
-        parkSet.add(park.path);
-      }
+  loadDatadirPreflight: async (source) => {
+    try {
+      const migrationPreflight = await invoke<MigrationPreflight>(
+        "ld_datadir_preflight",
+        { source: source ?? null },
+      );
+      set({ migrationPreflight });
+    } catch (err) {
+      console.error("ld_datadir_preflight failed", err);
     }
+  },
 
-    // Binaries
-    const knownRoles = new Set<string>([
-      "nginx",
-      "php",
-      "php_fpm",
-      "mariadb",
-      "mysql",
-      "redis",
-      "dnsmasq",
-    ]);
-    const existingBins = await getBinaries();
-    for (const bin of result.binaries) {
-      if (!knownRoles.has(bin.role)) continue;
-      const role = bin.role as BinaryRole;
-      const source = (["herd", "homebrew", "manual", "system", "other"].includes(bin.source)
-        ? bin.source
-        : "other") as BinarySource;
-      const already = existingBins.find((b) => b.role === role && b.path === bin.path);
-      let id = already?.id;
-      if (!id) {
-        const created = await createBinary({
-          role,
-          path: bin.path,
-          source,
-          version: bin.version,
+  migrateDatadir: async (options) => {
+    set({ migrationBusy: true });
+    try {
+      const migrationResult = await invoke<MigrationResult>("ld_datadir_migrate", {
+        source: options?.source ?? null,
+        confirm: options?.confirm ?? false,
+      });
+      set({ migrationBusy: false, migrationResult });
+      if (migrationResult.ok) {
+        toast.success("MariaDB data moved into Badami", {
+          description: migrationResult.cloned
+            ? `Cloned in ${(migrationResult.elapsed_ms / 1000).toFixed(1)}s.`
+            : `Copied in ${(migrationResult.elapsed_ms / 1000).toFixed(1)}s.`,
         });
-        id = created.id;
-        existingBins.push(created);
-      }
-      if (bin.is_selected && id) {
-        await selectBinary(role, id);
-      }
-    }
-
-    // Services
-    for (const svc of result.services) {
-      const kind = mapServiceKind(svc.kind);
-      if (!kind) continue;
-      const existing = await getServiceByKind(kind);
-      if (existing) {
-        await updateService(existing.id, {
-          display_name: svc.display_name,
-          enabled: svc.enabled ? 1 : 0,
-          data_dir: svc.data_dir,
-          config_path: svc.config_path,
-          port: svc.port,
-          socket_path: svc.socket_path,
-          extra_json: svc.extra_json != null ? JSON.stringify(svc.extra_json) : null,
-        });
+        // The wrapper my.cnf has to point at the new datadir before MariaDB
+        // starts again.
+        await get().generateConfigs();
+        await get().loadProvisionStatus();
+        await get().discover();
       } else {
-        await createService({
-          kind,
-          display_name: svc.display_name,
-          enabled: svc.enabled ? 1 : 0,
-          data_dir: svc.data_dir,
-          config_path: svc.config_path,
-          port: svc.port,
-          socket_path: svc.socket_path,
-          extra_json: svc.extra_json != null ? JSON.stringify(svc.extra_json) : null,
+        toast.error("Data move finished with mismatches", {
+          description: `${migrationResult.failed_files.length} file(s) did not verify.`,
         });
       }
+      return migrationResult;
+    } catch (err) {
+      set({ migrationBusy: false });
+      toast.error("Could not move MariaDB data", { description: errMessage(err) });
+      return null;
     }
+  },
 
-    // Sites
-    for (const site of result.sites) {
-      if (!site.name || site.skipped) continue;
-      const kind: SiteKind =
-        site.kind === "linked" || site.kind === "parked" ? site.kind : "parked";
-      const existing = await getSiteByNameTld(site.name, site.tld || "test");
-      if (existing) {
-        await updateSite(existing.id, {
-          path: site.path || existing.path,
-          kind,
-          php_version: site.php_version,
-        });
-      } else if (site.path) {
-        await createSite({
-          name: site.name,
-          path: site.path,
-          kind,
-          tld: site.tld || "test",
-          php_version: site.php_version,
-        });
-      }
+  loadUpdateSources: async () => {
+    try {
+      const updateSources = await invoke<UpdateSource[]>("ld_runtime_sources");
+      set({ updateSources });
+    } catch (err) {
+      console.error("ld_runtime_sources failed", err);
     }
+  },
 
-    await get().loadSettings();
+  installRuntimeFromUpstream: async (sourceId) => {
+    set({ provisionBusy: true });
+    try {
+      await invoke("ld_runtime_install", { sourceId });
+      toast.success("Installed from upstream", {
+        description: "Select it in the version list to run it.",
+      });
+      set({ provisionBusy: false });
+      await get().loadProvisionStatus();
+      await get().discover();
+    } catch (err) {
+      set({ provisionBusy: false });
+      toast.error("Upstream install failed", { description: errMessage(err) });
+    }
+  },
+
+  uninstallRuntimeVersion: async (role, version) => {
+    try {
+      const manifest = await invoke<RuntimeManifest>("ld_runtime_uninstall", {
+        role,
+        version,
+      });
+      set((s) =>
+        s.provisionStatus ? { provisionStatus: { ...s.provisionStatus, manifest } } : {},
+      );
+      toast.success(`Removed ${role} ${version}`);
+      await get().loadProvisionStatus();
+    } catch (err) {
+      toast.error("Could not remove version", { description: errMessage(err) });
+    }
   },
 
   // ── Doctor / bootstrap ─────────────────────────────────────────────

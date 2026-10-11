@@ -244,7 +244,7 @@ export function ProjectSitePanel({ projectId }: ProjectSitePanelProps) {
           {availableToLink.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               {runtimeSites.length === 0
-                ? "No Local Dev sites discovered yet. Open Local Dev → Sites or import from Herd."
+                ? "No Local Dev sites discovered yet. Open Local Dev → Sites to park a folder."
                 : "All discovered sites are already linked here."}
             </p>
           ) : (

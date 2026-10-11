@@ -18,7 +18,7 @@ import type {
   SiteKind,
 } from "@/types/localDev";
 
-/** Strip trailing slashes for park-path uniqueness (Herd config.json duplicates). */
+/** Strip trailing slashes so the same directory cannot be parked twice. */
 function normalizeParkPath(path: string): string {
   const stripped = path.replace(/\/+$/, "");
   return stripped === "" ? "/" : stripped;

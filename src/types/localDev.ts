@@ -1,4 +1,4 @@
-// Domain types for Local Dev module (Herd-replacement orchestrator)
+// Domain types for Local Dev module (Badami-owned runtime orchestrator)
 
 export type LocalDevServiceKind =
   | "nginx"
@@ -19,7 +19,123 @@ export type BinaryRole =
   | "redis"
   | "dnsmasq";
 
-export type BinarySource = "herd" | "homebrew" | "manual" | "system" | "other";
+export type BinarySource = "homebrew" | "manual" | "system" | "other";
+
+/** Roles Badami can own outright, matching `runtime_manifest::ROLES`. */
+export type RuntimeRole = "nginx" | "php" | "mariadb" | "redis" | "dnsmasq";
+
+/** One provisioned binary under `runtime/<role>/<version>/`. */
+export interface RuntimeComponent {
+  role: RuntimeRole | string;
+  version: string;
+  /** Absolute path to the primary executable. */
+  binary: string;
+  /** Lowercase hex SHA-256 of `binary` at install time. */
+  sha256: string;
+  source: string;
+  arch: string;
+  installed_at: string;
+  selected: boolean;
+}
+
+export interface RuntimeManifest {
+  schema: number;
+  updated_at: string;
+  components: RuntimeComponent[];
+}
+
+/** What `ld_provision_plan` proposes to install into Badami's runtime tree. */
+export interface ProvisionItem {
+  role: string;
+  version: string;
+  source: string;
+  source_root: string;
+  binary_rel: string;
+  needs_relink: boolean;
+  display_name: string;
+}
+
+export interface ProvisionOutcome {
+  role: string;
+  version: string;
+  ok: boolean;
+  error: string | null;
+}
+
+export interface ProvisionReport {
+  outcomes: ProvisionOutcome[];
+  manifest: RuntimeManifest;
+  notes: string[];
+}
+
+export interface InstalledVersion {
+  version: string;
+  selected: boolean;
+  /** False when the file is missing or its digest no longer matches. */
+  verified: boolean;
+  binary: string;
+}
+
+export interface RoleStatus {
+  role: string;
+  installed: InstalledVersion[];
+  missing_reason: string | null;
+}
+
+export interface ProvisionStatus {
+  manifest: RuntimeManifest;
+  roles: RoleStatus[];
+  notes: string[];
+}
+
+/** Progress payload emitted while a migration or provisioning run is active. */
+export interface ProvisionProgressEvent {
+  phase: string;
+  message: string;
+  at: string;
+}
+
+export interface MigrationPreflight {
+  source: string;
+  dest: string;
+  source_bytes: number;
+  dest_free_bytes: number;
+  /** True when the volume supports APFS copy-on-write clones. */
+  can_clone: boolean;
+  /** The source datadir is currently served by a running server. */
+  source_running: boolean;
+  dest_exists: boolean;
+  blockers: string[];
+  warnings: string[];
+}
+
+export interface MigrationResult {
+  ok: boolean;
+  dest: string;
+  /** Which copy strategy actually ran: clone or full copy. */
+  method: string;
+  cloned: boolean;
+  bytes: number;
+  elapsed_ms: number;
+  verified_files: number;
+  failed_files: string[];
+  notes: string[];
+}
+
+export type ArchiveKind = "TarGz" | "Zip" | "RawBinary";
+
+/** One upstream the binary updater can install from. */
+export interface UpdateSource {
+  id: string;
+  label: string;
+  role: string;
+  url: string;
+  version: string;
+  archive: ArchiveKind;
+  /** Null means the upstream publishes no digest, so the download is unverified. */
+  sha256: string | null;
+  note: string;
+}
 
 export type HttpMode = "unprivileged" | "privileged_launchd";
 
@@ -40,7 +156,7 @@ export type LocalDevServiceStatus =
 
 export type EventLevel = "info" | "warn" | "error" | "debug";
 
-export type MariaDbDatadirPolicy = "reuse_herd" | "copy" | "fresh";
+export type MariaDbDatadirPolicy = "copy" | "fresh";
 
 /** Keys stored in local_dev_settings (module config only). */
 export type LocalDevSettingKey =
@@ -55,7 +171,6 @@ export type LocalDevSettingKey =
   | "mariadb_datadir_policy"
   | "bootstrap_complete"
   | "dns_bootstrap_complete"
-  | "herd_import_path"
   | "mariadb_connection_id";
 
 /** Feature flag lives only in global settings (Key Decision 25). */
@@ -70,10 +185,9 @@ export const DEFAULT_LOCAL_DEV_SETTINGS: Record<LocalDevSettingKey, string> = {
   dns_port: "53",
   default_php_version: "8.4",
   adopt_existing_processes: "true",
-  mariadb_datadir_policy: "reuse_herd",
+  mariadb_datadir_policy: "copy",
   bootstrap_complete: "false",
   dns_bootstrap_complete: "false",
-  herd_import_path: "",
   mariadb_connection_id: "",
 };
 
@@ -221,6 +335,12 @@ export interface RuntimePaths {
   pids: string;
   logs: string;
   import: string;
+  /** Badami-owned binaries — `runtime/<role>/<version>/`. */
+  runtime: string;
+  /** Badami-owned service data (MariaDB datadir). */
+  data: string;
+  /** Per-version php.ini scan dirs — `config/php/<tag>/`. */
+  php_config: string;
 }
 
 export interface ResolverInfo {
@@ -256,28 +376,21 @@ export interface PhpVersionInfo {
   fpm_conf_path?: string | null;
 }
 
-export interface HerdInventory {
+/** Badami's own provisioned binaries. */
+export interface BadamiRuntimeInventory {
+  root: string;
   detected: boolean;
-  app_path: string | null;
-  home_path: string | null;
-  config_path?: string | null;
-  bin_path?: string | null;
-  shared_services_path?: string | null;
-  resources_path?: string | null;
-  privileged_helper_present?: boolean;
-  privileged_helper_path?: string;
-  mariadb_candidates: MariadbCandidate[];
-  park_paths: string[];
-  php_versions: PhpVersionInfo[];
+  components: RuntimeComponent[];
   nginx_binary: string | null;
   dnsmasq_binary: string | null;
-  server_php?: string | null;
-  valet?: {
-    config_path?: string | null;
-    tld?: string | null;
-    loopback?: string | null;
-    paths?: string[];
-  } | null;
+  php_versions: PhpVersionInfo[];
+  mariadb_binary: string | null;
+  /** Version dir of the MariaDB runtime, usable as a `basedir`. */
+  mariadb_basedir: string | null;
+  redis_server: string | null;
+  /** Set once the datadir has been moved into Badami's own tree. */
+  data_dir: string | null;
+  datadir_adopted: boolean;
 }
 
 /** Discovery report from `ld_discover` (serde snake_case). */
@@ -287,7 +400,7 @@ export interface DiscoveryReport {
   runtime_paths: RuntimePaths;
   resolver: ResolverInfo;
   notes: string[];
-  herd: HerdInventory;
+  badami: BadamiRuntimeInventory;
   candidates?: Array<{
     role: string;
     path: string;
@@ -302,64 +415,7 @@ export interface DiscoveryReport {
   }>;
 }
 
-// ── Import (`ld_import_herd`) ───────────────────────────────────────
-
-export interface ImportHerdRequest {
-  install_resources?: boolean | null;
-  generate_configs?: boolean | null;
-  write_isolated_sites?: boolean | null;
-  http_port?: number | null;
-  default_php_version?: string | null;
-  dry_run?: boolean | null;
-}
-
-export interface ImportedPark {
-  path: string;
-  sources: string[];
-  exists: boolean;
-}
-
-export interface ImportedSite {
-  name: string;
-  tld: string;
-  path: string;
-  kind: string;
-  php_version: string | null;
-  isolated: boolean;
-  skipped: boolean;
-  skip_reason: string | null;
-  source_conf: string | null;
-  conf_written: boolean;
-}
-
-export interface ImportedBinary {
-  role: string;
-  path: string;
-  version: string | null;
-  source: string;
-  is_selected: boolean;
-}
-
-export interface ImportedService {
-  kind: string;
-  display_name: string;
-  enabled: boolean;
-  data_dir: string | null;
-  config_path: string | null;
-  port: number | null;
-  socket_path: string | null;
-  binary_path: string | null;
-  extra_json: unknown | null;
-}
-
-export interface ImportSettingsSuggestion {
-  tld: string;
-  loopback: string;
-  http_port: number;
-  default_php_version: string;
-  mariadb_datadir_policy: string;
-  herd_import_path: string;
-}
+// ── Runtime resources and generated configs ─────────────────────────
 
 export interface InstallResourcesResult {
   local_dev_root: string;
@@ -373,25 +429,6 @@ export interface GenerateConfigsResult {
   local_dev_root: string;
   written: string[];
   notes: string[];
-}
-
-export interface ImportResult {
-  herd_detected: boolean;
-  snapshot_path: string;
-  parks: ImportedPark[];
-  sites: ImportedSite[];
-  binaries: ImportedBinary[];
-  services: ImportedService[];
-  settings: ImportSettingsSuggestion;
-  selected_mariadb: MariadbCandidate | null;
-  php_versions: PhpVersionInfo[];
-  resources: InstallResourcesResult | null;
-  configs: GenerateConfigsResult | null;
-  notes: string[];
-  warnings: string[];
-  services_started: boolean;
-  herd_processes_killed: boolean;
-  mariadb_datadir_copied: boolean;
 }
 
 // ── Sites (`ld_list_sites`, park/link/isolate) ──────────────────────
@@ -607,12 +644,6 @@ export interface DoctorReport {
     total_warn: boolean;
     large_files: Array<{ path: string; bytes: number; warn: boolean }>;
   };
-  herd_helper: {
-    path: string;
-    present: boolean;
-    launch_daemon_label: string;
-    note: string;
-  };
   launchd_dnsmasq: LaunchdUnitInfo;
   launchd_nginx: LaunchdUnitInfo;
   ready_for_mariadb_start: boolean;
@@ -758,10 +789,9 @@ export interface BootstrapStatus {
 /**
  * What DNS needs from the user right now.
  *
- * Herd and Valet both treat DNS as install-time infrastructure: a resolver file
- * plus a permanently-running dnsmasq, set up once and never toggled. This stack
- * behaves the same way in practice — `dnsmasq` daemonizes, so it already
- * outlives the app — which is why a Start/Stop pair misrepresents it.
+ * DNS is install-time infrastructure: a resolver file plus a permanently
+ * running dnsmasq, set up once and never toggled. `dnsmasq` daemonizes, so it
+ * already outlives the app, which is why a Start/Stop pair misrepresents it.
  */
 export type DnsSetupState =
   | { kind: "healthy"; mode: DnsMode | DoctorDnsMode | null }
@@ -801,7 +831,7 @@ export function computeDnsSetup({
 
   if (probe?.healthy) {
     // Resolving without a dnsmasq of ours means an existing listener serves the
-    // TLD — Herd's, or Homebrew's. Nothing to set up.
+    // TLD. Nothing to set up.
     return ourDnsRunning ? { kind: "healthy", mode: probe.mode } : { kind: "adopted" };
   }
 
@@ -955,9 +985,9 @@ export interface RequiredServicesInput {
 /**
  * Service ids the stack is expected to be running.
  *
- * Deliberately **not** "every discovered service". Herd installs keep 6-8 PHP
- * versions around; counting all of them makes a perfectly healthy stack report
- * "3/9 running" forever. Per group:
+ * Deliberately **not** "every discovered service". A runtime tree can keep 6-8
+ * PHP versions around; counting all of them makes a perfectly healthy stack
+ * report "3/9 running" forever. Per group:
  *
  * * **web** — nginx plus only the FPM pools something references (the default
  *   catch-all version and any isolated site's version).
@@ -1120,8 +1150,8 @@ export function computeStackHealth(input: RequiredServicesInput): StackHealth {
       label: "Not configured",
       detail:
         nginx && !nginx.binary_present
-          ? "nginx binary not found — set it in Settings or run Import from Herd"
-          : "No web services discovered. Run Import from Herd, then generate configs.",
+          ? "nginx binary not found. Set it in Settings or add a runtime version"
+          : "No web services discovered. Add a runtime version, then generate configs.",
     };
   }
 
@@ -1165,71 +1195,6 @@ export function computeStackHealth(input: RequiredServicesInput): StackHealth {
     detail: `${web.missing.join(", ")} not running — requests will fail`,
   };
 }
-
-// ── Herd coexistence (`ld_herd_status`, `ld_herd_quit`) ─────────────
-
-export type HerdProcessRole =
-  | "app"
-  | "nginx"
-  | "php_fpm"
-  | "mysqld"
-  | "dnsmasq"
-  | "redis"
-  | "helper"
-  | "other";
-
-export interface HerdProcess {
-  pid: number;
-  role: HerdProcessRole;
-  /** Truncated cmdline for display. */
-  command: string;
-}
-
-export interface HerdPortHold {
-  port: number;
-  label: string;
-  listening: boolean;
-  /**
-   * Herd role that plausibly owns the port. Inferred by cross-referencing the
-   * process scan — not measured per-socket, so treat as a hint.
-   */
-  attributed_role: HerdProcessRole | null;
-}
-
-export interface HerdRuntimeStatus {
-  installed: boolean;
-  /** Herd.app itself is running (menu-bar app). */
-  app_running: boolean;
-  /** Herd-owned service processes — the ones that actually conflict. */
-  processes: HerdProcess[];
-  /** Ports Badami wants that are currently held by someone. */
-  ports: HerdPortHold[];
-  notes: string[];
-}
-
-export interface HerdQuitResult {
-  requested: boolean;
-  app_running_after: boolean;
-  remaining: HerdProcess[];
-  notes: string[];
-}
-
-/** True when Herd processes overlap what Badami wants to run. */
-export function hasHerdConflict(status: HerdRuntimeStatus | null): boolean {
-  if (!status) return false;
-  return status.app_running || status.processes.some((p) => p.role !== "app");
-}
-
-export const HERD_ROLE_LABELS: Record<HerdProcessRole, string> = {
-  app: "Herd.app",
-  nginx: "nginx",
-  php_fpm: "PHP-FPM",
-  mysqld: "MariaDB / MySQL",
-  dnsmasq: "dnsmasq",
-  redis: "Redis",
-  helper: "Privileged helper",
-  other: "Other",
-};
 
 /**
  * DNS degraded when dnsmasq is present but in a terminal bad state.

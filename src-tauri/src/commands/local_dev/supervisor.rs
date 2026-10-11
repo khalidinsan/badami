@@ -4,7 +4,7 @@
 //! - Unix `setsid` via `pre_exec` so services survive app quit
 //! - `requires_config` gates; MariaDB preflight before spawn
 //! - Never shell out with concatenated untrusted strings
-//! - Never deletes Herd datadir data
+//! - Never deletes the MariaDB datadir
 
 use super::bootstrap::{ld_label, DEFAULT_LD_IDENTIFIER};
 use super::discovery::{build_runtime_paths, discover};
@@ -631,7 +631,7 @@ fn find_our_nginx_master(spec: &ServiceSpec) -> Option<u32> {
     None
 }
 
-// ── Privileged nginx (port < 1024 — same problem Herd solves with a helper) ─
+// Privileged nginx: binding a port below 1024 needs a privileged helper.
 
 fn health_tcp_port(h: &HealthCheck) -> Option<u16> {
     match h {
@@ -675,7 +675,7 @@ async fn start_nginx_privileged(
     spec: &ServiceSpec,
     notes: &mut Vec<String>,
 ) -> Result<u32, String> {
-    // Path A: LaunchDaemon already installed (Herd-like after first setup).
+    // Path A: LaunchDaemon already installed, so no prompt is needed.
     if launchctl_unit_loaded(nginx_label) {
         notes.push(format!(
             "Mode B: LaunchDaemon {nginx_label} loaded — kickstart"
@@ -698,9 +698,9 @@ async fn start_nginx_privileged(
         return wait_nginx_up(nginx_label, spec, notes).await;
     }
 
-    // Path B: one-shot admin elevate (like a mini privileged start without permanent helper).
+    // Path B: one-shot admin elevation, no permanent helper installed.
     notes.push(
-        "Mode B LaunchDaemon not installed — elevating once via macOS admin prompt (same idea as Herd helper, temporary)"
+        "Mode B LaunchDaemon not installed, elevating once via macOS admin prompt (temporary)"
             .into(),
     );
     let conf = spec
@@ -1327,7 +1327,7 @@ async fn start_one(
         return Err(e);
     }
 
-    // Nginx on privileged ports (e.g. :80) — Herd uses a privileged helper; we use
+    // Nginx on privileged ports (e.g. :80) needs elevated rights: use a
     // LaunchDaemon (preferred) or one-shot admin elevation so UI Start/Stop work.
     if matches!(spec.kind, ServiceKind::Nginx) && nginx_needs_root(&spec) {
         {

@@ -194,7 +194,7 @@ pub fn unix_socket_accepting(_socket: &Path) -> bool {
 /// - `ok`: empty-password `root` auth succeeded (or non-empty password if provided).
 /// - `needs_password`: server is accepting connections but empty-password auth failed
 ///   with an access-denied style error — UI should prompt the user.
-/// - Never mutates data; never touches Herd datadir.
+/// - Never mutates data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MariadbAuthProbe {
     pub ok: bool,
@@ -289,7 +289,7 @@ pub async fn probe_mariadb_auth_async(req: MariadbAuthProbeRequest) -> MariadbAu
     }
 
     // Attempt auth via mysql protocol over TCP (same path as dbc_test_connection).
-    // Empty password is intentional for Herd-style local root.
+    // Empty password is the expected default for a local dev root.
     let url = format!("mysql://{username}:{password}@{host}:{port}/");
 
     let connect_result = sqlx::mysql::MySqlPoolOptions::new()
@@ -738,7 +738,7 @@ pub fn run_preflight(req: MariadbPreflightRequest) -> Result<MariadbPreflightRep
 
     if let Ok(root) = local_dev_root() {
         checks.push(format!(
-            "local_dev_root: {} (wrapper only; datadir remains Herd path)",
+            "local_dev_root: {} (wrapper my.cnf owns the datadir)",
             root.display()
         ));
     }

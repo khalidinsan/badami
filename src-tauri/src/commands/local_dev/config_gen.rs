@@ -1,16 +1,14 @@
 //! Config generators for Badami Local Dev runtime layout.
 //!
 //! Writes under `~/Library/Application Support/Badami/local-dev/` only.
-//! Never mutates Herd paths or MariaDB datadirs.
+//! Never mutates MariaDB datadirs.
 //!
-//! Paths are always parameters / discovery-derived — no hardcoded usernames.
+//! Paths are always parameters / discovery-derived; no hardcoded usernames.
 
 use super::discovery::{build_runtime_paths, local_dev_root, RuntimePaths};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-
-// ── Public types ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerateConfigsRequest {
@@ -40,16 +38,16 @@ pub struct GenerateConfigsRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MariadbWrapperInput {
-    /// Absolute discovered datadir (Herd UUID path). Required.
+    /// Absolute datadir path. Required.
     pub datadir: String,
-    /// Absolute discovered basedir (Shared Herd services). Required.
+    /// Absolute MariaDB basedir. Required unless the Badami runtime has one.
     pub basedir: String,
     /// Socket path; default under local-dev or `/tmp`.
     pub socket: Option<String>,
     /// TCP port (default 3306).
     pub port: Option<u16>,
-    /// Allow absolute datadir/basedir that are not under Herd/Shared Herd paths
-    /// (tests / advanced). Default false → soft-warn note only unless missing markers.
+    /// Allow absolute datadir/basedir outside the Badami local-dev root
+    /// (tests / advanced). Default false means a soft-warn note only.
     pub allow_unverified_datadir: Option<bool>,
 }
 
@@ -70,8 +68,6 @@ pub struct IsolatedSiteRequest {
     pub php_tag: String,
     pub http_port: Option<u16>,
 }
-
-// ── Validation (path traversal + conf injection) ────────────────────
 
 fn has_control_or_meta(s: &str) -> bool {
     s.chars().any(|c| {
@@ -206,12 +202,68 @@ pub fn ensure_path_under_root(root: &Path, candidate: &Path) -> Result<PathBuf, 
     Ok(joined)
 }
 
-fn looks_like_herd_path(p: &Path) -> bool {
-    let s = p.to_string_lossy();
-    s.contains("/Herd/") || s.contains("/Herd") || s.contains("/Users/Shared/Herd/")
+/// Paths the MariaDB wrapper may point at without the caller opting in:
+/// Badami's own local-dev tree (binaries and data). Anything else needs
+/// `allow_unverified_datadir`.
+fn is_trusted_runtime_path(p: &Path, local_dev_root: &Path) -> bool {
+    let badami_roots = [local_dev_root.to_path_buf(), local_dev_root.join("data")];
+    badami_roots.iter().any(|root| p.starts_with(root))
 }
 
-// ── Path helpers ────────────────────────────────────────────────────
+/// Verified Badami MariaDB version dir (`runtime/mariadb/<version>`): the
+/// basedir its `bin/mariadbd` and `lib/` expect.
+fn badami_mariadb_basedir(runtime_root: &Path) -> Option<PathBuf> {
+    let manifest = super::runtime_manifest::load(runtime_root);
+    let selected = manifest
+        .selected_for("mariadb", None)
+        .filter(|c| super::runtime_manifest::verify(c))
+        .or_else(|| {
+            manifest
+                .for_role("mariadb")
+                .into_iter()
+                .find(|c| super::runtime_manifest::verify(c))
+        })?;
+    Path::new(&selected.binary)
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+}
+
+/// Park paths already recorded in the generated valet config, so a caller that
+/// does not supply the list cannot erase the sites registered there.
+fn existing_park_paths(paths: &RuntimePaths) -> Vec<String> {
+    let file = PathBuf::from(&paths.config_valet).join("config.json");
+    let Ok(raw) = std::fs::read_to_string(&file) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Vec::new();
+    };
+    value
+        .get("paths")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Wrapper input derived from the Badami runtime, for callers that do not name
+/// a datadir. Returns `None` until both the runtime and a datadir exist, since
+/// a wrapper pointing at a missing datadir would be worse than no wrapper.
+fn badami_mariadb_input(paths: &RuntimePaths) -> Option<MariadbWrapperInput> {
+    let basedir = badami_mariadb_basedir(Path::new(&paths.runtime))?;
+    let datadir = super::datadir_migration::adopted_datadir(Path::new(&paths.data))?;
+    Some(MariadbWrapperInput {
+        datadir: datadir.to_string_lossy().into_owned(),
+        basedir: basedir.to_string_lossy().into_owned(),
+        socket: None,
+        port: None,
+        allow_unverified_datadir: None,
+    })
+}
 
 fn runtime_username(override_user: Option<&str>) -> Result<String, String> {
     let u = if let Some(u) = override_user {
@@ -266,14 +318,12 @@ fn replace_all(mut s: String, pairs: &[(&str, &str)]) -> String {
 }
 
 fn version_from_tag(tag: &str) -> String {
-    // "74" → "7.4", "84" → "8.4" — only valid after validate_php_tag
+    // "74" → "7.4", "84" → "8.4"; only valid after validate_php_tag
     let mut chars = tag.chars();
     let major = chars.next().unwrap_or('0');
     let minor = chars.next().unwrap_or('0');
     format!("{major}.{minor}")
 }
-
-// ── Generators (pure-ish: only write under local-dev) ────────────────
 
 /// Write `config/valet/config.json`.
 pub fn write_valet_config(
@@ -331,7 +381,7 @@ pub fn write_nginx_configs(
     let user_directive = if nginx_as_root {
         format!("user \"{username}\" {group};")
     } else {
-        // Mode A: unprivileged master — omit user directive.
+        // Mode A: unprivileged master; omit user directive.
         String::new()
     };
 
@@ -372,8 +422,6 @@ pub fn write_nginx_configs(
     Ok(())
 }
 
-// ── Merged site conf (Phase B TLS) ──────────────────────────────────
-
 /// Options for the merged per-site nginx conf writer.
 ///
 /// A single `{site}.conf` file supports the four combinations of
@@ -388,9 +436,9 @@ pub struct SiteConfOptions {
     /// `Some(port)` emits an HTTPS server block + an HTTP redirect block.
     /// `None` emits a single HTTP server block.
     pub https_port: Option<u16>,
-    /// Absolute path to the leaf cert PEM — must be `Some` iff `https_port`.
+    /// Absolute path to the leaf cert PEM; must be `Some` iff `https_port`.
     pub cert_path: Option<String>,
-    /// Absolute path to the leaf key PEM — must be `Some` iff `https_port`.
+    /// Absolute path to the leaf key PEM; must be `Some` iff `https_port`.
     pub key_path: Option<String>,
     /// `Some(tag)` points fastcgi_pass at the isolated FPM socket.
     pub php_tag: Option<String>,
@@ -399,7 +447,7 @@ pub struct SiteConfOptions {
     pub php_version_display: Option<String>,
 }
 
-/// Legacy helper — writes an isolated-only per-site conf. Delegates to
+/// Legacy helper; writes an isolated-only per-site conf. Delegates to
 /// [`write_site_conf`] so there is only one renderer in the tree. New
 /// callers should prefer `write_site_conf` directly.
 pub fn write_isolated_site_conf(
@@ -446,7 +494,7 @@ pub fn render_merged_site_conf(
     let secured = site_conf_is_secured(opts);
     if opts.https_port.is_some() && !secured {
         return Err(
-            "https_port is Some but cert_path / key_path missing — secure cert files first".into(),
+            "https_port is Some but cert_path / key_path missing; secure cert files first".into(),
         );
     }
     for p in opts.cert_path.iter().chain(opts.key_path.iter()) {
@@ -458,7 +506,7 @@ pub fn render_merged_site_conf(
     let valet_php = format!("{}/valet-server/server.php", paths.local_dev_root);
     let default_sock_fallback = {
         // Fall back to the catch-all server's socket (php{{default}}.sock)
-        // when the caller did not pass a PHP tag — matches the behaviour of
+        // when the caller did not pass a PHP tag; matches the behaviour of
         // the top-level badami.conf default_server block.
         let tag = opts
             .php_tag
@@ -492,7 +540,7 @@ pub fn render_merged_site_conf(
     if secured {
         out.push_str("# BADAMI_SECURED=1\n");
     }
-    out.push_str("# Badami Local Dev — per-site conf (static socket, no njs)\n\n");
+    out.push_str("# Badami Local Dev per-site conf (static socket, no njs)\n\n");
 
     if secured {
         let https_port = opts.https_port.ok_or(
@@ -515,7 +563,7 @@ pub fn render_merged_site_conf(
 {body}}}\n\n"
         ));
 
-        // HTTP redirect — strip :443 from the Location header; keep high ports.
+        // HTTP redirect: strip :443 from the Location header; keep high ports.
         let location = if https_port == 443 {
             format!("https://{host}$request_uri")
         } else {
@@ -619,7 +667,7 @@ pub fn write_fpm_pools(
                 ("{{VALET_SERVER_DIR}}", &paths.valet_server),
             ],
         );
-        // version is digits+dot only from validated tag — safe filename.
+        // version is digits+dot only from validated tag; safe filename.
         let filename = format!("{version}-fpm.conf");
         let out = ensure_path_under_root(&fpm_dir, Path::new(&filename))?;
         write_file(&out, &body, written)?;
@@ -667,26 +715,42 @@ pub fn write_mariadb_wrapper(
         return Err("mariadb wrapper requires non-empty datadir and basedir".into());
     }
 
+    // A provisioned Badami MariaDB wins over the configured basedir: its
+    // relocated dylibs only resolve against `runtime/mariadb/<version>/lib`.
+    let basedir_input = match badami_mariadb_basedir(Path::new(&paths.runtime)) {
+        Some(b) => {
+            let s = b.to_string_lossy().into_owned();
+            notes.push(format!("MariaDB basedir: using Badami runtime {s}"));
+            s
+        }
+        None => input.basedir.clone(),
+    };
+
     // Refuse to point datadir at empty string or relative junk.
     let datadir = PathBuf::from(&input.datadir);
-    let basedir = PathBuf::from(&input.basedir);
+    let basedir = PathBuf::from(&basedir_input);
     if !datadir.is_absolute() || !basedir.is_absolute() {
         return Err("mariadb datadir and basedir must be absolute paths".into());
     }
-    if has_control_or_meta(&input.datadir) || has_control_or_meta(&input.basedir) {
+    if has_control_or_meta(&input.datadir) || has_control_or_meta(&basedir_input) {
         return Err("mariadb datadir/basedir contain forbidden characters".into());
     }
 
+    // Badami's own tree (binaries + data) is trusted; anything else is only a
+    // soft warning, so the caller opts in explicitly.
+    let local_dev_root = Path::new(&paths.local_dev_root);
     let allow_unverified = input.allow_unverified_datadir.unwrap_or(false);
-    if !looks_like_herd_path(&datadir) || !looks_like_herd_path(&basedir) {
+    if !is_trusted_runtime_path(&datadir, local_dev_root)
+        || !is_trusted_runtime_path(&basedir, local_dev_root)
+    {
         if allow_unverified {
             notes.push(
-                "mariadb wrapper: datadir/basedir not under Herd/Shared paths (allow_unverified_datadir=true)"
+                "mariadb wrapper: datadir/basedir outside the Badami root (allow_unverified_datadir=true)"
                     .into(),
             );
         } else {
             notes.push(
-                "warning: mariadb datadir/basedir do not look like Herd paths — set allow_unverified_datadir if intentional"
+                "warning: mariadb datadir/basedir are not under the Badami local-dev root; set allow_unverified_datadir if intentional"
                     .into(),
             );
             // Soft-validate only (do not hard-fail): still write, so import flows work.
@@ -715,7 +779,7 @@ pub fn write_mariadb_wrapper(
     let body = replace_all(
         include_str!("../../../resources/local-dev/templates/mariadb/my.cnf.tpl").to_string(),
         &[
-            ("{{BASEDIR}}", &input.basedir),
+            ("{{BASEDIR}}", &basedir_input),
             ("{{DATADIR}}", &input.datadir),
             ("{{SOCKET}}", &socket),
             ("{{PORT}}", &port_s),
@@ -725,7 +789,7 @@ pub fn write_mariadb_wrapper(
     );
     write_file(&mariadb_dir.join("my.cnf"), &body, written)?;
     notes.push(
-        "MariaDB wrapper my.cnf written; start is NOT exposed in this PR — use ld_mariadb_preflight only."
+        "MariaDB wrapper my.cnf written; start is NOT exposed in this PR; use ld_mariadb_preflight only."
             .into(),
     );
     notes.push(
@@ -739,6 +803,20 @@ pub fn write_mariadb_wrapper(
 pub fn generate_configs(req: GenerateConfigsRequest) -> Result<GenerateConfigsResult, String> {
     let paths = build_runtime_paths()?;
     let root = local_dev_root()?;
+    generate_configs_at(req, &paths, &root)
+}
+
+/// Same as [`generate_configs`] but against a caller-supplied root.
+///
+/// Tests use this so they never write into the real Application Support tree,
+/// which would overwrite a developer's parked sites and ports.
+pub fn generate_configs_at(
+    req: GenerateConfigsRequest,
+    paths: &RuntimePaths,
+    root: &Path,
+) -> Result<GenerateConfigsResult, String> {
+    let paths = paths.clone();
+    let root = root.to_path_buf();
 
     // Layout dirs (idempotent).
     for sub in [
@@ -775,14 +853,20 @@ pub fn generate_configs(req: GenerateConfigsRequest) -> Result<GenerateConfigsRe
 
     let username = runtime_username(req.username.as_deref())?;
     let group = runtime_group(req.group.as_deref())?;
-    // Privileged ports need root master + `user` so workers reach FPM socks
-    // under Application Support (Mode B / :80 — same class of problem as Herd).
+    // Privileged ports need a root master plus `user` so workers can reach FPM
+    // socks under Application Support (Mode B / :80).
     let nginx_as_root = req
         .nginx_as_root
         .unwrap_or(http_port > 0 && http_port < 1024);
     // Mode A: high port (no root). Port 53 only when explicitly requested (Mode B).
     let dns_port = req.dns_port.unwrap_or(53535);
-    let park_paths = req.park_paths.unwrap_or_default();
+    let park_paths = match req.park_paths {
+        Some(p) => p,
+        // A caller that omits the list (port change, config refresh) must not
+        // wipe the parked sites: an empty list here means "unspecified", not
+        // "no parks", and writing it would silently unregister every site.
+        None => existing_park_paths(&paths),
+    };
 
     let mut written = Vec::new();
     let mut notes = Vec::new();
@@ -800,8 +884,22 @@ pub fn generate_configs(req: GenerateConfigsRequest) -> Result<GenerateConfigsRe
     write_fpm_pools(&paths, &php_tags, &username, &group, &mut written)?;
     write_dnsmasq_conf(&paths, tld, loopback, dns_port, &mut written)?;
 
-    if let Some(ref m) = req.mariadb {
+    // Provisioned php-fpm reads its ini only from PHP_INI_SCAN_DIR, which the
+    // FPM spec points here. Without this the pool starts with no ini at all.
+    for tag in &php_tags {
+        match super::provision::write_php_ini(&paths, tag) {
+            Ok(path) => written.push(path.to_string_lossy().into_owned()),
+            Err(e) => notes.push(format!("php.ini for {tag} skipped: {e}")),
+        }
+    }
+
+    if let Some(m) = &req.mariadb {
         write_mariadb_wrapper(&paths, m, &mut written, &mut notes)?;
+    } else if let Some(m) = badami_mariadb_input(&paths) {
+        // The caller did not name a datadir, so use the migrated one when it
+        // exists. Leaving the wrapper ungenerated here would silently keep
+        // MariaDB on the old datadir after a migration.
+        write_mariadb_wrapper(&paths, &m, &mut written, &mut notes)?;
     } else {
         notes.push("MariaDB wrapper skipped (no mariadb input).".into());
     }
@@ -836,8 +934,6 @@ pub fn generate_isolated_site(req: IsolatedSiteRequest) -> Result<GenerateConfig
         )],
     })
 }
-
-// ── Parse helpers used by guards ────────────────────────────────────
 
 /// Parse key=value pairs from a simple my.cnf (`[mysqld]` section, plus pre-section keys).
 /// Surrounding quotes on values are stripped.
@@ -882,7 +978,7 @@ mod tests {
         let c = r#"
 # comment
 [mysqld]
-basedir = "/Users/Shared/Herd/services/mariadb/10.11.6"
+basedir = "/Users/x/Library/Application Support/Badami/local-dev/runtime/mariadb/10.11.6"
 datadir = "/tmp/fake-datadir"
 socket = "/tmp/x.sock"
 port = 3306
@@ -898,7 +994,7 @@ socket = "/tmp/x.sock"
         );
         assert_eq!(
             m.get("basedir").map(String::as_str),
-            Some("/Users/Shared/Herd/services/mariadb/10.11.6")
+            Some("/Users/x/Library/Application Support/Badami/local-dev/runtime/mariadb/10.11.6")
         );
         assert_eq!(m.get("socket").map(String::as_str), Some("/tmp/x.sock"));
         assert_eq!(m.get("port").map(String::as_str), Some("3306"));
@@ -934,7 +1030,19 @@ socket = "/tmp/x.sock"
         assert!(validate_unix_identity("a\nb", "group").is_err());
     }
 
-    // ── Merged site conf (Phase B TLS) ─────────────────────────────
+    #[test]
+    fn trusted_runtime_path_accepts_badami_only() {
+        let root = Path::new("/Users/x/Library/Application Support/Badami/local-dev");
+        assert!(is_trusted_runtime_path(&root.join("runtime/mariadb/10.11.6"), root));
+        assert!(is_trusted_runtime_path(&root.join("data/mariadb"), root));
+        // Arbitrary user-writable locations must stay untrusted.
+        assert!(!is_trusted_runtime_path(Path::new("/tmp/evil-datadir"), root));
+        assert!(!is_trusted_runtime_path(Path::new("/Users/x/data"), root));
+        assert!(!is_trusted_runtime_path(
+            Path::new("/Users/Shared/Other/services/mariadb/10.11.6"),
+            root
+        ));
+    }
 
     fn mk_paths() -> RuntimePaths {
         use super::super::discovery::runtime_paths_from_root;
@@ -963,6 +1071,26 @@ socket = "/tmp/x.sock"
 
     fn drop_paths(paths: &RuntimePaths) {
         let _ = fs::remove_dir_all(&paths.local_dev_root);
+    }
+
+    #[test]
+    fn wrapper_accepts_badami_root_without_override() {
+        let paths = mk_paths();
+        let mut written = Vec::new();
+        let mut notes = Vec::new();
+        let input = MariadbWrapperInput {
+            datadir: format!("{}/data/mariadb", paths.local_dev_root),
+            basedir: format!("{}/runtime/mariadb/10.11.6", paths.local_dev_root),
+            socket: None,
+            port: None,
+            allow_unverified_datadir: None,
+        };
+        write_mariadb_wrapper(&paths, &input, &mut written, &mut notes).expect("wrapper");
+        assert!(
+            !notes.iter().any(|n| n.contains("not under the Badami")),
+            "Badami-root datadir/basedir must pass the trusted gate: {notes:?}"
+        );
+        drop_paths(&paths);
     }
 
     #[test]
@@ -1132,8 +1260,15 @@ mod smoke_write {
 
     #[test]
     fn smoke_generate_and_install() {
-        // Serialize Application Support writes vs import_with_configs_smoke.
-        let _guard = crate::commands::local_dev::test_support::local_dev_fs_lock();
+        // Everything goes into a throwaway root: writing to Application Support
+        // would overwrite the real parked sites and ports of whoever runs this.
+        let base = std::env::temp_dir().join(format!(
+            "badami-cfg-smoke-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        let paths = super::super::discovery::runtime_paths_from_root(base.clone());
+
         let install = crate::commands::local_dev::resources::install_runtime_resources(None)
             .expect("install");
         assert!(install.copied_files > 0);
@@ -1141,7 +1276,7 @@ mod smoke_write {
             .join("valet-server/server.php")
             .is_file());
 
-        let res = generate_configs(GenerateConfigsRequest {
+        let res = generate_configs_at(GenerateConfigsRequest {
             tld: Some("test".into()),
             park_paths: Some(vec!["/tmp/parked-sites".into()]),
             loopback: Some("127.0.0.1".into()),
@@ -1159,15 +1294,15 @@ mod smoke_write {
             group: Some("staff".into()),
             nginx_as_root: Some(false),
             dns_port: Some(53),
-        })
+        }, &paths, &base)
         .expect("generate");
         assert!(!res.written.is_empty());
         let root = std::path::PathBuf::from(&res.local_dev_root);
         let nginx = std::fs::read_to_string(root.join("nginx/badami.conf")).unwrap();
         assert!(nginx.contains("127.0.0.1:8080"));
-        assert!(nginx.contains("HERD_HOME"));
+        assert!(nginx.contains("fastcgi_param SCRIPT_FILENAME"));
         assert!(!nginx.contains("js_import"));
-        // Paths under Application Support contain spaces — must be quoted.
+        // Paths under Application Support contain spaces; must be quoted.
         assert!(
             nginx.contains("fastcgi_pass \"unix:"),
             "fastcgi_pass unix: path must be quoted for spaces"
@@ -1180,7 +1315,13 @@ mod smoke_write {
         assert!(fpm.contains("chdir = \""));
         let my = std::fs::read_to_string(root.join("mariadb/my.cnf")).unwrap();
         assert!(my.contains("/tmp/fake-badami-datadir-smoke"));
-        assert!(my.contains("/tmp/fake-badami-basedir-smoke"));
+        // A provisioned Badami MariaDB overrides the basedir with its own
+        // version dir, so accept either that or the requested path.
+        assert!(
+            my.contains("/tmp/fake-badami-basedir-smoke")
+                || my.contains(&format!("{}/runtime/mariadb/", root.display())),
+            "basedir must be the requested path or the Badami runtime"
+        );
         assert!(my.contains("log-error"));
         // Quoted path values (Issue 1)
         assert!(my.contains("pid-file = \""));
@@ -1218,15 +1359,31 @@ mod smoke_write {
             },
         )
         .expect("preflight");
+        // This reads the real machine state, so a server actually holding the
+        // datadir is a legitimate outcome: refusing to start a second one is the
+        // guard working. Only an unrelated hard fail is a test failure.
         match report.result {
             crate::commands::local_dev::mariadb_guard::MariadbPreflight::OkToStart => {}
             crate::commands::local_dev::mariadb_guard::MariadbPreflight::Adopt { .. } => {}
             crate::commands::local_dev::mariadb_guard::MariadbPreflight::HardFail { ref reason } => {
-                panic!("unexpected hard fail: {reason:?} checks={:?}", report.checks);
+                let live_holder = reason.contains("points to live PID");
+                assert!(
+                    live_holder,
+                    "unexpected hard fail: {reason:?} checks={:?}",
+                    report.checks
+                );
             }
         }
+        // A live holder legitimately reports not-ready, which is the refusal
+        // this guard exists to produce.
+        let refused_live_holder = matches!(
+            report.result,
+            crate::commands::local_dev::mariadb_guard::MariadbPreflight::HardFail { ref reason }
+                if reason.contains("points to live PID")
+        );
         assert!(
             report.ready_for_mariadb_start
+                || refused_live_holder
                 || matches!(
                     report.result,
                     crate::commands::local_dev::mariadb_guard::MariadbPreflight::Adopt { .. }

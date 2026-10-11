@@ -73,7 +73,7 @@ Artifacts are minisign-signed; the public key is embedded in `src-tauri/tauri.co
 - **Daily Planning** — Drag tasks onto a calendar, free-form daily notes, progress bar
 - **Today Window** — Floating compact window with Pomodoro timer (custom durations)
 - **Server Management** — SSH terminal (keepalive + auto-reconnect), SFTP/FTP file manager, PEM key manager, saved commands, remote code editor
-- **Local Dev** *(macOS)* — Herd-style orchestrator: `*.test` sites, multi-version PHP-FPM, nginx (Mode A `:8080`), MariaDB datadir reuse, Redis; import preserves existing data
+- **Local Dev** *(macOS)* — self-contained local stack: `*.test` sites, multi-version PHP-FPM, nginx (Mode A `:8080`), MariaDB, Redis, all with Badami-owned binaries
 - **Credential Vault** — AES-256-GCM encrypted vault, TOTP authenticator, password generator
 - **REST API Tool** — Request builder, collections, environments, auth helpers, Postman import, cURL export
 - **Database Client** — MySQL/PostgreSQL/SQLite connections, query editor, table viewer, ER diagram, schema management, export/import
@@ -88,14 +88,16 @@ Artifacts are minisign-signed; the public key is embedded in `src-tauri/tauri.co
 
 ## Local Dev (macOS)
 
-**Local Dev** orchestrates a local PHP stack (Laravel Herd–style). Badami does **not** bundle PHP/nginx/MariaDB binaries; it discovers and start/stops existing tools (Herd leftovers, Homebrew, or manual paths) and reuses your MariaDB data in place.
+**Local Dev** runs a local PHP stack from binaries Badami owns: services live under `runtime/<role>/<version>/` and the MariaDB data under `data/mariadb`. Nothing depends on another local dev tool being installed.
 
 | Capability | Default |
 | --- | --- |
 | HTTP | **Mode A** — unprivileged nginx on **`127.0.0.1:8080`** (`http://{site}.test:8080`) |
 | HTTPS *(opt-in per site)* | Unprivileged nginx on **`127.0.0.1:8443`** (`https://{site}.test:8443`) — per-user CA + per-site leaf cert; Trust CA helper previews the exact `security add-trusted-cert` argv before the admin prompt |
 | Sites | Valet-style parks/links, PHP isolation, Secure / Unsecure per site, open in browser |
-| MariaDB | Reuse Herd datadir in-place; optional register into Database Client |
+| Runtime | nginx / PHP / MariaDB / Redis / dnsmasq under `runtime/`, recorded in a SHA-256 manifest; a binary whose hash no longer matches reads as absent |
+| MariaDB data | Lives in `data/mariadb`. Moving it in uses an APFS clone (copy-on-write, no extra disk, source untouched) |
+| Binary updates | Upstream install for PHP 8.x (static-php-cli) and dnsmasq (Homebrew bottle), checksum-verified before extraction |
 | Redis / PHP-FPM | Supervised with nginx as part of **Start stack** |
 | DNS `*.test` | Adopt existing `:53`, optional B-lite dnsmasq LaunchDaemon, or degraded mode |
 | Uninstall | `ld_bootstrap_uninstall` reverses only Badami-written LaunchDaemon units + staged plist; resolver file removal opt-in, gated on `# managed-by: badami` marker |
@@ -104,7 +106,9 @@ Design notes: [`plan-local-dev.md`](./plan-local-dev.md).
 
 ### Safety notes
 
-- **Never deletes** the Herd MariaDB datadir (or Herd app data) as part of normal ops.
+- **Never deletes the MariaDB datadir** as part of normal ops. Moving data uses an APFS clone, so the source keeps its blocks and is left byte-identical, verified by hashing `ibdata1` before and after.
+- **A provisioned binary is only advertised once its recorded SHA-256 matches the file on disk**, so a half-copied or tampered component reads as absent rather than as installed.
+- **MariaDB is the one binary that needs relocation** (its dylibs are referenced by absolute path). The copy rewrites those references to `@loader_path` and re-signs ad hoc, and the install is refused if any reference outside the runtime survives.
 - **Mode A (`:8080` / `:8443`)** is the default so nginx needs no root. Port `:80` is optional after explicit bootstrap.
 - **Root-owned LaunchDaemon staging** — Badami renders a **root variant** of every nginx/dnsmasq config (rewriting `include`, `error_log`, `pid`, `log-facility`, and `ssl_certificate*` paths so they point under `/Library/Application Support/Badami/local-dev-root/<role>/`), tokenizes the config (quote- and comment-aware, multi-line + inline `;`-chain safe), and rejects outright-dangerous directives (`load_module`, `env`, `ssl_engine`, `perl*`, `js_*`, `lua*`, `*_by_lua*`, `njs*`, `user root`; dnsmasq `dhcp-script`, `conf-*`, `*hostsfile`, `tftp-*`, `user=root`, backslash line-continuation, and anything outside the dnsmasq allowlist) before any admin prompt. The privileged shell first **reclaims the ancestor chain** (`/Library/Application Support/Badami` + `.../local-dev-root`) to `root:wheel 755`, rejecting any pre-planted symlink or non-dir with `exit 1`, so an admin-group user process cannot swap staged dirs between hash verify and `launchctl`. It then `install -o root -g wheel` the pending files into place and **verifies each root-owned copy's SHA-256 against the Rust-computed digest with `/usr/bin/shasum`** before `launchctl bootstrap` runs; every pending digest is bound to the source bytes Rust read in-process, so overwriting the pending file after staging still fails the privileged shasum check. Mismatch → rollback of plist + staging dir + `exit 1`. Labels must match `^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$` and start with the Tauri bundle identifier (`com.khalid.badami.local-dev.*`).
 - **Resolver install writes in-process content** — `/etc/resolver/<tld>` is populated via `printf '%s' <content> > <tmp> && mv -f <tmp> /etc/resolver/<tld>` where `<content>` is composed in Rust (not read from a user-writable draft at exec time), so a user process cannot race between the osascript admin prompt and the kernel exec to swap in a different resolver file.

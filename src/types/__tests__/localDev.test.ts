@@ -4,7 +4,6 @@ import {
   computeStackHealth,
   formatBytes,
   groupSummary,
-  hasHerdConflict,
   isDnsDegraded,
   isPhpFpmId,
   isServiceBusy,
@@ -20,7 +19,6 @@ import {
 import type {
   BootstrapStatus,
   DnsProbeResult,
-  HerdRuntimeStatus,
   RuntimeServiceKind,
   RuntimeServiceStatus,
   ServiceStatusReport,
@@ -631,41 +629,5 @@ describe("isDnsDegraded", () => {
     // Rationale mirrors the banner UX: no binary means DNS was never wired up
     // by us — we shouldn't flash 'degraded'.
     expect(isDnsDegraded([dns({ status: "unavailable", reason: "x" })])).toBe(false);
-  });
-});
-
-describe("hasHerdConflict", () => {
-  const base: HerdRuntimeStatus = {
-    installed: true,
-    app_running: false,
-    processes: [],
-    ports: [],
-    notes: [],
-  };
-
-  it("is false when the status is null", () => {
-    expect(hasHerdConflict(null)).toBe(false);
-  });
-
-  it("is true when the Herd app itself is running", () => {
-    expect(hasHerdConflict({ ...base, app_running: true })).toBe(true);
-  });
-
-  it("is true when a non-app Herd service process is running", () => {
-    expect(
-      hasHerdConflict({
-        ...base,
-        processes: [{ pid: 42, role: "nginx", command: "nginx: master" }],
-      }),
-    ).toBe(true);
-  });
-
-  it("is false when only the 'app' entry appears in processes (menu bar)", () => {
-    expect(
-      hasHerdConflict({
-        ...base,
-        processes: [{ pid: 42, role: "app", command: "Herd.app" }],
-      }),
-    ).toBe(false);
   });
 });

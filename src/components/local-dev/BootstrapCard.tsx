@@ -105,7 +105,7 @@ export function BootstrapCard() {
   const [uninstallOpen, setUninstallOpen] = useState<UninstallKind | null>(null);
   /**
    * Opt-in required for removing a resolver file that does **not** carry the
-   * `# managed-by: badami` marker (Herd's or a hand-rolled one). Separate from
+   * `# managed-by: badami` marker (or a hand-rolled one). Separate from
    * the AlertDialog `confirm` button so the user has to physically agree
    * before the dangerous argv is included in the admin prompt.
    */
@@ -138,7 +138,7 @@ export function BootstrapCard() {
           Mode B / DNS bootstrap
         </CardTitle>
         <CardDescription className="text-xs">
-          Port 80 needs the same kind of elevated helper Herd uses. Scaffold writes plists;
+          Port 80 needs an elevated helper. Scaffold writes plists;
           <strong> Install with admin</strong> registers a Badami LaunchDaemon so Start/Stop
           nginx from the Services tab works without a password every time.
         </CardDescription>
@@ -253,8 +253,8 @@ export function BootstrapCard() {
         <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-900 dark:text-amber-100">
           <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <p>
-            macOS blocks non-root processes from binding :80. Herd solves this with a privileged
-            helper; Badami installs its <strong>own</strong> LaunchDaemon (never Herd&apos;s).
+            macOS blocks non-root processes from binding :80, so this installs a
+            LaunchDaemon with a privileged helper.
             Until installed, Start nginx on :80 will prompt for admin password each time.
           </p>
         </div>
@@ -305,7 +305,6 @@ export function BootstrapCard() {
               <p className="mt-0.5 text-[11px] text-muted-foreground">
                 Removes only Badami-written LaunchDaemon labels and the root staging dir under{" "}
                 <code className="font-mono">/Library/Application Support/Badami/local-dev-root/</code>.
-                Herd units are never touched.
               </p>
             </div>
           </div>
@@ -384,7 +383,7 @@ export function BootstrapCard() {
                       <code className="font-mono">/etc/resolver/{settings.tld || "test"}</code>{" "}
                       is removed only when it carries the{" "}
                       <code className="font-mono"># managed-by: badami</code> marker. Tick the
-                      box below to force removal — this is what Herd&apos;s resolver files use
+                      box below to force removal, which is what a hand-rolled resolver file uses
                       too.
                     </p>
                     <label className="mt-2 flex items-start gap-2 text-amber-900 dark:text-amber-100">

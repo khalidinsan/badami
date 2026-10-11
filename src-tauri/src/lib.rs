@@ -202,7 +202,6 @@ pub fn run() {
             commands::local_dev::ld_generate_isolated_site,
             commands::local_dev::ld_mariadb_preflight,
             commands::local_dev::ld_probe_mariadb_auth,
-            commands::local_dev::ld_import_herd,
             // Local Dev (Phase A — sites: park / link / isolate / open / nginx reload)
             commands::local_dev::sites::ld_list_sites,
             commands::local_dev::sites::ld_park,
@@ -238,9 +237,15 @@ pub fn run() {
             commands::local_dev::ld_bootstrap_status,
             commands::local_dev::ld_bootstrap_install,
             commands::local_dev::ld_bootstrap_uninstall,
-            // Local Dev (Herd coexistence — read-only scan + graceful app quit)
-            commands::local_dev::herd_conflict::ld_herd_status,
-            commands::local_dev::herd_conflict::ld_herd_quit,
+            // Local Dev (standalone runtime: Badami-owned binaries + datadir move)
+            commands::local_dev::provision::ld_provision_status,
+            commands::local_dev::provision::ld_provision_select,
+            commands::local_dev::provision::ld_provision_write_php_ini,
+            commands::local_dev::datadir_migration::ld_datadir_preflight,
+            commands::local_dev::datadir_migration::ld_datadir_migrate,
+            commands::local_dev::runtime_updater::ld_runtime_sources,
+            commands::local_dev::runtime_updater::ld_runtime_install,
+            commands::local_dev::runtime_updater::ld_runtime_uninstall,
         ])
         .manage(commands::ssh::SshState::new())
         .manage(commands::sftp::SftpState::new())

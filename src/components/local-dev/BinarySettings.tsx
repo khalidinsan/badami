@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Loader2, Save, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +18,7 @@ import {
 } from "@/types/localDev";
 import { BootstrapCard } from "@/components/local-dev/BootstrapCard";
 import { TlsCard } from "@/components/local-dev/TlsCard";
+import { RuntimeCard } from "@/components/local-dev/RuntimeCard";
 import { cn } from "@/lib/utils";
 
 function settingValue(
@@ -56,7 +56,7 @@ export function BinarySettings() {
   }, [settings]);
 
   const phpOptions =
-    discovery?.herd.php_versions?.filter((v) => v.available).map((v) => v.version) ?? [];
+    discovery?.badami?.php_versions?.filter((v) => v.available).map((v) => v.version) ?? [];
   const phpChoices = Array.from(new Set([...phpOptions, "8.4", "8.3", "7.4", defaultPhp]));
 
   const paths = discovery?.runtime_paths;
@@ -189,8 +189,7 @@ export function BinarySettings() {
           <CardHeader className="px-4 pb-2 pt-0">
             <CardTitle className="text-sm">Read-only paths</CardTitle>
             <CardDescription className="text-xs">
-              Badami local-dev runtime layout (Application Support). Never points at Herd
-              datadir for deletion.
+              Badami local-dev runtime layout (Application Support).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 px-4">
@@ -210,6 +209,9 @@ export function BinarySettings() {
                     ["PIDs", paths.pids],
                     ["Logs", paths.logs],
                     ["Import snapshots", paths.import],
+                    ["Runtime binaries", paths.runtime],
+                    ["Service data", paths.data],
+                    ["PHP ini", paths.php_config],
                   ] as const
                 ).map(([label, value]) => (
                   <div key={label} className="grid grid-cols-[110px_1fr] gap-2">
@@ -221,42 +223,12 @@ export function BinarySettings() {
                 ))}
               </dl>
             )}
-
-            {discovery?.herd.detected && (
-              <div className="mt-3 rounded-md border border-border/50 bg-muted/30 p-2 text-[11px]">
-                <p className="mb-1 font-medium not-italic">Herd inventory (read-only)</p>
-                <p className="font-mono text-muted-foreground">
-                  {discovery.herd.home_path ?? discovery.herd.app_path ?? "detected"}
-                </p>
-                {discovery.herd.nginx_binary && (
-                  <p className="mt-1 font-mono text-muted-foreground">
-                    nginx: {discovery.herd.nginx_binary}
-                  </p>
-                )}
-                {discovery.herd.dnsmasq_binary && (
-                  <p className="font-mono text-muted-foreground">
-                    dnsmasq: {discovery.herd.dnsmasq_binary}
-                  </p>
-                )}
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {(discovery.herd.php_versions ?? []).map((v) => (
-                    <Badge
-                      key={v.tag}
-                      variant={v.available ? "secondary" : "outline"}
-                      className="h-5 text-[10px]"
-                    >
-                      php{v.tag}
-                      {v.available ? "" : " · missing"}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
 
         <BootstrapCard />
         <TlsCard />
+        <RuntimeCard />
       </div>
     </div>
   );

@@ -7,7 +7,7 @@ import { computeDnsSetup } from "@/types/localDev";
  *
  * This used to key off the dnsmasq **process status** alone, so it announced
  * "sites may not resolve" while resolution demonstrably worked — including when
- * an existing listener (Herd's, Homebrew's) served the TLD, or when the cached
+ * an existing listener (Homebrew's) served the TLD, or when the cached
  * spec probed a stale port. Resolution is the capability the user cares about;
  * whose process provides it is not this banner's business.
  */

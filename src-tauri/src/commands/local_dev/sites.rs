@@ -2,7 +2,7 @@
 //!
 //! Operates only under `~/Library/Application Support/Badami/local-dev/`
 //! (or an injected test root via `*_at` helpers).
-//! **Never** mutates or deletes Herd datadir / Herd configs / project source trees
+//! **Never** mutates or deletes the MariaDB datadir, service configs, or project source trees
 //! (except creating/removing Badami-owned Valet `Sites/` symlinks).
 //!
 //! Commands:
@@ -18,8 +18,7 @@ use super::config_gen::{
     write_isolated_site_conf, write_site_conf, write_valet_config, IsolatedSiteRequest,
     SiteConfOptions,
 };
-use super::discovery::{build_runtime_paths, discover, preferred_suffix, RuntimePaths};
-use super::import_herd::normalize_park_path;
+use super::discovery::{build_runtime_paths, discover, RuntimePaths};
 use super::mariadb_guard::{pid_is_alive, read_pid_file};
 use super::service_specs::parse_nginx_http_port;
 use super::tls::{self, TlsPaths};
@@ -241,9 +240,28 @@ pub fn site_url(name: &str, tld: &str, http_port: u16, https_port: u16, secured:
     }
 }
 
+/// Strip trailing slashes (except root `/`) and canonicalize when the path exists.
+fn normalize_park_path(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let mut s = trimmed.to_string();
+    while s.len() > 1 && s.ends_with('/') {
+        s.pop();
+    }
+    let p = Path::new(&s);
+    if p.exists() {
+        if let Ok(canon) = fs::canonicalize(p) {
+            return canon.to_string_lossy().into_owned();
+        }
+    }
+    s
+}
+
 /// Map display PHP version (`7.4` / `8.4`) → compact tag (`74` / `84`).
 ///
-/// Herd / Badami socket names use exactly two digits. Only single-digit
+/// Socket names use exactly two digits. Only single-digit
 /// major.minor forms are accepted.
 fn version_to_tag(version: &str) -> Result<String, String> {
     validate_php_version_display(version)?;
@@ -357,7 +375,7 @@ pub fn list_sites_at(
 
     if !valet_config_path(paths).is_file() {
         notes.push(
-            "No valet config.json yet — run ld_generate_configs or ld_import_herd first.".into(),
+            "No valet config.json yet — run ld_generate_configs first.".into(),
         );
     }
 
@@ -539,8 +557,8 @@ pub fn list_sites(https_port: Option<u16>) -> Result<ListSitesResult, String> {
 
 /// Add a park path to valet config.json (normalized, deduped).
 ///
-/// Parks are source-code trees (e.g. `~/Herd`, project folders). Parking is
-/// **config-only** — never deletes or mutates the directory or Herd data.
+/// Parks are source-code trees (e.g. `~/Sites`, project folders). Parking is
+/// **config-only** — never deletes or mutates the directory or user data.
 pub fn park_path_at(paths: &RuntimePaths, raw_path: &str) -> Result<ParkResult, String> {
     let mut cfg = read_valet_config(paths);
 
@@ -627,7 +645,7 @@ pub fn unpark_path_at(paths: &RuntimePaths, raw_path: &str) -> Result<ParkResult
         written,
         notes: vec![
             format!("unparked {norm} (directory left intact)"),
-            "never deletes project files or Herd data".into(),
+            "never deletes project files or user data".into(),
         ],
     })
 }
@@ -788,7 +806,7 @@ pub fn unlink_site(site: &str) -> Result<LinkResult, String> {
 fn php_version_available(version: &str) -> Result<(bool, Option<String>), String> {
     let report = discover()?;
     let match_v = report
-        .herd
+        .badami
         .php_versions
         .iter()
         .find(|v| v.version == version);
@@ -899,7 +917,8 @@ pub fn isolate_php(site: &str, version: &str) -> Result<IsolateResult, String> {
     isolate_php_at(&build_runtime_paths()?, site, version)
 }
 
-/// Remove isolated site conf under `nginx/sites/`. Never touches Herd nginx confs.
+/// Remove isolated site conf under `nginx/sites/`. Never touches nginx confs
+/// outside the Badami config root.
 ///
 /// If the per-site conf also carries `BADAMI_SECURED=1`, we re-render the
 /// conf as "secured only" instead of deleting it — the TLS listener and leaf
@@ -1229,7 +1248,7 @@ pub fn unsecure_site(site: &str) -> Result<SecureSiteCommandResult, String> {
 
 fn find_nginx_binary() -> Option<PathBuf> {
     if let Ok(report) = discover() {
-        if let Some(ref b) = report.herd.nginx_binary {
+        if let Some(b) = &report.badami.nginx_binary {
             let p = PathBuf::from(b);
             if p.is_file() {
                 return Some(p);
@@ -1243,17 +1262,13 @@ fn find_nginx_binary() -> Option<PathBuf> {
         }
     }
 
-    let suffix = preferred_suffix();
     let candidates = [
-        format!("/Applications/Herd.app/Contents/Resources/nginx-{suffix}"),
-        "/Applications/Herd.app/Contents/Resources/nginx-arm64".into(),
-        "/Applications/Herd.app/Contents/Resources/nginx-x86".into(),
-        "/opt/homebrew/bin/nginx".into(),
-        "/usr/local/bin/nginx".into(),
-        "/usr/bin/nginx".into(),
+        "/opt/homebrew/bin/nginx",
+        "/usr/local/bin/nginx",
+        "/usr/bin/nginx",
     ];
     for c in candidates {
-        let p = PathBuf::from(&c);
+        let p = PathBuf::from(c);
         if p.is_file() {
             return Some(p);
         }
@@ -1362,7 +1377,7 @@ pub fn reload_nginx_at(paths: &RuntimePaths) -> Result<ReloadNginxResult, String
             stdout: String::new(),
             stderr: String::new(),
             notes: {
-                notes.push("nginx binary not found (Herd Resources / Homebrew / PATH)".into());
+                notes.push("nginx binary not found (Homebrew / PATH)".into());
                 notes
             },
         });
@@ -1586,7 +1601,7 @@ mod tests {
         assert_eq!(version_to_tag("8.4").unwrap(), "84");
         assert!(version_to_tag("bad").is_err());
         assert!(version_to_tag("../x").is_err());
-        // Multi-digit major/minor rejected (Herd tags are two digits).
+        // Multi-digit major/minor rejected (tags are exactly two digits).
         assert!(version_to_tag("10.0").is_err());
         assert!(version_to_tag("7.10").is_err());
     }
@@ -1730,7 +1745,7 @@ mod tests {
             Err(_) => return,
         };
         let has_74 = report
-            .herd
+            .badami
             .php_versions
             .iter()
             .any(|v| v.version == "7.4" && v.available);
@@ -1877,7 +1892,7 @@ mod tests {
             Err(_) => return,
         };
         let has_74 = report
-            .herd
+            .badami
             .php_versions
             .iter()
             .any(|v| v.version == "7.4" && v.available);
@@ -1948,7 +1963,7 @@ mod tests {
             Err(_) => return,
         };
         if !report
-            .herd
+            .badami
             .php_versions
             .iter()
             .any(|v| v.version == "7.4" && v.available)

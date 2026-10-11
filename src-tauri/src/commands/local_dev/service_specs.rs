@@ -1,13 +1,13 @@
 //! Service specifications for the Local Dev process supervisor.
 //!
 //! Specs are built from discovery + generated configs under Badami local-dev home.
-//! Pure data + path checks — no process spawn here.
+//! Pure data + path checks; no process spawn here.
 
-use super::discovery::{build_runtime_paths, discover, DiscoveryReport, RuntimePaths};
+use super::discovery::{
+    build_runtime_paths, discover, DiscoveryReport, PhpVersionInfo, RuntimePaths,
+};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-
-// ── Public types (plan § Process Supervisor Design) ─────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -37,7 +37,7 @@ pub enum ServiceStatus {
     Error {
         message: String,
     },
-    /// Binary or required layout missing — not a panic.
+    /// Binary or required layout missing (not a panic).
     Unavailable {
         reason: String,
     },
@@ -89,8 +89,6 @@ pub struct ServiceStatusReport {
     pub notes: Vec<String>,
 }
 
-// ── Stack order ─────────────────────────────────────────────────────
-
 /// True if `id` is a php-fpm service (`php-fpm-7.4`, …).
 pub fn is_php_fpm_id(id: &str) -> bool {
     id.starts_with("php-fpm-")
@@ -136,14 +134,12 @@ pub fn stack_stop_order(ids: &[String]) -> Vec<String> {
     v
 }
 
-// ── Config gate ─────────────────────────────────────────────────────
-
 /// Returns Ok if every path in `requires_config` exists; Err with first missing.
 pub fn check_requires_config(spec: &ServiceSpec) -> Result<(), String> {
     for p in &spec.requires_config {
         if !p.exists() {
             return Err(format!(
-                "requires_config missing for {}: {} — run ld_generate_configs / ld_install_runtime_resources first",
+                "requires_config missing for {}: {}; run ld_generate_configs / ld_install_runtime_resources first",
                 spec.id,
                 p.display()
             ));
@@ -151,8 +147,6 @@ pub fn check_requires_config(spec: &ServiceSpec) -> Result<(), String> {
     }
     Ok(())
 }
-
-// ── Spec builders ───────────────────────────────────────────────────
 
 /// Build all known service specs from live discovery + runtime paths.
 pub fn build_all_specs() -> Result<Vec<ServiceSpec>, String> {
@@ -169,8 +163,8 @@ pub fn build_specs_from_discovery(paths: &RuntimePaths, report: &DiscoveryReport
     specs.push(build_mariadb_spec(paths, report));
     specs.push(build_redis_spec(paths, report));
 
-    // PHP-FPM: one per discovered version (available or not).
-    let mut php_versions = report.herd.php_versions.clone();
+    // PHP-FPM: one spec per provisioned version; empty when nothing is provisioned.
+    let mut php_versions = merged_php_versions(report);
     php_versions.sort_by(|a, b| a.version.cmp(&b.version));
     if php_versions.is_empty() {
         // Ensure at least common tags so UI can show Unavailable.
@@ -199,6 +193,11 @@ fn first_candidate(report: &DiscoveryReport, role: &str) -> Option<PathBuf> {
         .iter()
         .find(|c| c.role == role)
         .map(|c| PathBuf::from(&c.path))
+}
+
+/// Badami-provisioned PHP versions, sorted by version.
+fn merged_php_versions(report: &DiscoveryReport) -> Vec<PhpVersionInfo> {
+    report.badami.php_versions.clone()
 }
 
 /// Parse Mode A listen port from generated nginx confs (default 8080).
@@ -250,7 +249,7 @@ fn parse_listen_port_from_file(path: &Path) -> Option<u16> {
 
 fn build_nginx_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> ServiceSpec {
     let binary = report
-        .herd
+        .badami
         .nginx_binary
         .as_ref()
         .map(PathBuf::from)
@@ -276,7 +275,7 @@ fn build_nginx_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> ServiceSp
     // Hard deps: nginx must not start without PHP-FPM (else 502 / stuck unhealthy).
     // Prefer 7.4 when present (legacy office_* apps); include all available versions.
     let mut depends_on = Vec::new();
-    for v in &report.herd.php_versions {
+    for v in merged_php_versions(report) {
         if v.available {
             depends_on.push(format!("php-fpm-{}", v.version));
         }
@@ -344,6 +343,17 @@ fn build_php_fpm_spec(
     // php-fpm -y <pool-conf>  (our pool conf includes [global] + [badami])
     let args = vec!["-y".into(), conf.to_string_lossy().into_owned()];
 
+    // These php-fpm builds were compiled to prefer a vendor-specific scan dir
+    // variable over the standard one, so both are pinned. Without the second
+    // name a stale value from the login shell wins and an ini outside Badami's
+    // config tree gets loaded.
+    let ini_dir = PathBuf::from(&paths.php_config).join(tag);
+    let ini_dir = ini_dir.to_string_lossy().into_owned();
+    let env = vec![
+        ("PHP_INI_SCAN_DIR".to_string(), ini_dir.clone()),
+        (format!("HERD_PHP_{tag}_INI_SCAN_DIR"), ini_dir),
+    ];
+
     ServiceSpec {
         kind: ServiceKind::PhpFpm {
             version: version.to_string(),
@@ -354,7 +364,7 @@ fn build_php_fpm_spec(
         pid_file,
         log_file,
         working_dir: None,
-        env: vec![],
+        env,
         health,
         auto_restart: true,
         depends_on: vec![],
@@ -410,7 +420,14 @@ fn build_mariadb_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> Service
 }
 
 fn resolve_mariadbd_binary(report: &DiscoveryReport, wrapper: &Path) -> PathBuf {
-    // 1. Wrapper basedir/bin/mariadbd
+    // 1. Verified Badami runtime component.
+    if let Some(p) = report.badami.mariadb_binary.as_ref() {
+        let pb = PathBuf::from(p);
+        if pb.is_file() {
+            return pb;
+        }
+    }
+    // 2. Wrapper basedir/bin/mariadbd
     if let Ok(cfg) = super::mariadb_guard::load_wrapper_config(wrapper) {
         let candidate = cfg.basedir.join("bin").join("mariadbd");
         if candidate.is_file() {
@@ -421,7 +438,7 @@ fn resolve_mariadbd_binary(report: &DiscoveryReport, wrapper: &Path) -> PathBuf 
             return mysqld;
         }
     }
-    // 2. Discovery candidates
+    // 3. Discovery candidates
     if let Some(p) = first_candidate(report, "mariadbd") {
         return p;
     }
@@ -445,6 +462,15 @@ fn parse_socket_from_mycnf(path: &Path) -> Option<PathBuf> {
 
 /// Resolve mariadb-admin / mysqladmin from the same basedir as mariadbd.
 pub fn resolve_mariadb_admin(report: &DiscoveryReport, wrapper: &Path) -> Option<PathBuf> {
+    // Same order as the daemon: Badami runtime, wrapper basedir, candidates.
+    if let Some(basedir) = report.badami.mariadb_basedir.as_deref() {
+        for name in ["mariadb-admin", "mysqladmin"] {
+            let p = Path::new(basedir).join("bin").join(name);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
     if let Ok(cfg) = super::mariadb_guard::load_wrapper_config(wrapper) {
         for name in ["mariadb-admin", "mysqladmin"] {
             let p = cfg.basedir.join("bin").join(name);
@@ -453,24 +479,10 @@ pub fn resolve_mariadb_admin(report: &DiscoveryReport, wrapper: &Path) -> Option
             }
         }
     }
-    // Fall back to discovery / herd bin
+    // Fall back to discovery candidates.
     for role in ["mariadb-admin", "mysqladmin"] {
         if let Some(p) = first_candidate(report, role) {
             return Some(p);
-        }
-    }
-    // Common Herd bin names
-    if let Some(home) = std::env::var_os("HOME") {
-        let bin = PathBuf::from(home)
-            .join("Library")
-            .join("Application Support")
-            .join("Herd")
-            .join("bin");
-        for name in ["mariadb-admin", "mysqladmin"] {
-            let p = bin.join(name);
-            if p.is_file() {
-                return Some(p);
-            }
         }
     }
     None
@@ -478,10 +490,9 @@ pub fn resolve_mariadb_admin(report: &DiscoveryReport, wrapper: &Path) -> Option
 
 fn build_redis_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> ServiceSpec {
     let binary = report
-        .herd
-        .redis
+        .badami
+        .redis_server
         .as_ref()
-        .and_then(|r| r.redis_server.as_ref())
         .map(PathBuf::from)
         .or_else(|| first_candidate(report, "redis-server"))
         .unwrap_or_default();
@@ -490,21 +501,9 @@ fn build_redis_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> ServiceSp
     let pid_file = PathBuf::from(&paths.pids).join("redis.pid");
     let log_file = PathBuf::from(&paths.logs).join("redis.log");
 
-    // Always use Badami-owned pid/log paths. Optional Herd conf is included first
-    // but CLI flags after conf override pidfile/logfile/bind/port so we own lifecycle.
+    // Badami owns pid/log paths; these flags override whatever the binary defaults to.
     let mut args = Vec::new();
-    if let Some(conf) = report
-        .herd
-        .redis
-        .as_ref()
-        .and_then(|r| r.service_conf.as_ref())
-    {
-        let conf_pb = PathBuf::from(conf);
-        if conf_pb.is_file() {
-            args.push(conf.clone());
-        }
-    }
-    // argv-only overrides — no shell. These win over conf for redis-server.
+    // argv-only overrides, no shell.
     args.extend([
         "--port".into(),
         "6379".into(),
@@ -566,12 +565,12 @@ pub fn parse_dnsmasq_port(paths: &RuntimePaths) -> u16 {
             }
         }
     }
-    53535 // Mode A default — port 53 needs root
+    53535 // Mode A default; port 53 needs root
 }
 
 fn build_dnsmasq_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> ServiceSpec {
     let binary = report
-        .herd
+        .badami
         .dnsmasq_binary
         .as_ref()
         .map(PathBuf::from)
@@ -591,7 +590,7 @@ fn build_dnsmasq_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> Service
     // The `=` form is required: dnsmasq does not accept a space-separated value
     // here. Passing `--conf-file` and the path as two argv entries makes it treat
     // the path as a positional argument and exit with "junk found in command
-    // line" — before it opens its log, so the failure surfaced only as a health
+    // line" before it opens its log, so the failure surfaced only as a health
     // check timeout with an empty log file.
     let args = vec![format!("--conf-file={}", conf.to_string_lossy())];
 
@@ -626,8 +625,6 @@ fn build_dnsmasq_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> Service
         binary_present,
     }
 }
-
-// ── Lookups ─────────────────────────────────────────────────────────
 
 pub fn find_spec<'a>(specs: &'a [ServiceSpec], id: &str) -> Option<&'a ServiceSpec> {
     specs.iter().find(|s| s.id == id)
@@ -753,10 +750,13 @@ mod tests {
             pids: "/tmp/ld/pids".into(),
             logs: "/tmp/ld/logs".into(),
             import: "/tmp/ld/import".into(),
+            runtime: "/tmp/ld/runtime".into(),
+            data: "/tmp/ld/data".into(),
+            php_config: "/tmp/ld/config/php".into(),
         };
-        // Use live discovery when available; empty-ish herd still emits a mariadb spec.
+        // Live discovery still emits a mariadb spec when nothing is provisioned.
         let report = crate::commands::local_dev::discovery::discover()
-            .expect("discover returns Ok even without Herd");
+            .expect("discover returns Ok even without a provisioned runtime");
         let specs = build_specs_from_discovery(&paths, &report);
         let maria = specs.iter().find(|s| s.id == "mariadb").expect("mariadb");
         assert!(!maria.auto_restart, "MariaDB must never auto_restart");

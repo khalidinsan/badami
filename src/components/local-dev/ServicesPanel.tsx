@@ -68,8 +68,8 @@ export function ServicesPanel({ onOpenDoctor, onOpenBootstrap }: ServicesPanelPr
           </p>
         ) : (
           <p className="mb-4 max-w-sm text-xs text-muted-foreground/70">
-            Status comes from the local-dev supervisor. Import from Herd, then install runtime
-            resources and generate configs if services stay empty.
+            Status comes from the local-dev supervisor. Add a runtime version in
+            Settings if services stay empty.
           </p>
         )}
         <Button size="sm" variant="outline" onClick={() => void refreshStatus()}>

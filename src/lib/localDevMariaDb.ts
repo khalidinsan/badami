@@ -5,7 +5,7 @@
  * - `db_connections` has **no password column**
  * - Passwords live only in OS keychain via `save_db_password`
  * - Probe empty root password first; only call `save_db_password` when non-empty
- * - Never deletes Herd data
+ * - Never touches an existing user datadir
  */
 
 import { invoke } from "@tauri-apps/api/core";

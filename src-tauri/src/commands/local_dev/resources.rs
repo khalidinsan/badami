@@ -4,7 +4,7 @@
 //! `src-tauri/resources/local-dev` next to the crate.
 //!
 //! Destination: `~/Library/Application Support/Badami/local-dev/`
-//! Idempotent. Never touches Herd paths or MariaDB datadirs.
+//! Idempotent. Never touches MariaDB datadirs or project source trees.
 
 use super::discovery::{build_runtime_paths, local_dev_root, RuntimePaths};
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,7 @@ const LAYOUT_SUBDIRS: &[&str] = &[
     "config/valet",
     "config/valet/Sites",
     "config/valet/Certificates",
+    "config/php",
     "nginx",
     "nginx/sites",
     "fpm",
@@ -35,9 +36,11 @@ const LAYOUT_SUBDIRS: &[&str] = &[
     "pids",
     "logs",
     "import",
+    "runtime",
+    "data",
 ];
 
-/// Ensure the full HERD_HOME-shaped layout exists (idempotent).
+/// Ensure the full local-dev layout exists (idempotent).
 pub fn ensure_layout(root: &Path) -> Result<Vec<String>, String> {
     let mut created = Vec::new();
     for rel in LAYOUT_SUBDIRS {
@@ -172,7 +175,7 @@ pub fn install_runtime_resources(
         ));
     }
 
-    notes.push("idempotent install complete; Herd paths untouched".into());
+    notes.push("idempotent install complete".into());
     notes.push("MariaDB start not performed".into());
 
     Ok(InstallResourcesResult {

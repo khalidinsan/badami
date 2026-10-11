@@ -35,7 +35,7 @@ interface InfraStripProps {
 /**
  * Always-visible infrastructure row: DNS and the HTTP listen mode.
  *
- * Neither is a daily service. Herd and Valet both set DNS up once at install and
+ * Neither is a daily service. DNS is set up once at install and
  * never expose a toggle — and here `dnsmasq` daemonizes, so it already outlives
  * the app. So DNS gets a **state with one next action**, not Start/Stop. Same for
  * the port: `:8080` vs `:80` is a standing property of the install.

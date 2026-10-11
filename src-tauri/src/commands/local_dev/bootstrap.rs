@@ -20,8 +20,9 @@
 //! - `full`          — dns_only + http_80
 //! - `resync`        — re-copy user configs → root staging dir and reload
 //!
-//! Safety: never invokes the Herd helper; never deletes Herd datadir; never
-//! touches `/etc/resolver/*` without an explicit uninstall and marker check.
+//! Safety: never invokes any third-party privileged helper; never deletes the
+//! MariaDB datadir; never touches `/etc/resolver/*` without an explicit uninstall
+//! and marker check.
 
 use super::discovery::{build_runtime_paths, discover, RuntimePaths};
 use super::doctor::{launchd_unit_info_for, parse_resolver_port};
@@ -259,7 +260,7 @@ fn make_pending_dir(paths: &RuntimePaths) -> Result<PathBuf, String> {
 /// Rewrite every absolute path in the given nginx config body so references
 /// to the user-side nginx / logs / pids directories point at the root
 /// staging equivalents. The user `local-dev` root itself is **not** rewritten
-/// — paths like `fastcgi_param SCRIPT_FILENAME "{HERD_HOME}/valet-server
+/// — paths like `fastcgi_param SCRIPT_FILENAME "{root}/valet-server
 /// /server.php"` and `fastcgi_pass "unix:{socks}/php74.sock"` are intentional
 /// user-process targets (php-fpm reads SCRIPT_FILENAME; nginx opens the Unix
 /// socket but php-fpm owns it). Rewriting them would break the Valet handoff.
@@ -655,7 +656,7 @@ fn validate_nginx_statement(stmt: &NginxStatement, label: &str) -> Result<(), St
     }
 
     // Allowlist directives — args may contain user paths (fastcgi socket,
-    // SCRIPT_FILENAME under HERD_HOME, rewrite regex, server_name, etc).
+    // SCRIPT_FILENAME under the user root, rewrite regex, server_name, etc).
     if is_user_args_ok {
         return Ok(());
     }
@@ -1530,8 +1531,7 @@ pub struct BootstrapStatus {
 // ── Marker (for /etc/resolver/<tld>) ────────────────────────────────
 
 /// Marker written as a comment line in resolver files Badami creates. Checked
-/// before uninstall so we never remove a resolver file left behind by Herd or
-/// a hand-rolled setup.
+/// before uninstall so we never remove a resolver file we did not write.
 pub const RESOLVER_MARKER: &str = "# managed-by: badami";
 
 fn resolver_file_has_marker(path: &Path) -> bool {
@@ -1588,7 +1588,7 @@ pub fn bootstrap_status_for(
             .to_string(),
         "Mode B units execute binaries + configs from /Library/Application Support/Badami/local-dev-root (root:wheel). User-side files are mirrored by resync."
             .to_string(),
-        "Badami never invokes the Herd privileged helper. Mode B units are Badami-owned only."
+        "Badami never invokes any third-party privileged helper. Mode B units are Badami-owned only."
             .to_string(),
     ];
 
@@ -1671,7 +1671,7 @@ pub fn bootstrap_install(req: BootstrapInstallRequest) -> Result<BootstrapInstal
         .clone()
         .or_else(|| {
             report.as_ref().and_then(|r| {
-                r.herd.dnsmasq_binary.clone().or_else(|| {
+                r.badami.dnsmasq_binary.clone().or_else(|| {
                     r.candidates
                         .iter()
                         .find(|c| c.role == "dnsmasq")
@@ -1686,7 +1686,7 @@ pub fn bootstrap_install(req: BootstrapInstallRequest) -> Result<BootstrapInstal
         .clone()
         .or_else(|| {
             report.as_ref().and_then(|r| {
-                r.herd.nginx_binary.clone().or_else(|| {
+                r.badami.nginx_binary.clone().or_else(|| {
                     r.candidates
                         .iter()
                         .find(|c| c.role == "nginx")
@@ -2180,7 +2180,7 @@ pub fn bootstrap_uninstall(
             }
         } else {
             notes.push(format!(
-                "{} has no `{}` marker — refusing to remove without confirm_resolver=true. Herd and hand-rolled files are left alone.",
+                "{} has no `{}` marker — refusing to remove without confirm_resolver=true. Hand-rolled files are left alone.",
                 resolver_path.display(), RESOLVER_MARKER
             ));
         }
@@ -2229,7 +2229,7 @@ pub fn bootstrap_uninstall(
     }
 
     notes.push(
-        "Never touches Herd files. Only Badami-managed labels, root staging dirs, and resolver files with the badami marker are removed."
+        "Only Badami-managed labels, root staging dirs, and resolver files with the badami marker are removed."
             .into(),
     );
 
@@ -2954,8 +2954,11 @@ mod tests {
         assert!(res.dry_run);
         assert!(!res.executed);
         assert!(res.labels.contains(&TEST_DNSMASQ_LABEL.to_string()));
-        // Steps are shell-quoted argv — never contain the Herd helper path.
-        assert!(!res.steps.iter().any(|s| s.contains("herd.helper")));
+        // Steps are shell-quoted argv — never reference paths outside Badami ownership.
+        assert!(!res
+            .steps
+            .iter()
+            .any(|s| s.contains("/Applications/") || s.contains("/Users/Shared/")));
         // Must contain bootout, rm plist, rm staging.
         let joined = res.steps.join("\n");
         assert!(joined.contains("launchctl") && joined.contains("bootout"));
@@ -3079,7 +3082,7 @@ mod tests {
                      fastcgi_pass \"unix:{root}/socks/php84.sock\";\n\
                      include \"{nginx}/fastcgi_params\";\n\
                      fastcgi_param SCRIPT_FILENAME \"{root}/valet-server/server.php\";\n\
-                     fastcgi_param HERD_HOME \"{root}\";\n\
+                     fastcgi_param APP_ROOT \"{root}\";\n\
                  }}\n\
              }}\n",
             nginx = nginx.display(),

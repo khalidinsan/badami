@@ -1,16 +1,18 @@
 //! Local Dev Tauri commands (MVP Phase A).
 //!
 //! Prefix: `ld_`. Full Phase A: discovery, resources, config gen, MariaDB
-//! preflight, Herd import, sites, process supervisor, doctor, and bootstrap.
+//! preflight, sites, process supervisor, doctor, and bootstrap.
 
 pub mod bootstrap;
 pub mod config_gen;
+pub mod datadir_migration;
 pub mod discovery;
-pub mod herd_conflict;
-pub mod import_herd;
 pub mod doctor;
 pub mod mariadb_guard;
+pub mod provision;
 pub mod resources;
+pub mod runtime_manifest;
+pub mod runtime_updater;
 pub mod service_specs;
 pub mod sites;
 pub mod supervisor;
@@ -26,7 +28,6 @@ use config_gen::{
     IsolatedSiteRequest,
 };
 use discovery::{build_runtime_paths, discover, DiscoveryReport, RuntimePaths};
-use import_herd::{import_herd, ImportHerdRequest, ImportResult};
 use doctor::{run_dns_probe_for, run_doctor_for, DnsProbeResult, DoctorReport, DoctorRequest};
 use mariadb_guard::{
     probe_mariadb_auth_async, run_preflight, MariadbAuthProbe, MariadbAuthProbeRequest,
@@ -34,7 +35,7 @@ use mariadb_guard::{
 };
 use resources::{install_runtime_resources, InstallResourcesResult};
 
-/// Discover Herd leftovers, PHP versions, MariaDB datadir candidates, ports, etc.
+/// Discover PHP versions, MariaDB datadir candidates, ports, etc.
 ///
 /// Pure inventory — never starts services or modifies disk beyond reading.
 #[tauri::command]
@@ -58,7 +59,7 @@ pub async fn ld_get_paths() -> Result<RuntimePaths, String> {
 }
 
 /// Copy bundled `resources/local-dev/**` into Application Support and create
-/// the HERD_HOME-shaped directory layout. Idempotent. Never touches Herd.
+/// the local-dev directory layout. Idempotent.
 #[tauri::command]
 pub async fn ld_install_runtime_resources(
     app: tauri::AppHandle,
@@ -139,7 +140,7 @@ pub async fn ld_mariadb_preflight(
 ///
 /// Returns `{ ok, needs_password, … }`. Does **not** create `db_connections` rows
 /// or write keychain — registration stays in TypeScript (`createConnection` +
-/// conditional `save_db_password`). Never mutates Herd datadir.
+/// conditional `save_db_password`).
 #[tauri::command]
 pub async fn ld_probe_mariadb_auth(
     request: Option<MariadbAuthProbeRequest>,
@@ -147,28 +148,6 @@ pub async fn ld_probe_mariadb_auth(
     let req = request.unwrap_or_default();
     Ok(probe_mariadb_auth_async(req).await)
 }
-
-/// Import parks, isolates, and service config from an existing Herd install.
-///
-/// Read-only against Herd (no kill, no datadir copy/delete). Writes Badami
-/// snapshot + optional configs under `local-dev/`. Does **not** persist to the
-/// app SQLite DB — returns `ImportResult` for the frontend (PR9) to store.
-/// Never starts services.
-#[tauri::command]
-pub async fn ld_import_herd(
-    app: tauri::AppHandle,
-    request: Option<ImportHerdRequest>,
-) -> Result<ImportResult, String> {
-    use tauri::Manager;
-    let req = request.unwrap_or_default();
-    let resource_dir = app.path().resource_dir().ok();
-    tokio::task::spawn_blocking(move || import_herd(req, resource_dir))
-        .await
-        .map_err(|e| format!("ld_import_herd task failed: {e}"))?
-}
-
-// Herd coexistence (`ld_herd_status`, `ld_herd_quit`) — see `herd_conflict`.
-// Read-only scan plus a graceful app-level quit; never signals Herd services.
 
 // Site park / link / isolate / open / nginx reload — see `sites` module
 // (`ld_list_sites`, `ld_park`, `ld_unpark`, `ld_link`, `ld_unlink`,
@@ -179,11 +158,10 @@ pub async fn ld_import_herd(
 
 /// Full Local Dev diagnostics: binaries, ports, MariaDB preflight (inspect-only
 /// — no stale pid/socket unlink), datadir locks, DNS resolve probe (not
-/// resolver-file-only), nginx -t, FPM sockets / chdir, Herd helper presence
-/// (report only), log sizes, DNS modes D0–D3.
+/// resolver-file-only), nginx -t, FPM sockets / chdir, log sizes, DNS modes
+/// D0–D3.
 ///
-/// Never deletes Herd datadir. Never invokes Herd helper. Never mutates disk
-/// beyond optional `nginx -t` subprocess.
+/// Never mutates disk beyond optional `nginx -t` subprocess.
 #[tauri::command]
 pub async fn ld_doctor(
     app: tauri::AppHandle,
@@ -260,8 +238,6 @@ pub async fn ld_bootstrap_status(
 /// as root (TOCTOU-safe).
 ///
 /// Packages: `dns_only` | `dns_high_port` | `http_80` | `full` | `resync`.
-///
-/// Never invokes Herd helper. Never deletes Herd datadir.
 #[tauri::command]
 pub async fn ld_bootstrap_install(
     app: tauri::AppHandle,
@@ -278,8 +254,8 @@ pub async fn ld_bootstrap_install(
 }
 
 /// Remove a Badami-managed LaunchDaemon package (and optionally the resolver
-/// file). Never touches Herd files. The resolver file is only removed when it
-/// carries the `# managed-by: badami` marker, unless `confirm_resolver=true`.
+/// file). The resolver file is only removed when it carries the
+/// `# managed-by: badami` marker, unless `confirm_resolver=true`.
 ///
 /// Packages: `dns_only` | `http_80` | `full` | `resolver`.
 #[tauri::command]

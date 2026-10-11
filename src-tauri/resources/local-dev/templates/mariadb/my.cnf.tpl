@@ -1,5 +1,5 @@
 # Badami Local Dev — MariaDB WRAPPER my.cnf
-# Reuses the discovered Herd datadir/basedir in-place.
+# basedir is the Badami runtime when provisioned, else the configured basedir.
 # NEVER run mysql_install_db / mariadb-install-db against a non-empty datadir.
 # Generated; regenerate via ld_generate_configs. Paths are parameters only.
 # All path values are double-quoted (Application Support has spaces).

@@ -2,8 +2,7 @@
 //!
 //! Read-only diagnostics (plus optional `nginx -t` subprocess). MariaDB
 //! preflight is called with `allow_mutate: false` so stale pid/socket files are
-//! reported but never unlinked. Never starts services, never deletes Herd
-//! datadir, never invokes the Herd privileged helper.
+//! reported but never unlinked. Never starts services, never deletes a datadir.
 
 use super::discovery::{build_runtime_paths, discover, DiscoveryReport, RuntimePaths};
 use super::mariadb_guard::{
@@ -32,8 +31,6 @@ const DNS_PROBE_TIMEOUT_MS: u64 = 2_000;
 // after v1.15.0 hardening — no caller or test referenced them, and keeping
 // them around invited new call sites to grow against a hard-coded label.
 // Use `ld_label(identifier, role)` instead.
-pub const HERD_HELPER_PATH: &str = "/Library/PrivilegedHelperTools/de.beyondco.herd.helper";
-pub const HERD_HELPER_LABEL: &str = "de.beyondco.herd.helper";
 
 /// Human-friendly uninstall summary surfaced in Doctor + bootstrap status so
 /// the UI can render a confirm screen without ad-hoc string literals.
@@ -163,15 +160,6 @@ pub struct LogFileSize {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HerdHelperInfo {
-    /// Path checked — report only; never invoke.
-    pub path: String,
-    pub present: bool,
-    pub launch_daemon_label: String,
-    pub note: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LaunchdUnitInfo {
     pub label: String,
     /// Scaffold plist under local-dev/launchd.
@@ -211,7 +199,6 @@ pub struct DoctorReport {
     pub fpm_chdir: Vec<FpmChdirCheck>,
     pub nginx_test: NginxTestResult,
     pub logs: LogSizeReport,
-    pub herd_helper: HerdHelperInfo,
     pub launchd_dnsmasq: LaunchdUnitInfo,
     pub launchd_nginx: LaunchdUnitInfo,
     /// True when MariaDB preflight is OkToStart.
@@ -532,7 +519,7 @@ pub fn run_doctor_for(identifier: &str, req: DoctorRequest) -> Result<DoctorRepo
                         .unwrap_or_default()
                 ),
                 hint: Some(
-                    "Install Herd.app resources, Homebrew packages, or configure binary paths."
+                    "Provision the runtime (ld_provision_plan) or install Homebrew packages."
                         .into(),
                 ),
             });
@@ -615,7 +602,7 @@ pub fn run_doctor_for(identifier: &str, req: DoctorRequest) -> Result<DoctorRepo
                 category: "mariadb".into(),
                 message: format!("MariaDB preflight HardFail: {reason}"),
                 hint: Some(
-                    "Fix wrapper my.cnf / datadir lock before starting MariaDB. Never delete Herd datadir."
+                    "Fix wrapper my.cnf / datadir lock before starting MariaDB. Never delete a datadir."
                         .into(),
                 ),
             });
@@ -760,38 +747,6 @@ pub fn run_doctor_for(identifier: &str, req: DoctorRequest) -> Result<DoctorRepo
                 hint: Some("Regenerate configs with ld_generate_configs (KD24 chdir = valet-server).".into()),
             });
         }
-    }
-
-    // ── Herd helper (report only — never invoke) ────────────────────
-    let herd_helper = HerdHelperInfo {
-        path: HERD_HELPER_PATH.to_string(),
-        present: Path::new(HERD_HELPER_PATH).is_file(),
-        launch_daemon_label: HERD_HELPER_LABEL.to_string(),
-        note: "Detected for Doctor only. Badami never invokes the Herd privileged helper (unsupported IPC)."
-            .into(),
-    };
-    if herd_helper.present {
-        findings.push(DoctorFinding {
-            id: "herd.helper.present".into(),
-            severity: FindingSeverity::Info,
-            category: "herd".into(),
-            message: format!(
-                "Herd privileged helper present at {} (report only — never used)",
-                herd_helper.path
-            ),
-            hint: Some(
-                "If herd CLI still works you may use it alongside Badami; not an integration path."
-                    .into(),
-            ),
-        });
-    } else {
-        findings.push(DoctorFinding {
-            id: "herd.helper.absent".into(),
-            severity: FindingSeverity::Info,
-            category: "herd".into(),
-            message: "Herd privileged helper not present".into(),
-            hint: None,
-        });
     }
 
     // ── Log sizes ───────────────────────────────────────────────────
@@ -963,7 +918,6 @@ pub fn run_doctor_for(identifier: &str, req: DoctorRequest) -> Result<DoctorRepo
         fpm_chdir,
         nginx_test,
         logs,
-        herd_helper,
         launchd_dnsmasq,
         launchd_nginx,
         ready_for_mariadb_start,
@@ -1016,7 +970,7 @@ fn collect_binary_checks(specs: &[ServiceSpec]) -> Vec<BinaryCheck> {
 
 fn collect_port_checks(http_port: u16, skip_live: bool) -> Vec<PortCheck> {
     let mut defs: Vec<(u16, &str, Option<String>)> = vec![
-        (80, "http_privileged", Some("Mode B nginx or Herd".into())),
+        (80, "http_privileged", Some("Mode B nginx".into())),
         (http_port, "http_mode_a", Some("Mode A unprivileged nginx".into())),
         (3306, "mariadb", None),
         (6379, "redis", None),
@@ -1208,17 +1162,13 @@ fn run_nginx_test(
         };
     }
 
-    let binary = report
-        .herd
-        .nginx_binary
-        .clone()
-        .or_else(|| {
-            report
-                .candidates
-                .iter()
-                .find(|c| c.role == "nginx")
-                .map(|c| c.path.clone())
-        });
+    let binary = report.badami.nginx_binary.clone().or_else(|| {
+        report
+            .candidates
+            .iter()
+            .find(|c| c.role == "nginx")
+            .map(|c| c.path.clone())
+    });
 
     let Some(bin) = binary.filter(|p| Path::new(p).is_file()) else {
         return NginxTestResult {
@@ -1502,9 +1452,6 @@ mod tests {
         assert!(!report.findings.is_empty() || report.overall == "ok" || report.overall == "warn" || report.overall == "error");
         assert_eq!(report.dns.hostname, "unit-test.test");
         assert!(!report.dns.healthy); // skipped
-        // Never claim helper was invoked
-        assert!(report.herd_helper.note.contains("never"));
-        assert_eq!(report.herd_helper.path, HERD_HELPER_PATH);
     }
 
     #[test]
