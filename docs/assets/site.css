@@ -628,14 +628,14 @@ pre code {
 
 /* Terminal block */
 
-.term {
+.terminal {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
   background: var(--panel-solid);
 }
 
-.term-bar {
+.terminal-bar {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -644,33 +644,33 @@ pre code {
   background: var(--code-bg);
 }
 
-.term-dot {
+.terminal-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex: none;
 }
 
-.term-dot.red {
+.terminal-dot.red {
   background: #ff5f57;
 }
 
-.term-dot.yellow {
+.terminal-dot.yellow {
   background: #febc2e;
 }
 
-.term-dot.green {
+.terminal-dot.green {
   background: #28c840;
 }
 
-.term-title {
+.terminal-title {
   margin-left: 6px;
   color: var(--fg-muted);
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   font-size: 12px;
 }
 
-.term-body {
+.terminal-body {
   margin: 0;
   padding: 14px 16px;
   background: none;
@@ -682,15 +682,15 @@ pre code {
   line-height: 1.65;
 }
 
-.term-body .cmd {
+.terminal-body .cmd {
   color: var(--fg);
 }
 
-.term-body .out {
+.terminal-body .out {
   color: var(--fg-muted);
 }
 
-.term-body .cmd::before {
+.terminal-body .cmd::before {
   content: "$ ";
   color: var(--primary);
 }
