@@ -97,7 +97,13 @@ a {
   text-decoration: none;
 }
 
-a:hover {
+/* Underline marks a link inside a run of prose. Anything with its own surface
+   (card, button, nav item, row) signals hover by changing that surface, so the
+   blanket rule is scoped to prose and to footer links. */
+.docs-body p a:hover,
+.docs-body li a:hover,
+.docs-body td a:hover,
+.docs-body th a:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -137,8 +143,13 @@ a:hover {
   color: var(--fg);
 }
 
+.brand {
+  transition: opacity 0.15s ease;
+}
+
 .brand:hover {
   text-decoration: none;
+  opacity: 0.75;
 }
 
 .brand img {
@@ -176,6 +187,10 @@ a:hover {
   font-weight: 500;
   padding: 7px 12px;
   border-radius: 8px;
+}
+
+.site-nav a {
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .site-nav a:hover {
@@ -241,6 +256,10 @@ a:hover {
   cursor: pointer;
 }
 
+.btn {
+  transition: border-color 0.15s ease, background-color 0.15s ease, opacity 0.15s ease;
+}
+
 .btn:hover {
   text-decoration: none;
 }
@@ -277,7 +296,7 @@ a:hover {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-  font-size: 13.5px;
+  font-size: 13px;
 }
 
 .install-line code {
@@ -312,7 +331,7 @@ section {
 .section-head p {
   margin: 0;
   color: var(--fg-muted);
-  font-size: 14.5px;
+  font-size: 15px;
   max-width: 620px;
 }
 
@@ -336,6 +355,22 @@ section {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  color: var(--fg);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.feature:hover {
+  border-color: var(--primary);
+  background: var(--accent-soft);
+  text-decoration: none;
+}
+
+.feature h3 {
+  color: var(--fg);
+}
+
+.feature:hover h3 {
+  color: var(--primary);
 }
 
 .feature h3 {
@@ -388,7 +423,7 @@ td {
 
 th {
   font-weight: 600;
-  font-size: 12.5px;
+  font-size: 12px;
   text-transform: none;
   color: var(--fg-muted);
   background: var(--code-bg);
@@ -474,7 +509,7 @@ pre code {
 
 .docs-nav p {
   margin: 0 0 8px;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -494,9 +529,13 @@ pre code {
 .docs-nav a {
   display: block;
   padding: 6px 10px;
-  border-radius: 7px;
+  border-radius: 8px;
   color: var(--fg-muted);
   font-weight: 500;
+}
+
+.docs-nav a {
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .docs-nav a:hover {
@@ -541,7 +580,7 @@ pre code {
 
 .docs-body h3 {
   margin: 26px 0 8px;
-  font-size: 15.5px;
+  font-size: 16px;
   font-weight: 700;
 }
 
@@ -549,7 +588,7 @@ pre code {
 .docs-body ul,
 .docs-body ol {
   margin: 0 0 14px;
-  font-size: 14.5px;
+  font-size: 15px;
   color: var(--fg-muted);
 }
 
@@ -600,7 +639,7 @@ pre code {
 footer {
   border-top: 1px solid var(--border);
   padding: 30px 0 44px;
-  font-size: 13.5px;
+  font-size: 13px;
   color: var(--fg-muted);
 }
 
@@ -622,8 +661,13 @@ footer a {
   color: var(--fg-muted);
 }
 
+footer a {
+  transition: color 0.15s ease;
+}
+
 footer a:hover {
   color: var(--fg);
+  text-decoration: none;
 }
 
 @media (max-width: 860px) {
@@ -701,9 +745,13 @@ footer a:hover {
   background: var(--panel-solid);
   color: var(--fg-muted);
   font: inherit;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
+}
+
+.nav-search {
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
 .nav-search:hover {
@@ -801,9 +849,13 @@ footer a:hover {
 .search-results li a {
   display: block;
   padding: 9px 11px;
-  border-radius: 9px;
+  border-radius: 8px;
   color: var(--fg);
   text-decoration: none;
+}
+
+.search-results li a {
+  transition: background-color 0.1s ease;
 }
 
 .search-results li a:hover {
@@ -831,7 +883,7 @@ footer a:hover {
 .search-snippet {
   display: block;
   margin-top: 2px;
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -914,5 +966,11 @@ footer a:hover {
     min-height: 44px;
     padding-top: 11px;
     padding-bottom: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
   }
 }
