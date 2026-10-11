@@ -188,14 +188,17 @@ def rewrite(html: str, table: dict[str, str]) -> str:
 def counterpart(rel: str, target: str) -> str:
     """Relative path from one language's page to the same page in the other.
 
-    English pages live at the root, Indonesian ones under /id/, so the path
-    between them is a fixed number of steps plus the relative path itself.
+    English pages live at the root, Indonesian ones under /id/, so the distance
+    between them depends on how deep the page sits. A root page (index.html)
+    only needs "id/", while docs/docs/tasks.html needs "../id/docs/tasks.html".
     """
+    # Depth of the file within its own tree, ignoring the file name itself.
+    depth = rel.count("/")
     if target == "id":
-        # From docs/docs/tasks.html to docs/id/docs/tasks.html
-        return "../id/" + rel
-    # From docs/id/docs/tasks.html back to docs/docs/tasks.html
-    return "../../" + rel
+        # From index.html to id/index.html; from docs/tasks.html to id/docs/tasks.html
+        return "../" * depth + "id/" + rel
+    # Back out of the /id/ segment, then up to the English root.
+    return "../" * (depth + 1) + rel
 
 
 def add_language_switch(html: str, rel: str, active: str) -> str:
