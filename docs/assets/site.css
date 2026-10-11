@@ -1,0 +1,688 @@
+/* Badami site styles.
+   Tokens mirror src/index.css so the site and the app read as one product. */
+
+@font-face {
+  font-family: "Plus Jakarta Sans Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url("fonts/plus-jakarta-sans-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+:root {
+  --bg: #f5f5f7;
+  --fg: #1d1d1f;
+  --fg-muted: #6e6e73;
+  --panel: rgba(255, 255, 255, 0.72);
+  --panel-solid: #ffffff;
+  /* #007aff is the app's brand blue, but white on it only reaches 4.02:1 and
+     the blue itself is 3.69:1 on this background. Both fail WCAG AA for body
+     text, so foreground uses are darkened to #0062cc (5.80:1 white-on-blue,
+     5.33:1 blue-on-background). The hue is unchanged. */
+  --primary: #0062cc;
+  --primary-fg: #ffffff;
+  --accent-soft: rgba(0, 122, 255, 0.08);
+  --border: rgba(0, 0, 0, 0.09);
+  --border-strong: rgba(0, 0, 0, 0.16);
+  --code-bg: rgba(120, 120, 128, 0.09);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --radius: 12px;
+  --radius-lg: 16px;
+  --maxw: 1080px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --fg: #f5f5f7;
+    --fg-muted: #98989d;
+    --panel: rgba(28, 28, 30, 0.72);
+    --panel-solid: #1c1c1e;
+    --primary: #0a84ff;
+    --accent-soft: rgba(10, 132, 255, 0.12);
+    --border: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.2);
+    --code-bg: rgba(120, 120, 128, 0.2);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.5);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Plus Jakarta Sans Variable", system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A single soft field behind the top of the page, not a full-page wash. */
+.glow {
+  position: absolute;
+  inset: -220px 0 auto 0;
+  height: 520px;
+  background: radial-gradient(ellipse 70% 100% at 50% 0%, var(--accent-soft), transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.wrap {
+  width: 100%;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 24px;
+  position: relative;
+  z-index: 1;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Header */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--panel);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+
+.site-header .wrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 60px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+
+.brand:hover {
+  text-decoration: none;
+}
+
+.brand img {
+  height: 26px;
+  width: auto;
+}
+
+/* Both logo files ship in the markup and the color scheme picks one. Doing it
+   in CSS with content: url() would resolve the path against the document and
+   break under subpath hosting. */
+.brand .logo-light {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .brand .logo-dark {
+    display: none;
+  }
+
+  .brand .logo-light {
+    display: block;
+  }
+}
+
+.site-nav {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.site-nav a {
+  color: var(--fg-muted);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 7px 12px;
+  border-radius: 8px;
+}
+
+.site-nav a:hover {
+  color: var(--fg);
+  background: var(--code-bg);
+  text-decoration: none;
+}
+
+.site-nav a[aria-current="page"] {
+  color: var(--fg);
+}
+
+.nav-cta {
+  background: var(--primary) !important;
+  color: var(--primary-fg) !important;
+}
+
+.nav-cta:hover {
+  background: var(--primary) !important;
+  opacity: 0.9;
+}
+
+/* Hero */
+
+.hero {
+  padding: 76px 0 56px;
+  text-align: center;
+}
+
+.hero h1 {
+  margin: 0 0 16px;
+  font-size: clamp(34px, 5.4vw, 54px);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+
+.hero .lede {
+  margin: 0 auto;
+  max-width: 620px;
+  font-size: clamp(16px, 2vw, 18px);
+  color: var(--fg-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 32px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 22px;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.btn:hover {
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.btn-ghost {
+  background: var(--panel-solid);
+  color: var(--fg);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-ghost:hover {
+  border-color: var(--border-strong);
+}
+
+/* The install command, presented as the primary object of the page. */
+.install-line {
+  margin: 28px auto 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 11px 12px 11px 18px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 13.5px;
+}
+
+.install-line code {
+  overflow-x: auto;
+  white-space: nowrap;
+  color: var(--fg);
+}
+
+.platforms {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+
+/* Sections */
+
+section {
+  padding: 44px 0;
+}
+
+.section-head {
+  margin-bottom: 22px;
+}
+
+.section-head h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.section-head p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 14.5px;
+  max-width: 620px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 22px;
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+/* Feature entries lead with what the module does, not a decorative icon. */
+.feature {
+  padding: 18px 20px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.feature h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.feature p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg-muted);
+}
+
+.feature .tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+
+/* Tables */
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  min-width: 520px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  font-weight: 600;
+  font-size: 12.5px;
+  text-transform: none;
+  color: var(--fg-muted);
+  background: var(--code-bg);
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 5px;
+  word-break: break-word;
+}
+
+pre {
+  margin: 0 0 14px;
+  padding: 16px 18px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+pre:last-child {
+  margin-bottom: 0;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  word-break: normal;
+}
+
+/* Callouts */
+
+.note {
+  display: flex;
+  gap: 12px;
+  padding: 15px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 14px;
+}
+
+.note strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.note.warn {
+  border-color: rgba(255, 159, 10, 0.4);
+  background: rgba(255, 159, 10, 0.08);
+}
+
+.note p {
+  margin: 0;
+  color: var(--fg-muted);
+}
+
+/* Docs pages */
+
+.docs {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  gap: 40px;
+  padding: 40px 0 64px;
+  align-items: start;
+}
+
+.docs-nav {
+  position: sticky;
+  top: 84px;
+  font-size: 14px;
+}
+
+.docs-nav p {
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.docs-nav ul {
+  list-style: none;
+  margin: 0 0 22px;
+  padding: 0;
+}
+
+.docs-nav li {
+  margin-bottom: 2px;
+}
+
+.docs-nav a {
+  display: block;
+  padding: 6px 10px;
+  border-radius: 7px;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.docs-nav a:hover {
+  background: var(--code-bg);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.docs-nav a[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.docs-body {
+  min-width: 0;
+}
+
+.docs-body h1 {
+  margin: 0 0 8px;
+  font-size: 30px;
+  letter-spacing: -0.025em;
+  font-weight: 800;
+}
+
+.docs-body .sub {
+  margin: 0 0 32px;
+  color: var(--fg-muted);
+  font-size: 15px;
+}
+
+.docs-body h2 {
+  margin: 40px 0 12px;
+  font-size: 19px;
+  letter-spacing: -0.015em;
+  font-weight: 700;
+}
+
+.docs-body h2:first-of-type {
+  margin-top: 0;
+}
+
+.docs-body h3 {
+  margin: 26px 0 8px;
+  font-size: 15.5px;
+  font-weight: 700;
+}
+
+.docs-body p,
+.docs-body ul,
+.docs-body ol {
+  margin: 0 0 14px;
+  font-size: 14.5px;
+  color: var(--fg-muted);
+}
+
+.docs-body li {
+  margin-bottom: 6px;
+}
+
+.docs-body strong {
+  color: var(--fg);
+}
+
+.docs-body > .panel + .panel {
+  margin-top: 16px;
+}
+
+.steps {
+  counter-reset: step;
+  list-style: none;
+  padding: 0;
+}
+
+.steps li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 34px;
+  margin-bottom: 12px;
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Footer */
+
+footer {
+  border-top: 1px solid var(--border);
+  padding: 30px 0 44px;
+  font-size: 13.5px;
+  color: var(--fg-muted);
+}
+
+footer .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+}
+
+footer .links {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+footer a {
+  color: var(--fg-muted);
+}
+
+footer a:hover {
+  color: var(--fg);
+}
+
+@media (max-width: 860px) {
+  .docs {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .docs-nav {
+    position: static;
+  }
+
+  .docs-nav ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .docs-nav ul li {
+    margin: 0;
+  }
+
+  .hero {
+    padding: 52px 0 40px;
+  }
+}
+
+@media (max-width: 560px) {
+  .site-header .wrap {
+    height: auto;
+    flex-wrap: wrap;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .site-nav {
+    margin-left: 0;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .site-nav a {
+    white-space: nowrap;
+  }
+
+  .install-line {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

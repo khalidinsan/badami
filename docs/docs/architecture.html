@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Architecture · Badami</title>
+    <meta name="description" content="How the Badami repository is laid out and which library handles each concern." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html"><img class="logo-dark" src="../assets/logo.png" alt="Badami" /><img class="logo-light" src="../assets/logo-white.png" alt="Badami" /></a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html" aria-current="page">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Architecture</h1>
+          <p class="sub">
+            Where things live in the repository, and which library handles each concern.
+          </p>
+
+          <h2>Repository layout</h2>
+          <pre><code>badami/
+├── src/                          frontend
+│   ├── routes/                   TanStack Router pages, file based
+│   ├── components/
+│   │   ├── ui/                   shadcn/ui primitives
+│   │   ├── local-dev/            the local stack UI
+│   │   ├── server/               SSH, SFTP, remote editor
+│   │   └── updater/              update checks
+│   ├── stores/                   Zustand, one store per domain
+│   ├── db/
+│   │   ├── client.ts             libsql connection
+│   │   ├── migrations/           numbered SQL files
+│   │   └── queries/              Kysely query functions
+│   ├── hooks/
+│   ├── lib/                      utilities
+│   └── types/
+├── src-tauri/                    backend
+│   ├── src/commands/
+│   │   ├── local_dev/            supervisor, sites, runtime, doctor
+│   │   ├── ssh.rs  sftp.rs  ftp.rs
+│   │   ├── db*.rs                database client
+│   │   └── …
+│   ├── resources/local-dev/      PHP router and config templates
+│   └── tauri.conf.json           version, updater key and endpoint
+├── docs/                         this site
+└── plan-local-dev.md             Local Dev design document</code></pre>
+
+          <h2>Tech stack</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Concern</th>
+                  <th>Library</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Desktop shell</td><td>Tauri v2</td></tr>
+                <tr><td>Frontend</td><td>React 19, TypeScript, Vite</td></tr>
+                <tr><td>Styling</td><td>Tailwind CSS v4, shadcn/ui</td></tr>
+                <tr><td>Routing</td><td>TanStack Router, file based</td></tr>
+                <tr><td>State</td><td>Zustand</td></tr>
+                <tr><td>Storage</td><td>SQLite through libsql, queried with Kysely</td></tr>
+                <tr><td>Rich text</td><td>BlockNote</td></tr>
+                <tr><td>Icons</td><td>Lucide React</td></tr>
+                <tr><td>Terminal</td><td>xterm.js</td></tr>
+                <tr><td>SSH and SFTP</td><td>Rust <code>ssh2</code></td></tr>
+                <tr><td>FTP</td><td>Rust <code>suppaftp</code></td></tr>
+                <tr><td>Vault crypto</td><td><code>aes-gcm</code> and <code>argon2</code></td></tr>
+                <tr><td>HTTP</td><td><code>reqwest</code></td></tr>
+                <tr><td>Database client</td><td><code>sqlx</code> for MySQL and PostgreSQL</td></tr>
+                <tr><td>Updates</td><td><code>tauri-plugin-updater</code> over GitHub Releases</td></tr>
+                <tr><td>AI</td><td>OpenRouter API</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>How data flows</h2>
+          <p>
+            The frontend never opens the database file directly. It calls Tauri commands,
+            which the Rust side serves from the open libsql connection:
+          </p>
+          <ol class="steps">
+            <li>
+              A store action calls <code>invoke("db_query", …)</code> or
+              <code>invoke("db_execute", …)</code>.
+            </li>
+            <li>
+              Kysely builds the SQL through a custom dialect whose driver is that invoke
+              call, so queries stay type safe on the frontend.
+            </li>
+            <li>
+              Rust runs it against <code>badami.db</code>, or against the sync replica when
+              cloud sync is on.
+            </li>
+          </ol>
+          <p>
+            Local Dev services are the exception: they are real processes, not rows. The
+            supervisor owns their lifecycle, and the database only records intent and a
+            status snapshot for the UI. Runtime truth comes from the process table and the
+            health checks.
+          </p>
+
+          <h2>Which database file is opened</h2>
+          <p>
+            On startup the backend picks a connection strategy so the app works offline:
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Situation</th>
+                  <th>What is opened</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Sync on, replica exists</td>
+                  <td>The replica, immediately, with no network wait.</td>
+                </tr>
+                <tr>
+                  <td>Sync on, no replica yet</td>
+                  <td><code>badami.db</code> while the replica is built in the background.</td>
+                </tr>
+                <tr>
+                  <td>Sync off</td>
+                  <td><code>badami.db</code> as a plain SQLite file.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Local Dev internals</h2>
+          <p>
+            The module is split so each file has one job:
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Responsibility</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>discovery.rs</code></td>
+                  <td>Reports what binaries, datadirs, ports, and resolver entries exist.</td>
+                </tr>
+                <tr>
+                  <td><code>runtime_manifest.rs</code></td>
+                  <td>Reads and writes the manifest that records installed versions and their hashes.</td>
+                </tr>
+                <tr>
+                  <td><code>runtime_updater.rs</code></td>
+                  <td>Downloads, verifies, extracts, and installs a version from upstream.</td>
+                </tr>
+                <tr>
+                  <td><code>datadir_migration.rs</code></td>
+                  <td>Assesses and performs the APFS clone of a MariaDB datadir.</td>
+                </tr>
+                <tr>
+                  <td><code>config_gen.rs</code></td>
+                  <td>Generates nginx, FPM, dnsmasq, valet, and MariaDB configs.</td>
+                </tr>
+                <tr>
+                  <td><code>service_specs.rs</code></td>
+                  <td>Turns discovery into runnable service definitions with health checks.</td>
+                </tr>
+                <tr>
+                  <td><code>supervisor.rs</code></td>
+                  <td>Starts, stops, restarts, and watches the services; owns the event stream.</td>
+                </tr>
+                <tr>
+                  <td><code>sites.rs</code></td>
+                  <td>Park, link, isolate, secure, and open a site.</td>
+                </tr>
+                <tr>
+                  <td><code>tls.rs</code></td>
+                  <td>Local CA and per-site certificates.</td>
+                </tr>
+                <tr>
+                  <td><code>bootstrap.rs</code></td>
+                  <td>Root-owned LaunchDaemon and resolver installation.</td>
+                </tr>
+                <tr>
+                  <td><code>doctor.rs</code></td>
+                  <td>Read-only diagnostics and the fixes they suggest.</td>
+                </tr>
+                <tr>
+                  <td><code>mariadb_guard.rs</code></td>
+                  <td>The pre-start checks that stop a second server opening one datadir.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Sync and machine-specific data</h2>
+          <p>
+            Cloud sync replicates the database, but some rows describe this machine only:
+            binary paths, sockets, and Local Dev settings. Those tables are excluded from
+            sync so a second machine does not inherit paths that do not exist on it.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Docs</a>
+          <a href="install.html">Install</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+          <a href="architecture.html">Architecture</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

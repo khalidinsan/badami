@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Install · Badami</title>
+    <meta name="description" content="Install Badami on macOS, Windows, or Linux, and keep it updated." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html"><img class="logo-dark" src="../assets/logo.png" alt="Badami" /><img class="logo-light" src="../assets/logo-white.png" alt="Badami" /></a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html" aria-current="page">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Install</h1>
+          <p class="sub">
+            Prebuilt installers are attached to every release. Pick the file for your
+            platform, then let the in-app updater keep it current.
+          </p>
+
+          <h2>1. Download</h2>
+          <p>
+            Open the
+            <a href="https://github.com/khalidinsan/badami/releases/latest">latest release</a>
+            and download the asset for your platform.
+          </p>
+
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Platform</th>
+                  <th>Asset</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>macOS, Apple Silicon</td>
+                  <td><code>badami_&lt;version&gt;_aarch64.dmg</code></td>
+                  <td>Apple Silicon only for now. Intel builds are not published.</td>
+                </tr>
+                <tr>
+                  <td>Windows</td>
+                  <td><code>badami_&lt;version&gt;_x64-setup.exe</code></td>
+                  <td>The <code>.msi</code> is available if you prefer it.</td>
+                </tr>
+                <tr>
+                  <td>Linux</td>
+                  <td><code>.AppImage</code>, <code>.deb</code>, or <code>.rpm</code></td>
+                  <td>Choose whichever fits your distribution.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>2. Install</h2>
+
+          <h3>macOS</h3>
+          <p>
+            Open the DMG and drag Badami to Applications. Builds are signed so the
+            in-app updater can verify them, but they are not notarized by Apple yet,
+            which means Gatekeeper may refuse the first launch. Clear the quarantine
+            flag once:
+          </p>
+          <pre><code># After dragging Badami to Applications
+xattr -cr /Applications/badami.app
+open /Applications/badami.app</code></pre>
+          <div class="note">
+            <div>
+              <strong>Why this is needed</strong>
+              <p>
+                The signature that matters for updates is the minisign key embedded in
+                the app. Notarization is a separate, paid Apple step and is not set up
+                yet. Removing the quarantine attribute does not disable Gatekeeper for
+                anything else on your machine.
+              </p>
+            </div>
+          </div>
+
+          <h3>Windows</h3>
+          <p>
+            Run the setup executable and follow the installer. SmartScreen may warn about
+            an unrecognized publisher for the same reason: the build is not signed with a
+            Windows code-signing certificate.
+          </p>
+
+          <h3>Linux</h3>
+          <p>
+            AppImage: make it executable and run it.
+          </p>
+          <pre><code>chmod +x badami_&lt;version&gt;_amd64.AppImage
+./badami_&lt;version&gt;_amd64.AppImage</code></pre>
+          <p>
+            For <code>.deb</code> and <code>.rpm</code>, install with your package manager
+            as usual.
+          </p>
+
+          <h2>3. Updates</h2>
+          <p>
+            Badami checks for a newer release on startup. You can also check by hand from
+            <strong>About → Updates</strong> or <strong>Settings → Updates</strong>.
+          </p>
+          <p>The updater reads this endpoint:</p>
+          <pre><code>https://github.com/khalidinsan/badami/releases/latest/download/latest.json</code></pre>
+          <p>
+            Every artifact is minisign-signed, and the public key is embedded in the app
+            at <code>src-tauri/tauri.conf.json</code>. An update that does not verify
+            against that key is refused.
+          </p>
+
+          <h2>Uninstalling</h2>
+          <p>
+            Remove the app the way you normally would for your platform. If you also want
+            to delete your data, remove the app support folder
+            (<code>~/Library/Application Support/com.khalid.badami/</code> on macOS). If
+            you had enabled Local Dev, see
+            <a href="local-dev.html#uninstall">Local Dev → Uninstall</a> for the
+            privileged pieces it can install.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Docs</a>
+          <a href="install.html">Install</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+          <a href="architecture.html">Architecture</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Badami · local-first productivity for developers</title>
+    <meta
+      name="description"
+      content="A macOS, Windows, and Linux desktop app that keeps your projects, tasks, planning, servers, database work, and local PHP stack in one place."
+    />
+    <link rel="icon" href="assets/icon.png" />
+    <link rel="stylesheet" href="assets/site.css" />
+    <meta property="og:title" content="Badami" />
+    <meta
+      property="og:description"
+      content="Projects, tasks, planning, servers, database work, and a local PHP stack in one desktop app."
+    />
+    <meta property="og:image" content="assets/logo.png" />
+  </head>
+  <body>
+    <div class="glow"></div>
+
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="index.html">
+          <img class="logo-dark" src="assets/logo.png" alt="Badami" /><img class="logo-light" src="assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav">
+          <a href="docs/">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a
+            class="nav-cta"
+            href="https://github.com/khalidinsan/badami/releases/latest"
+            >Download</a
+          >
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="wrap">
+        <section class="hero">
+          <h1>Everything you work on,<br />in one window.</h1>
+          <p class="lede">
+            Badami is a desktop app for people who ship software: projects and notes,
+            tasks and planning, remote servers, database work, and a complete local PHP
+            stack. Native on macOS, Windows, and Linux.
+          </p>
+
+          <div class="actions">
+            <a
+              class="btn btn-primary"
+              href="https://github.com/khalidinsan/badami/releases/latest"
+              >Download for desktop</a
+            >
+            <a class="btn btn-ghost" href="docs/">Read the docs</a>
+          </div>
+
+          <p class="platforms">
+            macOS (Apple Silicon) · Windows · Linux &nbsp;·&nbsp; free and open source
+          </p>
+        </section>
+
+        <section id="modules">
+          <div class="section-head">
+            <h2>What is inside</h2>
+            <p>
+              Modules that normally live in separate apps, sharing one database and one
+              keyboard shortcut.
+            </p>
+          </div>
+
+          <div class="grid">
+            <div class="feature">
+              <h3>Projects and pages</h3>
+              <p>
+                A block editor for project notes, specs, and nested pages, with everything
+                searchable from one place.
+              </p>
+            </div>
+            <div class="feature">
+              <h3>Tasks</h3>
+              <p>
+                Priorities, labels, due dates, subtasks, recurring work, reminders, and
+                both list and board views.
+              </p>
+            </div>
+            <div class="feature">
+              <h3>Daily planning</h3>
+              <p>
+                Drag tasks onto a calendar, write free-form notes per day, and watch the
+                day fill up.
+              </p>
+            </div>
+            <div class="feature">
+              <h3>Today window</h3>
+              <p>
+                A small floating window with a Pomodoro timer, so the current task stays
+                visible without the whole app.
+              </p>
+            </div>
+            <div class="feature">
+              <h3>Servers</h3>
+              <p>
+                SSH terminal with keepalive and reconnect, SFTP and FTP file manager, PEM
+                key manager, saved commands, and a remote editor.
+              </p>
+            </div>
+            <div class="feature">
+              <h3>Local Dev <span class="tag">macOS</span></h3>
+              <p>
+                Run <code>*.test</code> sites with your own nginx, PHP-FPM, MariaDB, and
+                Redis. Badami owns the binaries, so nothing else has to be installed.
+              </p>
+            </div>
+            <div class="feature">
+              <h3>Credential vault</h3>
+              <p>
+                AES-256-GCM encrypted storage, a TOTP authenticator, and a password
+                generator, unlocked by one master password.
+              </p>
+            </div>
+            <div class="feature">
+              <h3>REST API tool</h3>
+              <p>
+                Build and send requests, organize them into collections, keep per-environment
+                variables, and import from Postman.
+              </p>
+            </div>
+            <div class="feature">
+              <h3>Database client</h3>
+              <p>
+                Connect to MySQL, PostgreSQL, and SQLite, browse tables, edit schema, run
+                queries in tabs, and export results.
+              </p>
+            </div>
+            <div class="feature">
+              <h3>AI assistant</h3>
+              <p>
+                Chat with any OpenRouter model, with tool use and streaming, from inside
+                the same window.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section id="install">
+          <div class="section-head">
+            <h2>Install</h2>
+            <p>
+              Prebuilt installers for macOS, Windows, and Linux are attached to every
+              release. The in-app updater keeps them current from there.
+            </p>
+          </div>
+
+          <div class="panel">
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Platform</th>
+                    <th>File to download</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>macOS, Apple Silicon</td>
+                    <td><code>badami_&lt;version&gt;_aarch64.dmg</code></td>
+                  </tr>
+                  <tr>
+                    <td>Windows</td>
+                    <td><code>badami_&lt;version&gt;_x64-setup.exe</code> or <code>.msi</code></td>
+                  </tr>
+                  <tr>
+                    <td>Linux</td>
+                    <td><code>.AppImage</code>, <code>.deb</code>, or <code>.rpm</code></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p style="margin: 16px 0 0; font-size: 14px; color: var(--fg-muted)">
+              Full walkthrough, including the first-launch step on macOS, is in
+              <a href="docs/install.html">Install</a>.
+            </p>
+          </div>
+        </section>
+
+        <section id="developers">
+          <div class="section-head">
+            <h2>Build it yourself</h2>
+            <p>
+              Badami is a Tauri v2 app: a Rust backend with a React and TypeScript
+              frontend, storing everything in SQLite on your machine.
+            </p>
+          </div>
+
+          <div class="panel">
+            <pre><code>git clone https://github.com/khalidinsan/badami.git
+cd badami
+npm install
+npm run tauri dev</code></pre>
+            <p style="margin: 0; font-size: 14px; color: var(--fg-muted)">
+              The first build compiles the Rust crates and takes a few minutes. Setup per
+              platform, the project layout, and how releases are cut are in
+              <a href="docs/development.html">Development</a>.
+            </p>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed. Built by <a href="https://github.com/khalidinsan">khalidinsan</a>.</span>
+        <span class="links">
+          <a href="docs/">Docs</a>
+          <a href="docs/install.html">Install</a>
+          <a href="docs/development.html">Development</a>
+          <a href="https://github.com/khalidinsan/badami/releases">Releases</a>
+          <a href="https://github.com/khalidinsan/badami/issues">Issues</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

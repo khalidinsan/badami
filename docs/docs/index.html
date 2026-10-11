@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Docs · Badami</title>
+    <meta name="description" content="Badami documentation: install, Local Dev, development, and architecture." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html"><img class="logo-dark" src="../assets/logo.png" alt="Badami" /><img class="logo-light" src="../assets/logo-white.png" alt="Badami" /></a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html" aria-current="page">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Badami docs</h1>
+          <p class="sub">
+            Badami keeps the tools you already use for shipping software in one desktop
+            app. Everything is stored locally in SQLite, and cloud sync is optional.
+          </p>
+
+          <div class="grid">
+            <a class="feature" href="install.html">
+              <h3>Install</h3>
+              <p>
+                Download a prebuilt installer for macOS, Windows, or Linux, clear the
+                first-launch prompt on macOS, and let the in-app updater handle the rest.
+              </p>
+            </a>
+            <a class="feature" href="local-dev.html">
+              <h3>Local Dev</h3>
+              <p>
+                Serve <code>*.test</code> sites from nginx, PHP-FPM, MariaDB, and Redis
+                that Badami installs and manages itself.
+              </p>
+            </a>
+            <a class="feature" href="development.html">
+              <h3>Development</h3>
+              <p>
+                Toolchain requirements per platform, running from source, producing
+                release bundles, and how a tagged release is published.
+              </p>
+            </a>
+            <a class="feature" href="architecture.html">
+              <h3>Architecture</h3>
+              <p>
+                Where things live in the repository, which library handles each concern,
+                and how the version number stays in sync across three files.
+              </p>
+            </a>
+          </div>
+
+          <h2>The modules</h2>
+          <p>
+            Each module shares one database and one search. Nothing is a separate window
+            you have to remember to open.
+          </p>
+
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Module</th>
+                  <th>What it does</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Projects and pages</strong></td>
+                  <td>Block editor for notes, specs, and nested pages.</td>
+                </tr>
+                <tr>
+                  <td><strong>Tasks</strong></td>
+                  <td>
+                    Priorities, labels, due dates, subtasks, recurring work, reminders,
+                    list and board views.
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Daily planning</strong></td>
+                  <td>Calendar you drag tasks onto, plus free-form notes per day.</td>
+                </tr>
+                <tr>
+                  <td><strong>Today window</strong></td>
+                  <td>Floating compact window with a Pomodoro timer.</td>
+                </tr>
+                <tr>
+                  <td><strong>Servers</strong></td>
+                  <td>
+                    SSH terminal, SFTP and FTP file manager, PEM keys, saved commands,
+                    remote editor.
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Local Dev</strong> <span class="tag">macOS</span></td>
+                  <td>
+                    Local PHP stack with Badami-owned nginx, PHP-FPM, MariaDB, Redis, and
+                    dnsmasq.
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Credential vault</strong></td>
+                  <td>AES-256-GCM vault, TOTP authenticator, password generator.</td>
+                </tr>
+                <tr>
+                  <td><strong>REST API tool</strong></td>
+                  <td>Request builder, collections, environments, Postman import.</td>
+                </tr>
+                <tr>
+                  <td><strong>Database client</strong></td>
+                  <td>MySQL, PostgreSQL, and SQLite with a query editor and table viewer.</td>
+                </tr>
+                <tr>
+                  <td><strong>AI assistant</strong></td>
+                  <td>OpenRouter models with tool use and streaming responses.</td>
+                </tr>
+                <tr>
+                  <td><strong>Stats</strong></td>
+                  <td>Productivity dashboard.</td>
+                </tr>
+                <tr>
+                  <td><strong>Sync</strong></td>
+                  <td>Optional Turso LibSQL cloud sync with embedded replicas.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Where your data lives</h2>
+          <p>
+            Badami stores everything on your machine first. Two databases live side by
+            side under your user account:
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Purpose</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>badami.db</code></td>
+                  <td>The local database. Always present.</td>
+                </tr>
+                <tr>
+                  <td><code>badami_sync.db</code></td>
+                  <td>Embedded replica, created only when cloud sync is enabled.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Both sit in the app's support folder, which on macOS is
+            <code>~/Library/Application Support/com.khalid.badami/</code>.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Docs</a>
+          <a href="install.html">Install</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+          <a href="architecture.html">Architecture</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local Dev · Badami</title>
+    <meta
+      name="description"
+      content="Run local *.test sites with Badami-owned nginx, PHP-FPM, MariaDB, Redis, and dnsmasq."
+    />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html"><img class="logo-dark" src="../assets/logo.png" alt="Badami" /><img class="logo-light" src="../assets/logo-white.png" alt="Badami" /></a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="local-dev.html" aria-current="page">Local Dev</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Local Dev</h1>
+          <p class="sub">
+            A complete local PHP stack on macOS: nginx, PHP-FPM in several versions,
+            MariaDB, Redis, and dnsmasq, all from binaries Badami installs and manages.
+            Nothing else has to be on the machine.
+          </p>
+
+          <div class="note">
+            <div>
+              <strong>macOS only</strong>
+              <p>
+                Local Dev depends on macOS paths, launchd, and APFS. The module is hidden
+                on Windows and Linux.
+              </p>
+            </div>
+          </div>
+
+          <h2>How it is put together</h2>
+          <p>
+            Everything Badami generates lives in one folder, so the stack is easy to
+            inspect and easy to remove:
+          </p>
+          <pre><code>~/Library/Application Support/Badami/local-dev/
+├── runtime/          binaries, one folder per role and version
+│   ├── nginx/1.25.4/
+│   ├── php/7.4/      php and php-fpm side by side
+│   ├── mariadb/10.11.6/
+│   ├── redis/7.4.7/
+│   └── dnsmasq/2.89/
+├── data/mariadb/     the database files
+├── config/valet/     tld, parks, per-site certificates
+├── config/php/74/    php.ini per version
+├── nginx/            nginx.conf, sites/*.conf
+├── fpm/              one pool per PHP version
+├── socks/            unix sockets nginx connects to
+├── pids/  logs/      runtime state
+└── valet-server/     the PHP router that maps a host to a site folder</code></pre>
+
+          <h2>Install a runtime</h2>
+          <p>
+            Open <strong>Local Dev → Settings → Runtime</strong>. The card lists every role
+            and the versions installed for it, and marks which one is in use.
+          </p>
+          <ol class="steps">
+            <li>
+              Choose <strong>Add version</strong>. PHP 8.x comes from
+              <a href="https://static-php.dev/">static-php-cli</a> and dnsmasq from a
+              Homebrew bottle; both are verified against a published checksum before
+              anything is unpacked.
+            </li>
+            <li>
+              Pick the version you want. It downloads, verifies, extracts, and then runs a
+              version check against the new binary before committing it.
+            </li>
+            <li>
+              Use <strong>Use</strong> on a row to switch which version a role runs, and
+              the bin icon to remove one you no longer need.
+            </li>
+          </ol>
+          <div class="note warn">
+            <div>
+              <strong>PHP 7.4 has no upstream build</strong>
+              <p>
+                static-php-cli starts at 8.0, and there is no other neutral source that
+                publishes a macOS arm64 build at a stable URL. Badami therefore reports
+                7.4 as unavailable for download rather than pointing at someone else's
+                server. If you need 7.4, build it yourself and place it under
+                <code>runtime/php/7.4/</code>.
+              </p>
+            </div>
+          </div>
+
+          <h2>Sites</h2>
+          <p>
+            A <strong>parked</strong> folder serves every direct subfolder as a site, the
+            way a web root works. A <strong>linked</strong> site points at one specific
+            folder.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Park a directory</td>
+                  <td>Every subfolder becomes <code>&lt;folder&gt;.test</code>.</td>
+                </tr>
+                <tr>
+                  <td>Link a project</td>
+                  <td>The project folder is served under its own name.</td>
+                </tr>
+                <tr>
+                  <td>Isolate PHP</td>
+                  <td>Pins one site to a specific PHP version through its own pool.</td>
+                </tr>
+                <tr>
+                  <td>Secure</td>
+                  <td>
+                    Issues a certificate from the local CA and serves the site over HTTPS.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>HTTP and HTTPS</h2>
+          <p>
+            By default nginx binds an unprivileged port, so nothing runs as root:
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Mode</th>
+                  <th>URL</th>
+                  <th>Requires admin</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>HTTP, default</td>
+                  <td><code>http://mysite.test:8080</code></td>
+                  <td>No</td>
+                </tr>
+                <tr>
+                  <td>HTTPS, per site</td>
+                  <td><code>https://mysite.test:8443</code></td>
+                  <td>No</td>
+                </tr>
+                <tr>
+                  <td>HTTP on port 80</td>
+                  <td><code>http://mysite.test</code></td>
+                  <td>Yes, once, to install a LaunchDaemon</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Port 80 is optional. Installing it writes a Badami-owned LaunchDaemon behind
+            one admin prompt, and every config that daemon reads is rendered into a
+            root-owned folder and verified by hash before the daemon is loaded.
+          </p>
+
+          <h3>Trusting the local CA</h3>
+          <p>
+            HTTPS works immediately, but browsers will warn until the local Certificate
+            Authority is trusted. <strong>Settings → TLS</strong> shows the exact command
+            it will run before the admin prompt appears, and the certificate is verified
+            against a hash computed in the app before the keychain sees it.
+          </p>
+          <p>
+            Removing that trust is manual: use Keychain Access, or run
+            <code>security remove-trusted-cert</code> against the CA file.
+          </p>
+
+          <h2>DNS for <code>*.test</code></h2>
+          <p>
+            A resolver file alone is not working DNS: something has to answer on the port
+            it points at. Badami checks by resolving a random label, not by looking for a
+            file, and reports what it finds:
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Mode</th>
+                  <th>What happens</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Adopt</td>
+                  <td>An existing listener already answers for the TLD, so nothing is started.</td>
+                </tr>
+                <tr>
+                  <td>Badami dnsmasq</td>
+                  <td>Installs a dnsmasq LaunchDaemon that binds port 53. One admin prompt.</td>
+                </tr>
+                <tr>
+                  <td>High port</td>
+                  <td>Writes a resolver entry pointing at a non-privileged port, then runs dnsmasq unprivileged.</td>
+                </tr>
+                <tr>
+                  <td>Degraded</td>
+                  <td>
+                    No working DNS. The stack still runs and sites answer on
+                    <code>127.0.0.1:8080</code> with a Host header, and the Doctor tab
+                    explains how to fix it.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note">
+            <div>
+              <strong>Secure DNS in the browser</strong>
+              <p>
+                Chrome and Firefox can use DNS-over-HTTPS, which bypasses the resolver
+                file entirely. Turn it off for <code>*.test</code> if the system probe is
+                green but the browser cannot resolve your site.
+              </p>
+            </div>
+          </div>
+
+          <h2>Your database</h2>
+          <p>
+            MariaDB reads its files from <code>data/mariadb</code>. If you already have a
+            datadir elsewhere, <strong>Settings → Runtime → Database files</strong> can
+            move it in. On APFS the move is a clone, which shares blocks with the source
+            instead of copying them: an 11 GB datadir moves in about a second and uses
+            almost no extra disk.
+          </p>
+          <p>
+            The move verifies its work by hashing a sample of the copied files, always
+            including <code>ibdata1</code>, and compares both sides. The source folder is
+            never modified, so it stays available as a fallback until you delete it
+            yourself.
+          </p>
+
+          <h2>Safety rules</h2>
+          <ul>
+            <li>
+              <strong>Nothing is deleted automatically.</strong> Moving data clones it;
+              removing a runtime version or a datadir is always an explicit action you
+              take.
+            </li>
+            <li>
+              <strong>A binary is only used if its hash matches</strong> the manifest
+              recorded when it was installed. A half-copied or altered file reads as
+              absent rather than as working.
+            </li>
+            <li>
+              <strong>Starting MariaDB twice on one datadir is refused.</strong> Two
+              servers writing the same InnoDB files is how databases get corrupted, so the
+              guard is a hard failure with an explanation.
+            </li>
+            <li>
+              <strong>Privileged config is verified by hash.</strong> Root-owned nginx and
+              dnsmasq configs are re-rendered, tokenized, checked against an allowlist,
+              staged, and hash-verified before launchd loads them.
+            </li>
+          </ul>
+
+          <h2 id="uninstall">Uninstall</h2>
+          <p>
+            <strong>Local Dev → Settings → LaunchDaemon</strong> reverses what Badami
+            installed: it removes only Badami-owned units and the staged config folder.
+            The resolver file is removed only when you confirm and only when it carries
+            Badami's marker, so a resolver file written by something else is left alone.
+          </p>
+          <p>
+            To remove the whole stack afterwards, delete the folder shown at the top of
+            this page and the root-owned folder
+            <code>/Library/Application Support/Badami/local-dev-root/</code>. Certificates
+            you trusted must be removed from the keychain by hand, as described above.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Docs</a>
+          <a href="install.html">Install</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+          <a href="architecture.html">Architecture</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

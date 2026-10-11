@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Development · Badami</title>
+    <meta name="description" content="Set up Badami for development, build release bundles, and publish a release." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html"><img class="logo-dark" src="../assets/logo.png" alt="Badami" /><img class="logo-light" src="../assets/logo-white.png" alt="Badami" /></a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html" aria-current="page">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Development</h1>
+          <p class="sub">
+            Badami is a Tauri v2 app: a Rust backend, a React and TypeScript frontend, and
+            SQLite for storage.
+          </p>
+
+          <h2>Requirements</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tool</th>
+                  <th>Version</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Node.js</td>
+                  <td>20 LTS or newer</td>
+                </tr>
+                <tr>
+                  <td>Rust</td>
+                  <td>stable, 1.77 or newer</td>
+                </tr>
+                <tr>
+                  <td>Tauri CLI</td>
+                  <td>v2, installed through the project's npm scripts</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Install Rust</h3>
+          <p>macOS and Linux:</p>
+          <pre><code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+rustup update stable</code></pre>
+          <p>
+            On Windows, run
+            <a href="https://win.rustup.rs/">rustup-init.exe</a> and also install the
+            Microsoft C++ Build Tools with the <em>Desktop development with C++</em>
+            workload.
+          </p>
+
+          <h3>Platform packages</h3>
+          <p>macOS:</p>
+          <pre><code>xcode-select --install</code></pre>
+          <p>Ubuntu or Debian:</p>
+          <pre><code>sudo apt update
+sudo apt install -y \
+  libwebkit2gtk-4.1-dev libssl-dev \
+  libayatana-appindicator3-dev librsvg2-dev \
+  patchelf pkg-config</code></pre>
+
+          <h2>Run from source</h2>
+          <pre><code>git clone https://github.com/khalidinsan/badami.git
+cd badami
+npm install
+npm run tauri dev</code></pre>
+          <p>
+            The first run compiles the Rust crates and takes a few minutes. Later runs are
+            incremental. The frontend also has a browser-only dev server at
+            <code>npm run dev</code>, which is useful for layout work but has no Tauri
+            commands available.
+          </p>
+
+          <h2>Tests</h2>
+          <pre><code># Rust
+cd src-tauri && cargo test --lib
+
+# Frontend
+npm test
+
+# Types
+npx tsc --noEmit</code></pre>
+          <p>
+            A few Rust tests read real machine state, such as whether a MariaDB server
+            currently holds a datadir, and a few need a live install to copy from. Those
+            are marked <code>#[ignore]</code> and run on demand:
+          </p>
+          <pre><code>cd src-tauri && cargo test --lib -- --ignored</code></pre>
+
+          <h2>Build release bundles</h2>
+          <pre><code># Only needed to produce signed updater artifacts
+# export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/badami.key)"
+# export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+
+npm run tauri build</code></pre>
+          <p>Bundles land in <code>src-tauri/target/release/bundle/</code>:</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Platform</th>
+                  <th>Artifacts</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>macOS</td>
+                  <td><code>.dmg</code>, <code>.app</code>, plus <code>.app.tar.gz</code> when updater artifacts are on</td>
+                </tr>
+                <tr>
+                  <td>Windows</td>
+                  <td>NSIS <code>.exe</code> and <code>.msi</code></td>
+                </tr>
+                <tr>
+                  <td>Linux</td>
+                  <td><code>.deb</code>, <code>.AppImage</code>, <code>.rpm</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Publishing a release</h2>
+          <p>
+            Version numbers live in three files and must stay in sync. A new feature phase
+            bumps the minor version, a fix bumps the patch version.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Field</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>package.json</code></td>
+                  <td><code>"version"</code></td>
+                </tr>
+                <tr>
+                  <td><code>src-tauri/tauri.conf.json</code></td>
+                  <td><code>"version"</code></td>
+                </tr>
+                <tr>
+                  <td><code>src-tauri/Cargo.toml</code></td>
+                  <td><code>version</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            The About page reads the version through Tauri, so it never needs editing by
+            hand. Pushing a tag runs
+            <a href="https://github.com/khalidinsan/badami/blob/main/.github/workflows/release.yml"
+              >the release workflow</a
+            >, which builds on macOS, Ubuntu, and Windows, publishes a GitHub Release, and
+            uploads <code>latest.json</code> for the in-app updater:
+          </p>
+          <pre><code>git tag v1.16.0
+git push origin v1.16.0</code></pre>
+          <p>
+            The workflow needs a <code>TAURI_SIGNING_PRIVATE_KEY</code> secret, and
+            optionally <code>TAURI_SIGNING_PRIVATE_KEY_PASSWORD</code>. Without the key,
+            updater artifacts cannot be produced.
+          </p>
+
+          <h2>Conventions</h2>
+          <ul>
+            <li>TypeScript runs in strict mode; the build fails on type errors.</li>
+            <li>Database access goes through Kysely, not raw SQL, outside migrations.</li>
+            <li>State lives in Zustand stores, one per domain.</li>
+            <li>IDs are UUID v4 and timestamps are ISO strings.</li>
+            <li>Icons come from Lucide React, never emoji.</li>
+          </ul>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Docs</a>
+          <a href="install.html">Install</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+          <a href="architecture.html">Architecture</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>
