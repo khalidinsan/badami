@@ -4,6 +4,7 @@ import {
   Globe,
   Link2,
   Loader2,
+  Lock,
   RefreshCw,
   Unlink,
   Code2,
@@ -176,7 +177,13 @@ export function ProjectSitePanel({ projectId }: ProjectSitePanelProps) {
                     className="border-b border-border/30 last:border-0"
                   >
                     <td className="px-3 py-2.5">
-                      <div className="font-medium">
+                      <div className="flex items-center gap-1.5 font-medium">
+                        {row.secured === 1 && (
+                          <Lock
+                            className="h-3 w-3 shrink-0 text-emerald-600"
+                            aria-label="HTTPS"
+                          />
+                        )}
                         {row.name}.{row.tld}
                       </div>
                       <div className="truncate font-mono text-[10px] text-muted-foreground">

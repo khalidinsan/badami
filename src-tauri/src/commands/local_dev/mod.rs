@@ -14,10 +14,12 @@ pub mod resources;
 pub mod service_specs;
 pub mod sites;
 pub mod supervisor;
+pub mod tls;
 
 use bootstrap::{
-    bootstrap_install, bootstrap_status, BootstrapInstallRequest, BootstrapInstallResult,
-    BootstrapStatus,
+    bootstrap_install, bootstrap_status_for, bootstrap_uninstall, BootstrapInstallRequest,
+    BootstrapInstallResult, BootstrapStatus, BootstrapUninstallRequest, BootstrapUninstallResult,
+    DEFAULT_LD_IDENTIFIER,
 };
 use config_gen::{
     generate_configs, generate_isolated_site, GenerateConfigsRequest, GenerateConfigsResult,
@@ -25,7 +27,7 @@ use config_gen::{
 };
 use discovery::{build_runtime_paths, discover, DiscoveryReport, RuntimePaths};
 use import_herd::{import_herd, ImportHerdRequest, ImportResult};
-use doctor::{run_dns_probe, run_doctor, DnsProbeResult, DoctorReport, DoctorRequest};
+use doctor::{run_dns_probe_for, run_doctor_for, DnsProbeResult, DoctorReport, DoctorRequest};
 use mariadb_guard::{
     probe_mariadb_auth_async, run_preflight, MariadbAuthProbe, MariadbAuthProbeRequest,
     MariadbPreflightReport, MariadbPreflightRequest,
@@ -183,9 +185,13 @@ pub async fn ld_import_herd(
 /// Never deletes Herd datadir. Never invokes Herd helper. Never mutates disk
 /// beyond optional `nginx -t` subprocess.
 #[tauri::command]
-pub async fn ld_doctor(request: Option<DoctorRequest>) -> Result<DoctorReport, String> {
+pub async fn ld_doctor(
+    app: tauri::AppHandle,
+    request: Option<DoctorRequest>,
+) -> Result<DoctorReport, String> {
     let req = request.unwrap_or_default();
-    tokio::task::spawn_blocking(move || run_doctor(req))
+    let identifier = resolve_identifier(&app);
+    tokio::task::spawn_blocking(move || run_doctor_for(&identifier, req))
         .await
         .map_err(|e| format!("ld_doctor task failed: {e}"))?
 }
@@ -194,6 +200,7 @@ pub async fn ld_doctor(request: Option<DoctorRequest>) -> Result<DoctorReport, S
 /// Used by Doctor and Open site gate. Resolver file alone is never healthy.
 #[tauri::command]
 pub async fn ld_dns_probe(
+    app: tauri::AppHandle,
     tld: Option<String>,
     loopback: Option<String>,
     label: Option<String>,
@@ -202,8 +209,10 @@ pub async fn ld_dns_probe(
     let tld = tld.unwrap_or_else(|| "test".into());
     let loopback = loopback.unwrap_or_else(|| "127.0.0.1".into());
     let skip = skip_live.unwrap_or(false);
+    let identifier = resolve_identifier(&app);
     tokio::task::spawn_blocking(move || {
-        Ok(run_dns_probe(
+        Ok(run_dns_probe_for(
+            &identifier,
             &tld,
             &loopback,
             label.as_deref(),
@@ -216,10 +225,26 @@ pub async fn ld_dns_probe(
 
 // ── Bootstrap Mode B / DNS (PR7) ────────────────────────────────────
 
+/// Resolve the identifier used to compose LaunchDaemon labels, falling back
+/// to [`DEFAULT_LD_IDENTIFIER`] when the Tauri config has an empty value
+/// (unit tests + first-run before `.setup(...)` finishes).
+fn resolve_identifier(app: &tauri::AppHandle) -> String {
+    let id = app.config().identifier.clone();
+    if id.is_empty() {
+        DEFAULT_LD_IDENTIFIER.to_string()
+    } else {
+        id
+    }
+}
+
 /// Status of Badami LaunchDaemon scaffolds / installed units + resolver.
 #[tauri::command]
-pub async fn ld_bootstrap_status(tld: Option<String>) -> Result<BootstrapStatus, String> {
-    tokio::task::spawn_blocking(move || bootstrap_status(tld.as_deref()))
+pub async fn ld_bootstrap_status(
+    app: tauri::AppHandle,
+    tld: Option<String>,
+) -> Result<BootstrapStatus, String> {
+    let identifier = resolve_identifier(&app);
+    tokio::task::spawn_blocking(move || bootstrap_status_for(&identifier, tld.as_deref()))
         .await
         .map_err(|e| format!("ld_bootstrap_status task failed: {e}"))?
 }
@@ -230,18 +255,46 @@ pub async fn ld_bootstrap_status(tld: Option<String>) -> Result<BootstrapStatus,
 /// **`dry_run` (default true)** still **writes** plists/scripts under Application
 /// Support — it only skips privileged install into `/Library/LaunchDaemons`.
 /// System install needs user admin auth (osascript) via
-/// `attempt_privileged_install` when `dry_run=false`.
+/// `attempt_privileged_install` when `dry_run=false`. The privileged command
+/// is composed in Rust from argv only; no user-writable script is executed
+/// as root (TOCTOU-safe).
 ///
-/// Packages: `dns_only` | `dns_high_port` | `http_80` | `full`.
+/// Packages: `dns_only` | `dns_high_port` | `http_80` | `full` | `resync`.
 ///
 /// Never invokes Herd helper. Never deletes Herd datadir.
 #[tauri::command]
 pub async fn ld_bootstrap_install(
+    app: tauri::AppHandle,
     request: BootstrapInstallRequest,
 ) -> Result<BootstrapInstallResult, String> {
-    tokio::task::spawn_blocking(move || bootstrap_install(request))
+    let identifier = resolve_identifier(&app);
+    let mut req = request;
+    if req.identifier.is_none() {
+        req.identifier = Some(identifier);
+    }
+    tokio::task::spawn_blocking(move || bootstrap_install(req))
         .await
         .map_err(|e| format!("ld_bootstrap_install task failed: {e}"))?
+}
+
+/// Remove a Badami-managed LaunchDaemon package (and optionally the resolver
+/// file). Never touches Herd files. The resolver file is only removed when it
+/// carries the `# managed-by: badami` marker, unless `confirm_resolver=true`.
+///
+/// Packages: `dns_only` | `http_80` | `full` | `resolver`.
+#[tauri::command]
+pub async fn ld_bootstrap_uninstall(
+    app: tauri::AppHandle,
+    request: BootstrapUninstallRequest,
+) -> Result<BootstrapUninstallResult, String> {
+    let identifier = resolve_identifier(&app);
+    let mut req = request;
+    if req.identifier.is_none() {
+        req.identifier = Some(identifier);
+    }
+    tokio::task::spawn_blocking(move || bootstrap_uninstall(req))
+        .await
+        .map_err(|e| format!("ld_bootstrap_uninstall task failed: {e}"))?
 }
 
 /// Test helpers shared across `local_dev` modules.

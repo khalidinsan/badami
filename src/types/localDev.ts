@@ -415,6 +415,8 @@ export interface ListSitesResult {
   tld: string;
   loopback: string;
   http_port: number;
+  /** HTTPS port used for secured sites (Phase B TLS). Mode A default is 8443. */
+  https_port: number;
   notes: string[];
 }
 
@@ -448,6 +450,14 @@ export interface OpenSiteUrlResult {
   site: string;
   tld: string;
   http_port: number;
+  /** Port used in the emitted URL when the site is secured on disk. */
+  https_port: number | null;
+  /**
+   * True when the site conf has `BADAMI_SECURED=1` and both leaf cert files
+   * exist on disk. The URL already reflects this; the flag is exposed so UI
+   * can e.g. render a padlock without re-parsing the URL string.
+   */
+  secured: boolean;
   url: string;
 }
 
@@ -612,7 +622,25 @@ export interface DoctorReport {
 
 // ── Bootstrap (`ld_bootstrap_*`) ────────────────────────────────────
 
-export type BootstrapPackageId = "dns_only" | "dns_high_port" | "http_80" | "full";
+export type BootstrapPackageId =
+  | "dns_only"
+  | "dns_high_port"
+  | "http_80"
+  | "full"
+  /**
+   * Re-copy user-side nginx + dnsmasq config into the Mode B root staging dir
+   * and reload the LaunchDaemons. Needed after isolate/secure writes config in
+   * the user tree that root-staged nginx otherwise never sees.
+   */
+  | "resync";
+
+/** Uninstall package ids accepted by `ld_bootstrap_uninstall`. */
+export type BootstrapUninstallPackageId =
+  | "dns_only"
+  | "http_80"
+  | "full"
+  /** Only the `/etc/resolver/<tld>` file (gated by `# managed-by: badami`). */
+  | "resolver";
 
 export interface BootstrapInstallRequest {
   package: BootstrapPackageId | string;
@@ -623,6 +651,14 @@ export interface BootstrapInstallRequest {
   nginx_binary?: string | null;
   dnsmasq_binary?: string | null;
   attempt_privileged_install?: boolean | null;
+  /**
+   * Reverse-DNS identifier used to compose LaunchDaemon labels. Must match
+   * `^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$`. Falls back to
+   * `com.khalid.badami` when omitted. The Tauri wrapper (`ld_bootstrap_install`)
+   * normally derives this from `AppHandle::config().identifier` — only pass
+   * a value explicitly in tests or when forcing a specific bundle id.
+   */
+  identifier?: string | null;
 }
 
 export interface BootstrapUnitScaffold {
@@ -631,6 +667,11 @@ export interface BootstrapUnitScaffold {
   scaffold_plist: string;
   system_plist_target: string;
   program_arguments: string[];
+  /**
+   * Final root-owned staging dir the LaunchDaemon reads binaries + configs
+   * from. Rendered by the Rust hardening pass; display-only.
+   */
+  root_staging_dir: string;
 }
 
 export interface BootstrapInstallResult {
@@ -645,6 +686,37 @@ export interface BootstrapInstallResult {
   units: BootstrapUnitScaffold[];
 }
 
+export interface BootstrapUninstallRequest {
+  package: BootstrapUninstallPackageId | string;
+  /**
+   * Delete `/etc/resolver/<tld>` even without the `# managed-by: badami`
+   * marker. Default `false` — the resolver file is left alone unless the
+   * user explicitly ticks the opt-in checkbox.
+   */
+  confirm_resolver?: boolean | null;
+  /** When true (default): emit `steps` but execute nothing. */
+  dry_run?: boolean | null;
+  tld?: string | null;
+  /**
+   * Reverse-DNS identifier used to compose LaunchDaemon labels. Must match
+   * `^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$`. Falls back to
+   * `com.khalid.badami` when omitted; `ld_bootstrap_uninstall` normally
+   * derives this from `AppHandle::config().identifier`.
+   */
+  identifier?: string | null;
+}
+
+export interface BootstrapUninstallResult {
+  package: string;
+  dry_run: boolean;
+  executed: boolean;
+  /** Each step is the exact argv rendered shell-quoted — safe to display. */
+  steps: string[];
+  notes: string[];
+  install_command: string | null;
+  labels: string[];
+}
+
 export interface BootstrapStatus {
   dnsmasq: LaunchdUnitInfo;
   nginx: LaunchdUnitInfo;
@@ -652,6 +724,11 @@ export interface BootstrapStatus {
   resolver_present: boolean;
   /** Raw `port` line from the resolver file; null means the file omits it. */
   resolver_port: number | null;
+  /**
+   * True when `/etc/resolver/<tld>` carries the `# managed-by: badami`
+   * marker — gates automatic resolver removal in `ld_bootstrap_uninstall`.
+   */
+  resolver_marker_present: boolean;
   dns_bootstrap_complete: boolean;
   /** Unit installed **and** nginx actually configured for :80. */
   http_bootstrap_complete: boolean;
@@ -668,6 +745,12 @@ export interface BootstrapStatus {
   notes: string[];
   /** Scaffold directory under local-dev. */
   launchd_dir: string;
+  /**
+   * Fixed root-owned staging prefix — `/Library/Application Support/Badami
+   * /local-dev-root`. Everything a LaunchDaemon reads at runtime lives under
+   * `<root_staging_prefix>/<role>/`.
+   */
+  root_staging_prefix: string;
 }
 
 // ── DNS setup state (one chip, not a daily toggle) ──────────────────
@@ -1168,3 +1251,159 @@ export function isDnsDegraded(services: ServiceStatusReport[]): boolean {
 
 /** Alias used by UI components (tagged union from supervisor) */
 export type ServiceStatus = RuntimeServiceStatus;
+
+// ── TLS (Phase B — `ld_tls_*`, `ld_secure`, `ld_unsecure`) ─────────
+
+/** One entry per site that currently has a BADAMI-issued leaf cert on disk. */
+export interface SecuredSite {
+  name: string;
+  tld: string;
+  cert_path: string;
+  key_path: string;
+}
+
+/**
+ * Snapshot from `ld_tls_status`. The CA presence check is fast (file stat);
+ * the trust check (`security find-certificate …`) is skipped in tests via
+ * `skip_live=true`.
+ */
+export interface TlsStatus {
+  ca_exists: boolean;
+  ca_trusted: boolean;
+  ca_cert_path: string | null;
+  ca_key_path: string | null;
+  ca_common_name: string;
+  secured_sites: SecuredSite[];
+  notes: string[];
+}
+
+/** Returned by `ld_tls_trust_ca` — argv surface for the `security` command. */
+export interface TrustCaResult {
+  ca_cert_path: string | null;
+  /** The exact argv passed to `security add-trusted-cert`. Safe to display. */
+  argv: string[];
+  /** `argv` rendered single-line with shell quoting. */
+  step: string;
+  /** osascript body that wraps `argv` for the admin prompt. */
+  install_command: string | null;
+  executed: boolean;
+  notes: string[];
+}
+
+/** Returned by `ld_secure` / `ld_unsecure`. */
+export interface SecureSiteCommandResult {
+  site: string;
+  tld: string;
+  /** `"secured"` | `"unsecured"` | `"noop"` (unsecure of already-plain site). */
+  action: string;
+  secured: boolean;
+  cert_path: string | null;
+  key_path: string | null;
+  conf_path: string | null;
+  written: string[];
+  notes: string[];
+}
+
+// ── Supervisor live events (`ld://…`) ──────────────────────────────
+
+/**
+ * Event names emitted by the supervisor health loop. These must stay in sync
+ * with the `EVENT_*` constants in
+ * `src-tauri/src/commands/local_dev/supervisor.rs`.
+ */
+export const LD_EVENT = {
+  serviceStatus: "ld://service-status",
+  serviceCrashed: "ld://service-crashed",
+  serviceRestarted: "ld://service-restarted",
+  serviceRestartFailed: "ld://service-restart-failed",
+  serviceRateLimited: "ld://service-rate-limited",
+  mariadbCrashed: "ld://mariadb-crashed",
+} as const;
+
+/** `ServiceStatus["status"]` variant tag, as sent on the wire. */
+export type ServiceStatusVariant = RuntimeServiceStatus["status"];
+
+/** Payload of `ld://service-status` — status transition for any one service. */
+export interface ServiceStatusEvent {
+  service_id: string;
+  from: ServiceStatusVariant;
+  to: ServiceStatusVariant;
+  pid: number | null;
+  reason: string;
+  at: string;
+  level: EventLevel;
+  message: string;
+}
+
+/** Payload of `ld://service-crashed`. */
+export interface ServiceCrashedEvent {
+  service_id: string;
+  from: ServiceStatusVariant;
+  to: ServiceStatusVariant;
+  pid: number | null;
+  reason: string;
+  at: string;
+  level: EventLevel;
+  message: string;
+  log_file: string;
+}
+
+/** Payload of `ld://service-restarted` after an auto-restart succeeded. */
+export interface ServiceRestartedEvent {
+  service_id: string;
+  level: EventLevel;
+  status: ServiceStatusVariant;
+  pid: number | null;
+  message: string;
+  notes: string[];
+  at: string;
+}
+
+/** Payload of `ld://service-restart-failed`. */
+export interface ServiceRestartFailedEvent {
+  service_id: string;
+  level: EventLevel;
+  message: string;
+  status: ServiceStatusVariant;
+  at: string;
+}
+
+/** Payload of `ld://service-rate-limited`. */
+export interface ServiceRateLimitedEvent {
+  service_id: string;
+  level: EventLevel;
+  message: string;
+  at: string;
+}
+
+/** Payload of `ld://mariadb-crashed` — dedicated so the frontend can OS-notify. */
+export interface MariaDbCrashedEvent {
+  service_id: string;
+  level: EventLevel;
+  title: string;
+  message: string;
+  log_file: string;
+  at: string;
+}
+
+/** Payload of per-service `ld://log/{service_id}` subscription frames. */
+export interface LogStreamFrame {
+  subscription_id: string;
+  service_id: string;
+  /** Appended lines since the last frame. */
+  lines?: string[];
+  /** Set when the file was truncated / rotated. Clears the view. */
+  reset?: boolean;
+  /** Error path — a filesystem error from the tail task. */
+  error?: string;
+  at: string;
+}
+
+/** Return value of `ld_log_subscribe`. */
+export interface LogSubscribeResult {
+  subscription_id: string;
+  service_id: string;
+  /** Topic the frontend must `listen()` on — equals `ld://log/{service_id}`. */
+  topic: string;
+  log_file: string;
+}

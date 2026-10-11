@@ -213,6 +213,12 @@ pub fn run() {
             commands::local_dev::sites::ld_unisolate,
             commands::local_dev::sites::ld_open_site_url,
             commands::local_dev::sites::ld_reload_nginx,
+            commands::local_dev::sites::ld_secure,
+            commands::local_dev::sites::ld_unsecure,
+            // Local Dev (Phase B — TLS CA + per-site certs)
+            commands::local_dev::tls::ld_tls_status,
+            commands::local_dev::tls::ld_tls_trust_ca,
+            commands::local_dev::tls::ld_tls_ensure_ca,
             // Local Dev (Phase A — process supervisor)
             commands::local_dev::supervisor::ld_service_start,
             commands::local_dev::supervisor::ld_service_stop,
@@ -223,11 +229,15 @@ pub fn run() {
             commands::local_dev::supervisor::ld_stack_stop,
             commands::local_dev::supervisor::ld_log_tail,
             commands::local_dev::supervisor::ld_log_problems,
+            commands::local_dev::supervisor::ld_log_subscribe,
+            commands::local_dev::supervisor::ld_log_unsubscribe,
+            commands::local_dev::supervisor::ld_log_subscriptions,
             // Local Dev (Phase A — doctor + Mode B / DNS bootstrap scaffolds)
             commands::local_dev::ld_doctor,
             commands::local_dev::ld_dns_probe,
             commands::local_dev::ld_bootstrap_status,
             commands::local_dev::ld_bootstrap_install,
+            commands::local_dev::ld_bootstrap_uninstall,
             // Local Dev (Herd coexistence — read-only scan + graceful app quit)
             commands::local_dev::herd_conflict::ld_herd_status,
             commands::local_dev::herd_conflict::ld_herd_quit,
@@ -301,6 +311,23 @@ pub fn run() {
                 if !pos_ok {
                     let _ = win.center();
                 }
+            }
+
+            // Local Dev — background health loop + event emitter setup.
+            //
+            // Binds the AppHandle so supervisor commands (start/stop/restart) can
+            // emit `ld://service-status` transitions without threading the
+            // handle through every call. The loop itself is a macOS-only tick
+            // that detects crashes → auto-restart eligible services, and emits
+            // `ld://service-crashed` / `ld://service-restarted` / a dedicated
+            // `ld://mariadb-crashed` topic (MariaDB never auto-restarts).
+            //
+            // On non-macOS `spawn_health_loop` is a no-op — the whole Local Dev
+            // stack is macOS-only in intent.
+            {
+                let ld_state = app.state::<commands::local_dev::supervisor::LocalDevState>();
+                ld_state.bind_app(app.handle().clone());
+                commands::local_dev::supervisor::spawn_health_loop(app.handle().clone());
             }
 
             Ok(())

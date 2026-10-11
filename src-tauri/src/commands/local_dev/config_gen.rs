@@ -372,49 +372,220 @@ pub fn write_nginx_configs(
     Ok(())
 }
 
-/// Write an isolated-site nginx conf under `nginx/sites/{name}.conf`.
+// ── Merged site conf (Phase B TLS) ──────────────────────────────────
+
+/// Options for the merged per-site nginx conf writer.
+///
+/// A single `{site}.conf` file supports the four combinations of
+/// isolated × secured. We intentionally keep this as one file rather than
+/// splitting into `{site}.conf` + `{site}-ssl.conf` so `ld_unsecure` and
+/// `ld_unisolate` have a single file to rewrite / remove.
+#[derive(Debug, Clone)]
+pub struct SiteConfOptions {
+    pub site_name: String,
+    pub tld: String,
+    pub http_port: u16,
+    /// `Some(port)` emits an HTTPS server block + an HTTP redirect block.
+    /// `None` emits a single HTTP server block.
+    pub https_port: Option<u16>,
+    /// Absolute path to the leaf cert PEM — must be `Some` iff `https_port`.
+    pub cert_path: Option<String>,
+    /// Absolute path to the leaf key PEM — must be `Some` iff `https_port`.
+    pub key_path: Option<String>,
+    /// `Some(tag)` points fastcgi_pass at the isolated FPM socket.
+    pub php_tag: Option<String>,
+    /// Display PHP version for the `ISOLATED_PHP_VERSION=` marker. Only
+    /// relevant when `php_tag` is set.
+    pub php_version_display: Option<String>,
+}
+
+/// Legacy helper — writes an isolated-only per-site conf. Delegates to
+/// [`write_site_conf`] so there is only one renderer in the tree. New
+/// callers should prefer `write_site_conf` directly.
 pub fn write_isolated_site_conf(
     paths: &RuntimePaths,
     req: &IsolatedSiteRequest,
     written: &mut Vec<String>,
 ) -> Result<(), String> {
-    validate_site_name(&req.site_name)?;
-    validate_php_tag(&req.php_tag)?;
-    validate_php_version_display(&req.php_version)?;
-    let tld = req.tld.as_deref().unwrap_or("test");
-    validate_tld(tld)?;
+    let tld = req.tld.clone().unwrap_or_else(|| "test".into());
+    let opts = SiteConfOptions {
+        site_name: req.site_name.clone(),
+        tld,
+        http_port: req.http_port.unwrap_or(8080),
+        https_port: None,
+        cert_path: None,
+        key_path: None,
+        php_tag: Some(req.php_tag.clone()),
+        php_version_display: Some(req.php_version.clone()),
+    };
+    write_site_conf(paths, &opts, written).map(|_| ())
+}
 
-    let http_port = req.http_port.unwrap_or(8080);
-    let http_listen = format!("127.0.0.1:{http_port}");
-    let sock = format!("{}/php{}.sock", paths.socks, req.php_tag);
+/// True when both cert + key paths are present and the https_port is set.
+pub fn site_conf_is_secured(opts: &SiteConfOptions) -> bool {
+    opts.https_port.is_some() && opts.cert_path.is_some() && opts.key_path.is_some()
+}
+
+/// Validate options + render the merged nginx conf body (no file I/O).
+///
+/// Returned string includes a `# BADAMI_SITE_CONF v1` header plus marker
+/// comments so `list_sites` and `parse_isolated_version_from_conf` can keep
+/// treating this file as the source of truth for isolate/secure state.
+pub fn render_merged_site_conf(
+    paths: &RuntimePaths,
+    opts: &SiteConfOptions,
+) -> Result<String, String> {
+    validate_site_name(&opts.site_name)?;
+    validate_tld(&opts.tld)?;
+    if let Some(ref tag) = opts.php_tag {
+        validate_php_tag(tag)?;
+    }
+    if let Some(ref v) = opts.php_version_display {
+        validate_php_version_display(v)?;
+    }
+    let secured = site_conf_is_secured(opts);
+    if opts.https_port.is_some() && !secured {
+        return Err(
+            "https_port is Some but cert_path / key_path missing — secure cert files first".into(),
+        );
+    }
+    for p in opts.cert_path.iter().chain(opts.key_path.iter()) {
+        if p.contains('"') || p.contains('\n') || p.contains('\r') {
+            return Err("TLS cert / key path contains forbidden characters".into());
+        }
+    }
+
     let valet_php = format!("{}/valet-server/server.php", paths.local_dev_root);
-
+    let default_sock_fallback = {
+        // Fall back to the catch-all server's socket (php{{default}}.sock)
+        // when the caller did not pass a PHP tag — matches the behaviour of
+        // the top-level badami.conf default_server block.
+        let tag = opts
+            .php_tag
+            .clone()
+            .unwrap_or_else(|| parse_default_php_tag(paths).unwrap_or_else(|| "84".into()));
+        format!("{}/php{}.sock", paths.socks, tag)
+    };
+    let php_sock = default_sock_fallback;
+    let body_tpl = include_str!(
+        "../../../resources/local-dev/templates/nginx/site_body.conf.tpl"
+    );
     let body = replace_all(
-        include_str!("../../../resources/local-dev/templates/nginx/site.conf.tpl").to_string(),
+        body_tpl.to_string(),
         &[
-            ("{{PHP_VERSION}}", &req.php_version),
-            ("{{HTTP_LISTEN}}", &http_listen),
-            ("{{SITE_NAME}}", &req.site_name),
-            ("{{TLD}}", tld),
             ("{{VALET_SERVER_PHP}}", &valet_php),
-            ("{{PHP_SOCK}}", &sock),
+            ("{{PHP_SOCK}}", &php_sock),
             ("{{NGINX_DIR}}", &paths.nginx),
             ("{{LOCAL_DEV_HOME}}", &paths.local_dev_root),
         ],
     );
 
+    let host = format!("{}.{}", opts.site_name, opts.tld);
+    let server_names = format!("{host} www.{host} *.{host}");
+
+    let mut out = String::new();
+    out.push_str("# BADAMI_SITE_CONF v1\n");
+    out.push_str(&format!("# BADAMI_SITE={host}\n"));
+    if let Some(ref v) = opts.php_version_display {
+        out.push_str(&format!("# ISOLATED_PHP_VERSION={v}\n"));
+    }
+    if secured {
+        out.push_str("# BADAMI_SECURED=1\n");
+    }
+    out.push_str("# Badami Local Dev — per-site conf (static socket, no njs)\n\n");
+
+    if secured {
+        let https_port = opts.https_port.ok_or(
+            "render_merged_site_conf: secured=true but https_port=None (invariant violation)",
+        )?;
+        let https_listen = format!("127.0.0.1:{https_port}");
+        let cert = opts.cert_path.as_deref().unwrap_or_default();
+        let key = opts.key_path.as_deref().unwrap_or_default();
+        out.push_str(&format!(
+            "server {{\n\
+    listen {https_listen} ssl;\n\
+    http2 on;\n\
+    server_name {server_names};\n\
+    ssl_certificate     \"{cert}\";\n\
+    ssl_certificate_key \"{key}\";\n\
+    ssl_protocols TLSv1.2 TLSv1.3;\n\
+    ssl_prefer_server_ciphers off;\n\
+    ssl_session_cache shared:BadamiSSL:1m;\n\
+    ssl_session_timeout 10m;\n\
+{body}}}\n\n"
+        ));
+
+        // HTTP redirect — strip :443 from the Location header; keep high ports.
+        let location = if https_port == 443 {
+            format!("https://{host}$request_uri")
+        } else {
+            format!("https://{host}:{https_port}$request_uri")
+        };
+        out.push_str(&format!(
+            "server {{\n\
+    listen 127.0.0.1:{http_port};\n\
+    server_name {server_names};\n\
+    return 301 {location};\n\
+}}\n",
+            http_port = opts.http_port,
+        ));
+    } else {
+        out.push_str(&format!(
+            "server {{\n\
+    listen 127.0.0.1:{http_port};\n\
+    server_name {server_names};\n\
+{body}}}\n",
+            http_port = opts.http_port,
+        ));
+    }
+
+    Ok(out)
+}
+
+/// Render + write the merged per-site conf.
+pub fn write_site_conf(
+    paths: &RuntimePaths,
+    opts: &SiteConfOptions,
+    written: &mut Vec<String>,
+) -> Result<PathBuf, String> {
+    let body = render_merged_site_conf(paths, opts)?;
     let sites_dir = PathBuf::from(&paths.nginx).join("sites");
     ensure_dir(&sites_dir)?;
-    // Filename is only the validated site_name + .conf — no user path segments.
-    let out = ensure_path_under_root(
-        &sites_dir,
-        Path::new(&format!("{}.conf", req.site_name)),
-    )?;
-    // Belt-and-suspenders: basename must equal site_name.conf
-    if out.file_name().and_then(|s| s.to_str()) != Some(&format!("{}.conf", req.site_name)) {
-        return Err("refusing isolated site path traversal".into());
+    let out =
+        ensure_path_under_root(&sites_dir, Path::new(&format!("{}.conf", opts.site_name)))?;
+    if out.file_name().and_then(|s| s.to_str())
+        != Some(&format!("{}.conf", opts.site_name))
+    {
+        return Err("refusing merged site conf path traversal".into());
     }
-    write_file(&out, &body, written)
+    write_file(&out, &body, written)?;
+    Ok(out)
+}
+
+/// Best-effort read of the compile-time default PHP tag from the catch-all
+/// `badami.conf`. Falls back to `None` on parse failure so callers can supply
+/// their own default. Only used by [`render_merged_site_conf`] when the caller
+/// does not pass a PHP tag (plain non-isolated site).
+fn parse_default_php_tag(paths: &RuntimePaths) -> Option<String> {
+    let p = PathBuf::from(&paths.nginx).join("badami.conf");
+    let content = fs::read_to_string(&p).ok()?;
+    // Match either quoted or unquoted socket path. The catch-all block uses:
+    //   fastcgi_pass "unix:{SOCKS}/php{TAG}.sock";
+    // We extract {TAG} from the suffix.
+    for line in content.lines() {
+        let trimmed = line.trim();
+        let s = trimmed
+            .strip_prefix("fastcgi_pass ")
+            .map(|s| s.trim_matches(';').trim())?;
+        let s = s.trim_matches('"');
+        let s = s.strip_prefix("unix:")?;
+        let name = Path::new(s).file_name()?.to_str()?;
+        let tag = name.strip_prefix("php")?.strip_suffix(".sock")?;
+        if validate_php_tag(tag).is_ok() {
+            return Some(tag.to_string());
+        }
+    }
+    None
 }
 
 /// Write FPM pool confs for each PHP tag. **Always sets chdir = valet-server (KD24).**
@@ -761,6 +932,197 @@ socket = "/tmp/x.sock"
         assert!(validate_unix_identity("staff", "group").is_ok());
         assert!(validate_unix_identity("a;b", "username").is_err());
         assert!(validate_unix_identity("a\nb", "group").is_err());
+    }
+
+    // ── Merged site conf (Phase B TLS) ─────────────────────────────
+
+    fn mk_paths() -> RuntimePaths {
+        use super::super::discovery::runtime_paths_from_root;
+        use std::path::PathBuf;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let root = std::env::temp_dir().join(format!("badami-cfg-merged-{n}"));
+        let _ = fs::remove_dir_all(&root);
+        let paths = runtime_paths_from_root(root);
+        fs::create_dir_all(&paths.config_valet).unwrap();
+        fs::create_dir_all(&paths.nginx).unwrap();
+        fs::create_dir_all(PathBuf::from(&paths.nginx).join("sites")).unwrap();
+        fs::create_dir_all(&paths.socks).unwrap();
+        // badami.conf with a specific default socket so we can assert the
+        // fallback behaviour of a non-isolated plain conf.
+        fs::write(
+            PathBuf::from(&paths.nginx).join("badami.conf"),
+            "fastcgi_pass \"unix:/tmp/php84.sock\";\n",
+        )
+        .unwrap();
+        paths
+    }
+
+    fn drop_paths(paths: &RuntimePaths) {
+        let _ = fs::remove_dir_all(&paths.local_dev_root);
+    }
+
+    #[test]
+    fn render_merged_plain_http_only() {
+        let paths = mk_paths();
+        let opts = SiteConfOptions {
+            site_name: "office".into(),
+            tld: "test".into(),
+            http_port: 8080,
+            https_port: None,
+            cert_path: None,
+            key_path: None,
+            php_tag: None,
+            php_version_display: None,
+        };
+        let body = render_merged_site_conf(&paths, &opts).unwrap();
+        // Only one server block, http only, no secured/isolated markers.
+        assert!(body.contains("# BADAMI_SITE=office.test"));
+        assert!(!body.contains("BADAMI_SECURED"));
+        assert!(!body.contains("ISOLATED_PHP_VERSION"));
+        assert!(body.contains("listen 127.0.0.1:8080;"));
+        assert_eq!(body.matches("server {").count(), 1);
+        assert!(!body.contains("ssl_certificate"));
+        drop_paths(&paths);
+    }
+
+    #[test]
+    fn render_merged_isolated_only() {
+        let paths = mk_paths();
+        let opts = SiteConfOptions {
+            site_name: "office".into(),
+            tld: "test".into(),
+            http_port: 8080,
+            https_port: None,
+            cert_path: None,
+            key_path: None,
+            php_tag: Some("74".into()),
+            php_version_display: Some("7.4".into()),
+        };
+        let body = render_merged_site_conf(&paths, &opts).unwrap();
+        assert!(body.contains("# ISOLATED_PHP_VERSION=7.4"));
+        assert!(!body.contains("BADAMI_SECURED"));
+        assert!(body.contains("php74.sock"));
+        assert!(!body.contains("ssl_certificate"));
+        drop_paths(&paths);
+    }
+
+    #[test]
+    fn render_merged_secured_only() {
+        let paths = mk_paths();
+        let opts = SiteConfOptions {
+            site_name: "office".into(),
+            tld: "test".into(),
+            http_port: 8080,
+            https_port: Some(8443),
+            cert_path: Some("/tmp/office.test.crt".into()),
+            key_path: Some("/tmp/office.test.key".into()),
+            php_tag: None,
+            php_version_display: None,
+        };
+        let body = render_merged_site_conf(&paths, &opts).unwrap();
+        assert!(body.contains("# BADAMI_SECURED=1"));
+        assert!(!body.contains("ISOLATED_PHP_VERSION"));
+        assert!(body.contains("listen 127.0.0.1:8443 ssl"));
+        assert!(body.contains("http2 on;"));
+        assert!(body.contains("ssl_certificate     \"/tmp/office.test.crt\""));
+        assert!(body.contains("ssl_certificate_key \"/tmp/office.test.key\""));
+        assert!(body.contains("return 301 https://office.test:8443"));
+        // Both server blocks must be present.
+        assert_eq!(body.matches("server {").count(), 2);
+        // Fallback socket (parsed from badami.conf) is php84.sock.
+        assert!(body.contains("php84.sock"));
+        drop_paths(&paths);
+    }
+
+    #[test]
+    fn render_merged_secured_and_isolated() {
+        let paths = mk_paths();
+        let opts = SiteConfOptions {
+            site_name: "office".into(),
+            tld: "test".into(),
+            http_port: 8080,
+            https_port: Some(8443),
+            cert_path: Some("/tmp/office.test.crt".into()),
+            key_path: Some("/tmp/office.test.key".into()),
+            php_tag: Some("74".into()),
+            php_version_display: Some("7.4".into()),
+        };
+        let body = render_merged_site_conf(&paths, &opts).unwrap();
+        assert!(body.contains("# BADAMI_SECURED=1"));
+        assert!(body.contains("# ISOLATED_PHP_VERSION=7.4"));
+        // HTTPS block uses the isolated FPM socket.
+        assert!(body.contains("php74.sock"));
+        assert!(body.contains("listen 127.0.0.1:8443 ssl"));
+        assert!(body.contains("return 301 https://office.test:8443"));
+        assert_eq!(body.matches("server {").count(), 2);
+        drop_paths(&paths);
+    }
+
+    #[test]
+    fn render_merged_secured_on_443_omits_port_in_redirect() {
+        let paths = mk_paths();
+        let opts = SiteConfOptions {
+            site_name: "office".into(),
+            tld: "test".into(),
+            http_port: 80,
+            https_port: Some(443),
+            cert_path: Some("/tmp/office.test.crt".into()),
+            key_path: Some("/tmp/office.test.key".into()),
+            php_tag: None,
+            php_version_display: None,
+        };
+        let body = render_merged_site_conf(&paths, &opts).unwrap();
+        assert!(body.contains("return 301 https://office.test$request_uri"));
+        assert!(!body.contains("return 301 https://office.test:443"));
+        drop_paths(&paths);
+    }
+
+    #[test]
+    fn render_merged_rejects_https_without_cert() {
+        let paths = mk_paths();
+        let opts = SiteConfOptions {
+            site_name: "office".into(),
+            tld: "test".into(),
+            http_port: 8080,
+            https_port: Some(8443),
+            cert_path: None,
+            key_path: None,
+            php_tag: None,
+            php_version_display: None,
+        };
+        let err = render_merged_site_conf(&paths, &opts).unwrap_err();
+        assert!(err.contains("cert_path") || err.contains("key_path"), "{err}");
+        drop_paths(&paths);
+    }
+
+    #[test]
+    fn render_merged_rejects_bad_names() {
+        let paths = mk_paths();
+        let base = SiteConfOptions {
+            site_name: "office".into(),
+            tld: "test".into(),
+            http_port: 8080,
+            https_port: None,
+            cert_path: None,
+            key_path: None,
+            php_tag: None,
+            php_version_display: None,
+        };
+        let bad_site = SiteConfOptions {
+            site_name: "../etc".into(),
+            ..base.clone()
+        };
+        assert!(render_merged_site_conf(&paths, &bad_site).is_err());
+        let bad_tld = SiteConfOptions {
+            tld: "a.b".into(),
+            ..base
+        };
+        assert!(render_merged_site_conf(&paths, &bad_tld).is_err());
+        drop_paths(&paths);
     }
 }
 

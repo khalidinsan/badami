@@ -6,8 +6,8 @@
 //! - Never shell out with concatenated untrusted strings
 //! - Never deletes Herd datadir data
 
+use super::bootstrap::{ld_label, DEFAULT_LD_IDENTIFIER};
 use super::discovery::{build_runtime_paths, discover};
-use super::doctor::LD_NGINX_LABEL;
 use super::mariadb_guard::{
     pid_is_alive, read_pid_file, run_preflight, tcp_accepting, unix_socket_accepting,
     MariadbPreflight, MariadbPreflightRequest,
@@ -22,7 +22,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
@@ -37,6 +39,30 @@ const HEALTH_POLL_ATTEMPTS: u32 = 20;
 const HEALTH_POLL_INTERVAL_MS: u64 = 250;
 const MARIADB_SHUTDOWN_GRACE_SECS: u64 = 60;
 const DEFAULT_STOP_GRACE_SECS: u64 = 10;
+
+// Background health loop cadence (macOS-only). Kept intentionally quiet so it
+// piggybacks on other IO — a shorter cadence would compete with UI polling.
+const HEALTH_LOOP_INTERVAL_SECS: u64 = 10;
+
+// Live log stream (subscribe/unsubscribe) knobs.
+const LOG_TAIL_POLL_INTERVAL_MS: u64 = 500;
+const LOG_TAIL_CHUNK_MAX_BYTES: u64 = 64 * 1024; // 64 KiB per poll
+const MAX_LOG_SUBSCRIPTIONS: usize = 8;
+
+// Event names — namespaced so the frontend can subscribe without collisions.
+// `ld://log/{service_id}` is a per-service topic (constructed at call-site).
+pub const EVENT_SERVICE_STATUS: &str = "ld://service-status";
+pub const EVENT_SERVICE_CRASHED: &str = "ld://service-crashed";
+pub const EVENT_SERVICE_RESTARTED: &str = "ld://service-restarted";
+pub const EVENT_SERVICE_RESTART_FAILED: &str = "ld://service-restart-failed";
+pub const EVENT_SERVICE_RATE_LIMITED: &str = "ld://service-rate-limited";
+/// MariaDB-specific crash notification. `auto_restart: false` for MariaDB so
+/// crashes require manual attention — surface via OS notification. The Rust
+/// backend does not call `tauri-plugin-notification` directly (no NotificationExt
+/// usage elsewhere in this crate); it emits this event and the JS side calls
+/// `sendNotification` from `@tauri-apps/plugin-notification` (used already in
+/// `useReminderChecker`, `useNotifications`, `usePomodoro`).
+pub const EVENT_MARIADB_CRASHED: &str = "ld://mariadb-crashed";
 
 // ── Public result types ─────────────────────────────────────────────
 
@@ -73,6 +99,11 @@ struct ManagedRuntime {
     restart_times: Vec<Instant>,
     /// Last known PID (spawned or adopted).
     pid: Option<u32>,
+    /// True when the user explicitly stopped this service (via `ld_service_stop`
+    /// or `ld_stack_stop`). Prevents the background health loop from auto-
+    /// restarting something the user just told us to leave off. Cleared on
+    /// `ld_service_start` / `ld_service_restart` / `ld_stack_start`.
+    user_stopped: bool,
 }
 
 impl Default for ManagedRuntime {
@@ -81,6 +112,7 @@ impl Default for ManagedRuntime {
             status: ServiceStatus::Stopped,
             restart_times: Vec::new(),
             pid: None,
+            user_stopped: false,
         }
     }
 }
@@ -89,6 +121,39 @@ struct SupervisorInner {
     /// Cached specs (rebuilt on stack/start if empty).
     specs: Vec<ServiceSpec>,
     runtimes: HashMap<String, ManagedRuntime>,
+}
+
+/// Live log subscription handle. Dropped when the subscriber unsubscribes or
+/// the task ends. `stop_tx` is a oneshot the poll task listens on so `abort()`
+/// is never required (avoids leaking half-flushed file descriptors).
+struct LogSubHandle {
+    service_id: String,
+    stop_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    join: tauri::async_runtime::JoinHandle<()>,
+}
+
+impl LogSubHandle {
+    async fn shutdown(mut self) {
+        if let Some(tx) = self.stop_tx.take() {
+            let _ = tx.send(());
+        }
+        // Give the task a brief window to observe the stop; the tail loop
+        // yields every LOG_TAIL_POLL_INTERVAL_MS so this rarely takes long.
+        //
+        // `tauri::async_runtime::JoinHandle` is not itself awaitable via
+        // `tokio::time::timeout` on all runtimes — poll it inside a select.
+        let mut join = self.join;
+        let deadline = tokio::time::sleep(Duration::from_secs(2));
+        tokio::pin!(deadline);
+        tokio::select! {
+            _ = &mut join => {},
+            _ = &mut deadline => {
+                // Force-cancel — the tail task never holds unmanaged resources
+                // beyond a single fs::File open/read/close per tick.
+                join.abort();
+            }
+        }
+    }
 }
 
 impl SupervisorInner {
@@ -121,13 +186,52 @@ impl SupervisorInner {
 /// Tauri-managed supervisor state (runtime truth).
 pub struct LocalDevState {
     inner: Mutex<SupervisorInner>,
+    /// AppHandle stored once at Tauri `.setup(...)` so that background tasks
+    /// (health loop, log tail) can emit events without threading the handle
+    /// through every command. Using `OnceLock` avoids an async-lock on hot paths.
+    app: OnceLock<AppHandle>,
+    /// Live log subscriptions keyed by `subscription_id` (uuid-ish token).
+    log_subs: Mutex<HashMap<String, LogSubHandle>>,
 }
 
 impl LocalDevState {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(SupervisorInner::new()),
+            app: OnceLock::new(),
+            log_subs: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Bind the AppHandle used to emit `ld://...` events. Idempotent — first
+    /// caller wins; subsequent calls are silently ignored. Called once from
+    /// `lib.rs` `.setup(...)`.
+    pub fn bind_app(&self, app: AppHandle) {
+        let _ = self.app.set(app);
+    }
+
+    /// Snapshot of the AppHandle if bound. Emitters accept `Option<&AppHandle>`
+    /// and no-op when `None`, so unit tests / early-init paths stay safe.
+    fn app_handle(&self) -> Option<&AppHandle> {
+        self.app.get()
+    }
+
+    /// Reverse-DNS identifier used to compose LaunchDaemon labels. Resolved
+    /// from `AppHandle::config().identifier` when the handle is bound;
+    /// otherwise falls back to the Phase A compile-time default so unit tests
+    /// without a Tauri app keep working.
+    fn identifier(&self) -> String {
+        self.app
+            .get()
+            .map(|h| h.config().identifier.clone())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| DEFAULT_LD_IDENTIFIER.to_string())
+    }
+
+    /// Convenience: compose a role → full LaunchDaemon label using the
+    /// identifier bound into state.
+    pub fn ld_label(&self, role: &str) -> String {
+        ld_label(&self.identifier(), role)
     }
 }
 
@@ -564,18 +668,19 @@ fn applescript_string(s: &str) -> String {
 
 /// Start nginx on a privileged port.
 ///
-/// 1. Prefer LaunchDaemon (`com.khalid.badami.local-dev.nginx`) — no password after one-time install.
+/// 1. Prefer LaunchDaemon ({identifier}.local-dev.nginx) — no password after one-time install.
 /// 2. Else one-shot `osascript` admin elevation (password each start; UI still works).
 async fn start_nginx_privileged(
+    nginx_label: &str,
     spec: &ServiceSpec,
     notes: &mut Vec<String>,
 ) -> Result<u32, String> {
     // Path A: LaunchDaemon already installed (Herd-like after first setup).
-    if launchctl_unit_loaded(LD_NGINX_LABEL) {
+    if launchctl_unit_loaded(nginx_label) {
         notes.push(format!(
-            "Mode B: LaunchDaemon {LD_NGINX_LABEL} loaded — kickstart"
+            "Mode B: LaunchDaemon {nginx_label} loaded — kickstart"
         ));
-        let label = LD_NGINX_LABEL.to_string();
+        let label = nginx_label.to_string();
         let out = tokio::task::spawn_blocking(move || {
             std::process::Command::new("launchctl")
                 .args(["kickstart", "-k", &format!("system/{label}")])
@@ -590,7 +695,7 @@ async fn start_nginx_privileged(
                 String::from_utf8_lossy(&out.stderr)
             ));
         }
-        return wait_nginx_up(spec, notes).await;
+        return wait_nginx_up(nginx_label, spec, notes).await;
     }
 
     // Path B: one-shot admin elevate (like a mini privileged start without permanent helper).
@@ -647,10 +752,14 @@ async fn start_nginx_privileged(
         ));
     }
     notes.push("osascript admin start: ok".into());
-    wait_nginx_up(spec, notes).await
+    wait_nginx_up(nginx_label, spec, notes).await
 }
 
-async fn wait_nginx_up(spec: &ServiceSpec, notes: &mut Vec<String>) -> Result<u32, String> {
+async fn wait_nginx_up(
+    nginx_label: &str,
+    spec: &ServiceSpec,
+    notes: &mut Vec<String>,
+) -> Result<u32, String> {
     for _ in 0..HEALTH_POLL_ATTEMPTS {
         if let Some(pid) = try_adopt(spec) {
             notes.push(format!("nginx up pid={pid}"));
@@ -682,23 +791,23 @@ async fn wait_nginx_up(spec: &ServiceSpec, notes: &mut Vec<String>) -> Result<u3
         notes.push(format!("nginx master found after timeout window pid={pid}"));
         return Ok(pid);
     }
-    Err(
+    Err(format!(
         "nginx privileged start timed out waiting for listen port. \
-         Check /tmp/com.khalid.badami.local-dev.nginx.err.log or nginx-error.log"
-            .into(),
-    )
+         Check /Library/Application Support/Badami/local-dev-root/nginx/{nginx_label}.err.log \
+         (root-owned) or the per-run nginx-error.log",
+    ))
 }
 
-async fn stop_nginx_privileged(spec: &ServiceSpec, notes: &mut Vec<String>) {
+async fn stop_nginx_privileged(nginx_label: &str, spec: &ServiceSpec, notes: &mut Vec<String>) {
     // Always heal pid file so nginx -s quit can find the master.
     if let Some(pid) = find_our_nginx_master(spec) {
         let _ = write_pid_file(&spec.pid_file, pid);
         notes.push(format!("stop: discovered master pid={pid}"));
     }
 
-    if launchctl_unit_loaded(LD_NGINX_LABEL) {
-        notes.push(format!("Mode B stop: launchctl kill SIGTERM system/{LD_NGINX_LABEL}"));
-        let label = LD_NGINX_LABEL.to_string();
+    if launchctl_unit_loaded(nginx_label) {
+        notes.push(format!("Mode B stop: launchctl kill SIGTERM system/{nginx_label}"));
+        let label = nginx_label.to_string();
         let _ = tokio::task::spawn_blocking(move || {
             std::process::Command::new("launchctl")
                 .args(["kill", "SIGTERM", &format!("system/{label}")])
@@ -1006,6 +1115,7 @@ fn best_effort_cleanup_spawn(spec: &ServiceSpec, spawn_pid: u32) {
 /// Auto-starts missing PHP-FPM deps. Hard-fails if none can start (prevents 502 / stuck unhealthy).
 async fn ensure_nginx_php_deps(
     inner: &mut SupervisorInner,
+    nginx_label: &str,
     nginx_spec: &ServiceSpec,
     notes: &mut Vec<String>,
 ) -> Result<(), String> {
@@ -1045,7 +1155,7 @@ async fn ensure_nginx_php_deps(
         notes.push(format!("auto-starting PHP dependency {dep} before nginx…"));
         // Nested start — clone id, drop borrow of nginx_spec deps.
         let dep_id = dep.clone();
-        match Box::pin(start_one(inner, &dep_id, notes)).await {
+        match Box::pin(start_one(inner, nginx_label, &dep_id, notes)).await {
             Ok(r) if matches!(r.status, ServiceStatus::Running { .. }) => {
                 any_running = true;
                 notes.push(format!("php dep started: {dep_id}"));
@@ -1097,6 +1207,7 @@ async fn ensure_nginx_php_deps(
 
 async fn start_one(
     inner: &mut SupervisorInner,
+    nginx_label: &str,
     service_id: &str,
     notes: &mut Vec<String>,
 ) -> Result<ServiceActionResult, String> {
@@ -1110,7 +1221,7 @@ async fn start_one(
     // Hard depends_on for nginx → php-fpm: auto-start missing PHP-FPM first, else refuse.
     // Soft warn for other services.
     if matches!(spec.kind, ServiceKind::Nginx) {
-        ensure_nginx_php_deps(inner, &spec, notes).await?;
+        ensure_nginx_php_deps(inner, nginx_label, &spec, notes).await?;
     } else {
         for dep in &spec.depends_on {
             if let Some(dep_spec) = find_spec(&inner.specs, dep) {
@@ -1150,7 +1261,7 @@ async fn start_one(
                 if let Some(pid) = find_our_nginx_master(&spec) {
                     let _ = write_pid_file(&spec.pid_file, pid);
                     // Still ensure PHP is up so site is not 502 "unhealthy" forever.
-                    let _ = ensure_nginx_php_deps(inner, &spec, notes).await;
+                    let _ = ensure_nginx_php_deps(inner, nginx_label, &spec, notes).await;
                     let status = ServiceStatus::Running { pid };
                     let rt = inner.runtimes.entry(service_id.to_string()).or_default();
                     rt.status = status.clone();
@@ -1223,7 +1334,7 @@ async fn start_one(
             let rt = inner.runtimes.entry(service_id.to_string()).or_default();
             rt.status = ServiceStatus::Starting;
         }
-        return match start_nginx_privileged(&spec, notes).await {
+        return match start_nginx_privileged(nginx_label, &spec, notes).await {
             Ok(pid) => {
                 let status = ServiceStatus::Running { pid };
                 let rt = inner.runtimes.entry(service_id.to_string()).or_default();
@@ -1312,6 +1423,7 @@ async fn start_one(
 
 async fn stop_one(
     inner: &mut SupervisorInner,
+    nginx_label: &str,
     service_id: &str,
     notes: &mut Vec<String>,
 ) -> Result<ServiceActionResult, String> {
@@ -1393,7 +1505,7 @@ async fn stop_one(
             let _ = write_pid_file(&spec.pid_file, p);
         }
         if nginx_needs_root(&spec) {
-            stop_nginx_privileged(&spec, notes).await;
+            stop_nginx_privileged(nginx_label, &spec, notes).await;
         } else if spec.binary_path.is_file() {
             let conf = spec
                 .requires_config
@@ -1417,16 +1529,16 @@ async fn stop_one(
                 Ok(st) if st.success() => notes.push("nginx -s quit: ok".into()),
                 Ok(st) => {
                     notes.push(format!("nginx -s quit: exit {st} — elevating stop"));
-                    stop_nginx_privileged(&spec, notes).await;
+                    stop_nginx_privileged(nginx_label, &spec, notes).await;
                 }
                 Err(e) => {
                     notes.push(format!("nginx -s quit: {e} — elevating stop"));
-                    stop_nginx_privileged(&spec, notes).await;
+                    stop_nginx_privileged(nginx_label, &spec, notes).await;
                 }
             }
             if let Some(p) = master.or(pid) {
                 if pid_is_alive(p) && signal_term(p).is_err() {
-                    stop_nginx_privileged(&spec, notes).await;
+                    stop_nginx_privileged(nginx_label, &spec, notes).await;
                 }
             }
         }
@@ -1434,7 +1546,7 @@ async fn stop_one(
             .await;
         if find_our_nginx_master(&spec).is_some() || hard_health_ok(&spec.health) {
             notes.push("nginx still up after stop — force privileged kill".into());
-            stop_nginx_privileged(&spec, notes).await;
+            stop_nginx_privileged(nginx_label, &spec, notes).await;
             wait_until_dead(find_our_nginx_master(&spec), DEFAULT_STOP_GRACE_SECS).await;
         }
     } else if matches!(spec.kind, ServiceKind::PhpFpm { .. }) {
@@ -1709,7 +1821,7 @@ fn status_report(spec: &ServiceSpec, rt: &ManagedRuntime) -> ServiceStatusReport
     }
 }
 
-async fn maybe_auto_restart(inner: &mut SupervisorInner, service_id: &str) {
+async fn maybe_auto_restart(inner: &mut SupervisorInner, nginx_label: &str, service_id: &str) {
     let spec = match find_spec(&inner.specs, service_id) {
         Some(s) => s.clone(),
         None => return,
@@ -1748,7 +1860,7 @@ async fn maybe_auto_restart(inner: &mut SupervisorInner, service_id: &str) {
     }
     rt.restart_times.push(Instant::now());
     let mut notes = Vec::new();
-    let _ = start_one(inner, service_id, &mut notes).await;
+    let _ = start_one(inner, nginx_label, service_id, &mut notes).await;
 }
 
 // ── Tauri commands ──────────────────────────────────────────────────
@@ -1762,8 +1874,25 @@ pub async fn ld_service_start(
     let mut inner = state.inner.lock().await;
     // Refresh specs so config/binary discovery is current
     let _ = inner.refresh_specs();
+    // Clear user_stopped so the background health loop is free to auto-restart
+    // this service again if it crashes.
+    if let Some(rt) = inner.runtimes.get_mut(&service_id) {
+        rt.user_stopped = false;
+    }
     let mut notes = Vec::new();
-    start_one(&mut inner, &service_id, &mut notes).await
+    let prior = inner.runtimes.get(&service_id).map(|r| r.status.clone())
+        .unwrap_or(ServiceStatus::Stopped);
+    let nginx_label = state.ld_label("nginx");
+    let out = start_one(&mut inner, &nginx_label, &service_id, &mut notes).await;
+    // Emit transition if state actually changed. Do this after the lock is
+    // released (drop below) to keep the emit fast; the runtime update is
+    // already inside start_one.
+    let final_status = inner.runtimes.get(&service_id).map(|r| r.status.clone());
+    drop(inner);
+    if let (Ok(_), Some(fs)) = (&out, final_status) {
+        emit_transition_if_changed(state.app_handle(), &service_id, &prior, &fs, Some("user_start"));
+    }
+    out
 }
 
 #[tauri::command]
@@ -1774,8 +1903,25 @@ pub async fn ld_service_stop(
     validate_service_id(&service_id)?;
     let mut inner = state.inner.lock().await;
     let _ = inner.ensure_specs();
+    // Mark as user-initiated stop *before* running stop_one so a concurrent
+    // background-loop tick can't sneak in an auto-restart between here and
+    // stop_one completing. Cleared by ld_service_start on next user start.
+    if let Some(rt) = inner.runtimes.get_mut(&service_id) {
+        rt.user_stopped = true;
+    } else {
+        inner.runtimes.entry(service_id.clone()).or_default().user_stopped = true;
+    }
+    let prior = inner.runtimes.get(&service_id).map(|r| r.status.clone())
+        .unwrap_or(ServiceStatus::Stopped);
     let mut notes = Vec::new();
-    stop_one(&mut inner, &service_id, &mut notes).await
+    let nginx_label = state.ld_label("nginx");
+    let out = stop_one(&mut inner, &nginx_label, &service_id, &mut notes).await;
+    let final_status = inner.runtimes.get(&service_id).map(|r| r.status.clone());
+    drop(inner);
+    if let (Ok(_), Some(fs)) = (&out, final_status) {
+        emit_transition_if_changed(state.app_handle(), &service_id, &prior, &fs, Some("user_stop"));
+    }
+    out
 }
 
 #[tauri::command]
@@ -1786,12 +1932,26 @@ pub async fn ld_service_restart(
     validate_service_id(&service_id)?;
     let mut inner = state.inner.lock().await;
     let _ = inner.refresh_specs();
+    // Explicit restart = user intent to run. Clear user_stopped so background
+    // loop can act if the second start half fails.
+    if let Some(rt) = inner.runtimes.get_mut(&service_id) {
+        rt.user_stopped = false;
+    }
+    let prior = inner.runtimes.get(&service_id).map(|r| r.status.clone())
+        .unwrap_or(ServiceStatus::Stopped);
     let mut notes = Vec::new();
-    let stop_res = stop_one(&mut inner, &service_id, &mut notes).await?;
+    let nginx_label = state.ld_label("nginx");
+    let stop_res = stop_one(&mut inner, &nginx_label, &service_id, &mut notes).await?;
     notes.extend(stop_res.notes);
     // Brief pause so ports free
     tokio::time::sleep(Duration::from_millis(400)).await;
-    start_one(&mut inner, &service_id, &mut notes).await
+    let out = start_one(&mut inner, &nginx_label, &service_id, &mut notes).await;
+    let final_status = inner.runtimes.get(&service_id).map(|r| r.status.clone());
+    drop(inner);
+    if let (Ok(_), Some(fs)) = (&out, final_status) {
+        emit_transition_if_changed(state.app_handle(), &service_id, &prior, &fs, Some("user_restart"));
+    }
+    out
 }
 
 /// Rebuild every service spec from the config currently on disk.
@@ -1836,8 +1996,9 @@ pub async fn ld_service_status(
     };
 
     // Opportunistic auto-restart for configured services
+    let nginx_label = state.ld_label("nginx");
     for id in &ids {
-        maybe_auto_restart(&mut inner, id).await;
+        maybe_auto_restart(&mut inner, &nginx_label, id).await;
     }
 
     let mut out = Vec::new();
@@ -1883,17 +2044,41 @@ pub async fn ld_stack_start(
     let ids: Vec<String> = inner.specs.iter().map(|s| s.id.clone()).collect();
     let order = stack_start_order(&ids);
 
+    // Stack start is a user intent to run everything — wipe any prior
+    // user_stopped flags so background auto-restart is unblocked.
+    for id in &ids {
+        if let Some(rt) = inner.runtimes.get_mut(id) {
+            rt.user_stopped = false;
+        }
+    }
+
+    // Snapshot prior statuses for transition-event emission after each service.
+    let priors: HashMap<String, ServiceStatus> = ids
+        .iter()
+        .map(|id| {
+            (
+                id.clone(),
+                inner
+                    .runtimes
+                    .get(id)
+                    .map(|r| r.status.clone())
+                    .unwrap_or(ServiceStatus::Stopped),
+            )
+        })
+        .collect();
+
     let mut results = Vec::new();
     let mut notes = vec![
         format!("stack start order: {}", order.join(" → ")),
         "MVP: non-DNS failures are recorded and the stack continues; inspect results + partial_failure".into(),
     ];
     let mut partial_failure = false;
+    let nginx_label = state.ld_label("nginx");
 
     for id in order {
         let mut local_notes = Vec::new();
         let is_dns = id == "dnsmasq";
-        match start_one(&mut inner, &id, &mut local_notes).await {
+        match start_one(&mut inner, &nginx_label, &id, &mut local_notes).await {
             Ok(r) => {
                 if is_dns {
                     notes.push(
@@ -1939,6 +2124,28 @@ pub async fn ld_stack_start(
         }
     }
 
+    // Collect (service_id, final_status) for post-lock emission.
+    let final_statuses: Vec<(String, ServiceStatus)> = results
+        .iter()
+        .map(|r| (r.service_id.clone(), r.status.clone()))
+        .collect();
+    drop(inner);
+
+    // Emit transitions for services whose status variant changed.
+    if let Some(app) = state.app_handle() {
+        for (id, final_status) in &final_statuses {
+            if let Some(prior) = priors.get(id) {
+                emit_transition_if_changed(
+                    Some(app),
+                    id,
+                    prior,
+                    final_status,
+                    Some("stack_start"),
+                );
+            }
+        }
+    }
+
     Ok(StackActionResult {
         results,
         notes,
@@ -1955,13 +2162,35 @@ pub async fn ld_stack_stop(
     let ids: Vec<String> = inner.specs.iter().map(|s| s.id.clone()).collect();
     let order = stack_stop_order(&ids);
 
+    // Stack stop marks every service as user-stopped so the background loop
+    // does not fight this user command with an auto-restart.
+    for id in &ids {
+        inner.runtimes.entry(id.clone()).or_default().user_stopped = true;
+    }
+
+    // Snapshot for transition emission after stop_one.
+    let priors: HashMap<String, ServiceStatus> = ids
+        .iter()
+        .map(|id| {
+            (
+                id.clone(),
+                inner
+                    .runtimes
+                    .get(id)
+                    .map(|r| r.status.clone())
+                    .unwrap_or(ServiceStatus::Stopped),
+            )
+        })
+        .collect();
+
     let mut results = Vec::new();
     let mut notes = vec![format!("stack stop order: {}", order.join(" → "))];
     let mut partial_failure = false;
+    let nginx_label = state.ld_label("nginx");
 
     for id in order {
         let mut local_notes = Vec::new();
-        match stop_one(&mut inner, &id, &mut local_notes).await {
+        match stop_one(&mut inner, &nginx_label, &id, &mut local_notes).await {
             Ok(r) => {
                 if matches!(
                     r.status,
@@ -1982,6 +2211,26 @@ pub async fn ld_stack_stop(
                     message: "stop error".into(),
                     notes: vec![],
                 });
+            }
+        }
+    }
+
+    let final_statuses: Vec<(String, ServiceStatus)> = results
+        .iter()
+        .map(|r| (r.service_id.clone(), r.status.clone()))
+        .collect();
+    drop(inner);
+
+    if let Some(app) = state.app_handle() {
+        for (id, final_status) in &final_statuses {
+            if let Some(prior) = priors.get(id) {
+                emit_transition_if_changed(
+                    Some(app),
+                    id,
+                    prior,
+                    final_status,
+                    Some("stack_stop"),
+                );
             }
         }
     }
@@ -2170,6 +2419,639 @@ pub async fn ld_log_tail(
         truncated,
         rotated,
     })
+}
+
+// ── Event emission (status transitions) ─────────────────────────────
+
+/// Stable snake_case identity for a status variant. The frontend keys off this
+/// to decide whether a change is meaningful; we deliberately do NOT include
+/// pid/reason in the identity so a stale pid drift alone is not treated as a
+/// transition (would emit on every tick).
+pub fn status_variant(s: &ServiceStatus) -> &'static str {
+    match s {
+        ServiceStatus::Stopped => "stopped",
+        ServiceStatus::Starting => "starting",
+        ServiceStatus::Running { .. } => "running",
+        ServiceStatus::Unhealthy { .. } => "unhealthy",
+        ServiceStatus::Stopping => "stopping",
+        ServiceStatus::Error { .. } => "error",
+        ServiceStatus::Unavailable { .. } => "unavailable",
+    }
+}
+
+fn status_pid(s: &ServiceStatus) -> Option<u32> {
+    match s {
+        ServiceStatus::Running { pid } if *pid != 0 => Some(*pid),
+        ServiceStatus::Unhealthy { pid: Some(p), .. } if *p != 0 => Some(*p),
+        _ => None,
+    }
+}
+
+fn status_message(s: &ServiceStatus) -> Option<String> {
+    match s {
+        ServiceStatus::Unhealthy { reason, .. } => Some(reason.clone()),
+        ServiceStatus::Error { message } => Some(message.clone()),
+        ServiceStatus::Unavailable { reason } => Some(reason.clone()),
+        _ => None,
+    }
+}
+
+/// True when a transition should be considered a "crash" — a service that was
+/// running has fallen into a non-running non-user-initiated state. Filters out
+/// `Stopping` (in-flight user action) and `Starting` (retrying) which are
+/// intermediates and would spam otherwise.
+fn is_crash(from: &ServiceStatus, to: &ServiceStatus, user_stopped: bool) -> bool {
+    if user_stopped {
+        return false;
+    }
+    let was_running = matches!(from, ServiceStatus::Running { .. });
+    let now_bad = matches!(
+        to,
+        ServiceStatus::Stopped
+            | ServiceStatus::Unhealthy { .. }
+            | ServiceStatus::Error { .. }
+    );
+    was_running && now_bad
+}
+
+/// Emit a `ld://service-status` payload. Level defaults to `info` — callers
+/// that want to change severity use the internal `emit_service_event`.
+fn emit_transition_if_changed(
+    app: Option<&AppHandle>,
+    service_id: &str,
+    from: &ServiceStatus,
+    to: &ServiceStatus,
+    reason_hint: Option<&str>,
+) {
+    if status_variant(from) == status_variant(to) {
+        return;
+    }
+    let Some(app) = app else { return };
+    let ts = chrono::Utc::now().to_rfc3339();
+    let level = match to {
+        ServiceStatus::Error { .. } => "error",
+        ServiceStatus::Unhealthy { .. } => "warn",
+        ServiceStatus::Unavailable { .. } => "warn",
+        _ => "info",
+    };
+    let reason = status_message(to)
+        .or_else(|| reason_hint.map(String::from))
+        .unwrap_or_default();
+    let message = format!(
+        "{service_id}: {} → {}{}",
+        status_variant(from),
+        status_variant(to),
+        if reason.is_empty() {
+            String::new()
+        } else {
+            format!(" — {reason}")
+        }
+    );
+    let payload = serde_json::json!({
+        "service_id": service_id,
+        "from": status_variant(from),
+        "to": status_variant(to),
+        "pid": status_pid(to),
+        "reason": reason,
+        "at": ts,
+        "level": level,
+        "message": message,
+    });
+    let _ = app.emit(EVENT_SERVICE_STATUS, payload);
+}
+
+fn emit_service_event(
+    app: Option<&AppHandle>,
+    event: &str,
+    payload: serde_json::Value,
+) {
+    if let Some(app) = app {
+        let _ = app.emit(event, payload);
+    }
+}
+
+// ── Background health loop ──────────────────────────────────────────
+
+/// Start the background health loop once (idempotent from the caller's side —
+/// setup only calls it once). Never runs on non-macOS: the whole Local Dev
+/// stack is macOS-only in intent, and the loop would try to call `ps`, unix
+/// signals, and Unix sockets everywhere.
+#[cfg(target_os = "macos")]
+pub fn spawn_health_loop(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        // Small delay so the app finishes booting (windows shown, DB initialized)
+        // before the loop starts hitting the supervisor lock.
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        loop {
+            run_health_tick(&app).await;
+            tokio::time::sleep(Duration::from_secs(HEALTH_LOOP_INTERVAL_SECS)).await;
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn spawn_health_loop(_app: AppHandle) {
+    // Local Dev is macOS-only; the loop is a no-op elsewhere.
+}
+
+/// Single tick of the background health loop.
+///
+/// Structured to hold the supervisor mutex for as short a window as possible:
+/// 1. Short lock: snapshot spec + (status, pid, user_stopped) for every service.
+/// 2. **No lock**: run health probes (blocking IO, network probes, `ps` calls).
+/// 3. Short lock per service: persist newly probed status, emit transition
+///    events, decide whether to schedule auto-restart.
+/// 4. Auto-restart loop: `start_one` can run for several seconds; we still hold
+///    the mutex during that call because `start_one` mutates supervisor state,
+///    but we only enter it for services that a) crashed, b) are not user-
+///    stopped, c) `auto_restart=true`, and d) are not MariaDB / MySQL.
+async fn run_health_tick(app: &AppHandle) {
+    // Look up the state via app.state(); avoids passing it through every level.
+    let state = app.state::<LocalDevState>();
+
+    // (1) Short lock — snapshot specs + prior statuses.
+    type PriorSnapshot = HashMap<String, (ServiceStatus, Option<u32>, bool)>;
+    let (specs, prior_states): (Vec<ServiceSpec>, PriorSnapshot) = {
+        let mut inner = state.inner.lock().await;
+        if inner.ensure_specs().is_err() {
+            return;
+        }
+        let specs = inner.specs.clone();
+        let prior = specs
+            .iter()
+            .map(|s| {
+                let r = inner.runtimes.entry(s.id.clone()).or_default();
+                (s.id.clone(), (r.status.clone(), r.pid, r.user_stopped))
+            })
+            .collect();
+        (specs, prior)
+    };
+
+    if specs.is_empty() {
+        return;
+    }
+
+    // (2) Probe every service without holding the lock. `probe_running` is
+    // blocking IO under the hood — spawn_blocking so we do not stall the
+    // tokio worker if a probe takes a long time.
+    let probes: Vec<(String, ServiceStatus)> = {
+        let specs_c = specs.clone();
+        match tokio::task::spawn_blocking(move || {
+            specs_c
+                .iter()
+                .map(|s| (s.id.clone(), probe_running(s)))
+                .collect::<Vec<_>>()
+        })
+        .await
+        {
+            Ok(v) => v,
+            Err(_) => return, // task panicked — try again next tick
+        }
+    };
+
+    // (3) Update state and emit transitions. Lock-once per service to keep the
+    // window small.
+    let mut restart_candidates: Vec<String> = Vec::new();
+    for (id, probed) in &probes {
+        let Some((prior_status, _prior_pid, user_stopped)) = prior_states.get(id) else {
+            continue;
+        };
+        let changed = status_variant(prior_status) != status_variant(probed);
+        if changed {
+            // Emit before any auto-restart so the UI observes the crash even if
+            // the restart succeeds almost instantly.
+            emit_transition_if_changed(
+                Some(app),
+                id,
+                prior_status,
+                probed,
+                Some("background_probe"),
+            );
+
+            if is_crash(prior_status, probed, *user_stopped) {
+                let spec = specs.iter().find(|s| s.id == *id);
+                let is_mariadb = spec
+                    .map(|s| matches!(s.kind, ServiceKind::MariaDb | ServiceKind::MySql))
+                    .unwrap_or(false);
+                let log_file = spec
+                    .map(|s| s.log_file.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let ts = chrono::Utc::now().to_rfc3339();
+                let crash_payload = serde_json::json!({
+                    "service_id": id,
+                    "from": status_variant(prior_status),
+                    "to": status_variant(probed),
+                    "pid": status_pid(prior_status),
+                    "reason": status_message(probed).unwrap_or_default(),
+                    "at": ts,
+                    "level": "error",
+                    "message": format!(
+                        "{id} crashed ({} → {})",
+                        status_variant(prior_status),
+                        status_variant(probed)
+                    ),
+                    "log_file": log_file,
+                });
+                emit_service_event(Some(app), EVENT_SERVICE_CRASHED, crash_payload.clone());
+
+                // MariaDB crash: also fire a dedicated topic so the frontend
+                // can call `sendNotification` (OS toast). NotificationExt is
+                // not wired in this crate; the JS side (`@tauri-apps/plugin-
+                // notification`) is the authoritative surface — see
+                // `useNotifications.ts` for existing pattern.
+                if is_mariadb {
+                    let mariadb_payload = serde_json::json!({
+                        "service_id": id,
+                        "level": "error",
+                        "title": "MariaDB stopped unexpectedly",
+                        "message": "MariaDB has stopped and will NOT auto-restart. Inspect the log and restart manually to protect InnoDB.",
+                        "log_file": log_file,
+                        "at": ts,
+                    });
+                    emit_service_event(Some(app), EVENT_MARIADB_CRASHED, mariadb_payload);
+                }
+
+                // Queue auto-restart when configured and safe.
+                if let Some(spec) = spec {
+                    if spec.auto_restart
+                        && !matches!(spec.kind, ServiceKind::MariaDb | ServiceKind::MySql)
+                    {
+                        restart_candidates.push(id.clone());
+                    }
+                }
+            }
+        }
+
+        // Persist probed status. Short lock.
+        {
+            let mut inner = state.inner.lock().await;
+            let rt = inner.runtimes.entry(id.clone()).or_default();
+            rt.status = probed.clone();
+            rt.pid = status_pid(probed);
+        }
+    }
+
+    // (4) Auto-restart candidates. We take the lock once per restart because
+    // start_one mutates supervisor internals. Rate-limit is enforced inside so
+    // a flapping service settles into `Unhealthy` instead of pinning a CPU.
+    for id in restart_candidates {
+        let mut inner = state.inner.lock().await;
+        // Re-check user_stopped in case the user pressed stop between the
+        // snapshot and now.
+        if let Some(rt) = inner.runtimes.get(&id) {
+            if rt.user_stopped {
+                continue;
+            }
+        }
+        let can_restart = {
+            let rt = inner.runtimes.entry(id.clone()).or_default();
+            can_auto_restart(&mut rt.restart_times)
+        };
+        if !can_restart {
+            let payload = serde_json::json!({
+                "service_id": id,
+                "level": "warn",
+                "message": format!(
+                    "auto_restart rate limit ({AUTO_RESTART_MAX} / {}m) exceeded — service left in unhealthy state",
+                    AUTO_RESTART_WINDOW.as_secs() / 60
+                ),
+                "at": chrono::Utc::now().to_rfc3339(),
+            });
+            emit_service_event(Some(app), EVENT_SERVICE_RATE_LIMITED, payload);
+            continue;
+        }
+        {
+            let rt = inner.runtimes.entry(id.clone()).or_default();
+            rt.restart_times.push(Instant::now());
+        }
+        let mut notes = Vec::new();
+        let nginx_label = state.ld_label("nginx");
+        let result = start_one(&mut inner, &nginx_label, &id, &mut notes).await;
+        // Snapshot status after start attempt while still holding the lock.
+        let new_status = inner
+            .runtimes
+            .get(&id)
+            .map(|r| r.status.clone())
+            .unwrap_or(ServiceStatus::Stopped);
+        drop(inner);
+
+        let ts = chrono::Utc::now().to_rfc3339();
+        match result {
+            Ok(r) => {
+                let level = if matches!(r.status, ServiceStatus::Running { .. }) {
+                    "info"
+                } else {
+                    "warn"
+                };
+                let payload = serde_json::json!({
+                    "service_id": id,
+                    "level": level,
+                    "status": status_variant(&r.status),
+                    "pid": status_pid(&r.status),
+                    "message": r.message,
+                    "notes": r.notes,
+                    "at": ts,
+                });
+                emit_service_event(Some(app), EVENT_SERVICE_RESTARTED, payload);
+            }
+            Err(e) => {
+                let payload = serde_json::json!({
+                    "service_id": id,
+                    "level": "error",
+                    "message": e,
+                    "status": status_variant(&new_status),
+                    "at": ts,
+                });
+                emit_service_event(Some(app), EVENT_SERVICE_RESTART_FAILED, payload);
+            }
+        }
+    }
+}
+
+// ── Live log stream (tail) ──────────────────────────────────────────
+
+/// Persistent tail cursor between ticks. Keeps the current file offset plus a
+/// pending partial-line buffer (a chunk may cut mid-line).
+#[derive(Debug, Default, Clone)]
+pub struct TailState {
+    /// Byte offset into the target file that the tailer has consumed up to.
+    pub offset: u64,
+    /// UTF-8 fragment left over from the previous chunk (data after the last
+    /// newline). Prepended to the next chunk before line splitting.
+    pub buffer: String,
+}
+
+/// Result of a single tail read.
+#[derive(Debug, Default)]
+pub struct TailChunk {
+    pub lines: Vec<String>,
+    /// True when the file was truncated / rotated and the offset was reset to 0.
+    /// The frontend uses this to clear its local view.
+    pub reset: bool,
+    /// New cursor to feed into the next call.
+    pub new_offset: u64,
+    /// New pending fragment (may be empty).
+    pub new_buffer: String,
+}
+
+/// Read up to `max_chunk` new bytes from `path`, split into lines. Pure —
+/// takes prior `TailState` and returns the next `TailChunk` plus the state to
+/// carry forward. Never blocks; handles:
+/// * Missing file (returns empty chunk with `reset=false`, offset unchanged).
+/// * File shorter than the prior offset (truncation / rotation) → resets to 0
+///   and reports `reset: true`.
+/// * Chunk cap: only up to `max_chunk` bytes are consumed per call. Partial
+///   final line is preserved in `new_buffer` for the next tick.
+pub fn tail_read_once(
+    path: &Path,
+    state: &TailState,
+    max_chunk: u64,
+) -> Result<TailChunk, String> {
+    if !path.exists() {
+        return Ok(TailChunk {
+            new_offset: state.offset,
+            new_buffer: state.buffer.clone(),
+            ..Default::default()
+        });
+    }
+    let meta = fs::metadata(path).map_err(|e| format!("stat log: {e}"))?;
+    if !meta.is_file() {
+        return Ok(TailChunk {
+            new_offset: state.offset,
+            new_buffer: state.buffer.clone(),
+            ..Default::default()
+        });
+    }
+    let size = meta.len();
+    let mut offset = state.offset;
+    let mut buffer = state.buffer.clone();
+    let mut reset = false;
+    if size < offset {
+        // Rotation or explicit truncation — start over.
+        offset = 0;
+        buffer.clear();
+        reset = true;
+    }
+    if size == offset {
+        return Ok(TailChunk {
+            lines: Vec::new(),
+            reset,
+            new_offset: offset,
+            new_buffer: buffer,
+        });
+    }
+
+    let mut f = fs::File::open(path).map_err(|e| format!("open log: {e}"))?;
+    f.seek(SeekFrom::Start(offset))
+        .map_err(|e| format!("seek log: {e}"))?;
+    let want = std::cmp::min(size - offset, max_chunk) as usize;
+    let mut raw = vec![0u8; want];
+    let n = f.read(&mut raw).map_err(|e| format!("read log: {e}"))?;
+    raw.truncate(n);
+    offset += n as u64;
+
+    // Lossy is acceptable — logs are text, mid-utf8 bytes at chunk boundaries
+    // would otherwise poison a line for one tick.
+    let text = String::from_utf8_lossy(&raw);
+    buffer.push_str(&text);
+
+    let mut lines = Vec::new();
+    while let Some(idx) = buffer.find('\n') {
+        let line = buffer[..idx].trim_end_matches('\r').to_string();
+        buffer.replace_range(..=idx, "");
+        lines.push(line);
+    }
+
+    Ok(TailChunk {
+        lines,
+        reset,
+        new_offset: offset,
+        new_buffer: buffer,
+    })
+}
+
+/// Payload for `ld_log_subscribe`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogSubscribeResult {
+    pub subscription_id: String,
+    pub service_id: String,
+    pub topic: String,
+    pub log_file: String,
+}
+
+/// Simple unique-ish id (uuid-like) so subscription lookup is O(1) without
+/// requiring the caller to guess a token. Not a security identifier — the
+/// backend never uses it for auth.
+fn new_subscription_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("ldlog-{nanos:x}-{n:x}")
+}
+
+fn log_topic(service_id: &str) -> String {
+    format!("ld://log/{service_id}")
+}
+
+/// Start streaming appended log lines for a service. The frontend must listen
+/// on the returned `topic` for events shaped:
+/// `{ service_id, lines: Vec<String>, reset: bool, at: ISO }`.
+///
+/// Returns an error if:
+/// * `service_id` is invalid,
+/// * the service is unknown,
+/// * the concurrent-subscription cap (`MAX_LOG_SUBSCRIPTIONS`) is reached.
+#[tauri::command]
+pub async fn ld_log_subscribe(
+    app: AppHandle,
+    state: tauri::State<'_, LocalDevState>,
+    service_id: String,
+) -> Result<LogSubscribeResult, String> {
+    validate_service_id(&service_id)?;
+
+    // Resolve the log path for this service. Short lock; no long await.
+    let log_file: PathBuf = {
+        let mut inner = state.inner.lock().await;
+        inner.ensure_specs()?;
+        let spec = find_spec(&inner.specs, &service_id)
+            .cloned()
+            .ok_or_else(|| format!("unknown service_id: {service_id}"))?;
+        spec.log_file
+    };
+
+    // Ensure the parent directory + file exist so the tail task never has to
+    // race the writer for creation. Silent best-effort: the tail loop tolerates
+    // a missing file (returns empty).
+    if let Some(parent) = log_file.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    let mut subs = state.log_subs.lock().await;
+    if subs.len() >= MAX_LOG_SUBSCRIPTIONS {
+        return Err(format!(
+            "log subscription limit reached ({MAX_LOG_SUBSCRIPTIONS}) — unsubscribe first"
+        ));
+    }
+    let subscription_id = new_subscription_id();
+    let topic = log_topic(&service_id);
+
+    let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let path = log_file.clone();
+    let topic_owned = topic.clone();
+    let sub_id_owned = subscription_id.clone();
+    let service_id_owned = service_id.clone();
+    let app_clone = app.clone();
+
+    let join = tauri::async_runtime::spawn(async move {
+        // Start at end-of-file so subscribers only see *new* lines (log_tail
+        // covers the "give me history" case separately).
+        let initial_offset = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        let mut state = TailState {
+            offset: initial_offset,
+            buffer: String::new(),
+        };
+        loop {
+            // Poll for stop first — cheap and lets us bail before file IO.
+            if stop_rx.try_recv().is_ok() {
+                break;
+            }
+            match tail_read_once(&path, &state, LOG_TAIL_CHUNK_MAX_BYTES) {
+                Ok(chunk) => {
+                    let had_output = !chunk.lines.is_empty() || chunk.reset;
+                    state.offset = chunk.new_offset;
+                    state.buffer = chunk.new_buffer;
+                    if had_output {
+                        let payload = serde_json::json!({
+                            "subscription_id": sub_id_owned,
+                            "service_id": service_id_owned,
+                            "lines": chunk.lines,
+                            "reset": chunk.reset,
+                            "at": chrono::Utc::now().to_rfc3339(),
+                        });
+                        let _ = app_clone.emit(&topic_owned, payload);
+                    }
+                }
+                Err(e) => {
+                    // Emit an error frame and back off — do not spin on a
+                    // permission problem.
+                    let payload = serde_json::json!({
+                        "subscription_id": sub_id_owned,
+                        "service_id": service_id_owned,
+                        "error": e,
+                        "at": chrono::Utc::now().to_rfc3339(),
+                    });
+                    let _ = app_clone.emit(&topic_owned, payload);
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+
+            // Interruptible sleep — stop_rx wins immediately if the caller
+            // unsubscribes so we do not wait a full poll interval to teardown.
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_millis(LOG_TAIL_POLL_INTERVAL_MS)) => {},
+                _ = &mut stop_rx => break,
+            }
+        }
+    });
+
+    subs.insert(
+        subscription_id.clone(),
+        LogSubHandle {
+            service_id: service_id.clone(),
+            stop_tx: Some(stop_tx),
+            join,
+        },
+    );
+
+    Ok(LogSubscribeResult {
+        subscription_id,
+        service_id,
+        topic,
+        log_file: log_file.to_string_lossy().into_owned(),
+    })
+}
+
+/// Stop a live log stream. Idempotent — unknown id returns Ok with an empty
+/// result so a duplicate unsubscribe from a re-mounted React tree is not an
+/// error.
+#[tauri::command]
+pub async fn ld_log_unsubscribe(
+    state: tauri::State<'_, LocalDevState>,
+    subscription_id: String,
+) -> Result<bool, String> {
+    let handle_opt = {
+        let mut subs = state.log_subs.lock().await;
+        subs.remove(&subscription_id)
+    };
+    match handle_opt {
+        Some(h) => {
+            h.shutdown().await;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
+/// Diagnostic listing of active subscriptions (used by tests + UI reconcile).
+#[tauri::command]
+pub async fn ld_log_subscriptions(
+    state: tauri::State<'_, LocalDevState>,
+) -> Result<Vec<LogSubscribeResult>, String> {
+    let subs = state.log_subs.lock().await;
+    let out = subs
+        .iter()
+        .map(|(id, h)| LogSubscribeResult {
+            subscription_id: id.clone(),
+            service_id: h.service_id.clone(),
+            topic: log_topic(&h.service_id),
+            log_file: String::new(),
+        })
+        .collect();
+    Ok(out)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -2369,5 +3251,198 @@ mod tests {
         let r = port_conflict_reason(&spec);
         assert!(r.contains("not owned"));
         assert!(r.contains("nginx"));
+    }
+
+    // ── tail_read_once (live log stream) ────────────────────────────
+
+    fn temp_log_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "badami-tail-{}-{}-{}",
+            tag,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn tail_missing_file_returns_empty_and_keeps_state() {
+        let path = std::env::temp_dir().join("badami-tail-missing-xyz.log");
+        let _ = fs::remove_file(&path);
+        let state = TailState {
+            offset: 42,
+            buffer: "leftover".into(),
+        };
+        let chunk = tail_read_once(&path, &state, 64 * 1024).unwrap();
+        assert!(chunk.lines.is_empty());
+        assert!(!chunk.reset);
+        assert_eq!(chunk.new_offset, 42);
+        assert_eq!(chunk.new_buffer, "leftover");
+    }
+
+    #[test]
+    fn tail_reads_appended_lines_after_offset() {
+        let dir = temp_log_dir("append");
+        let log = dir.join("a.log");
+        fs::write(&log, b"one\ntwo\n").unwrap();
+
+        // Consume the whole file first.
+        let mut state = TailState::default();
+        let chunk = tail_read_once(&log, &state, 64 * 1024).unwrap();
+        assert_eq!(chunk.lines, vec!["one".to_string(), "two".into()]);
+        assert!(!chunk.reset);
+        state.offset = chunk.new_offset;
+        state.buffer = chunk.new_buffer;
+
+        // Append and read again — only new lines should come back.
+        fs::write(&log, b"one\ntwo\nthree\nfour\n").unwrap();
+        let chunk = tail_read_once(&log, &state, 64 * 1024).unwrap();
+        assert_eq!(chunk.lines, vec!["three".to_string(), "four".into()]);
+        assert!(!chunk.reset);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tail_handles_partial_line_across_reads() {
+        let dir = temp_log_dir("partial");
+        let log = dir.join("p.log");
+        // Chunk cap = 4 bytes → forces "hell" then "o\n"
+        fs::write(&log, b"hello\n").unwrap();
+
+        let mut state = TailState::default();
+        let chunk = tail_read_once(&log, &state, 4).unwrap();
+        assert!(chunk.lines.is_empty(), "no newline in first 4 bytes");
+        assert_eq!(chunk.new_buffer, "hell");
+        state.offset = chunk.new_offset;
+        state.buffer = chunk.new_buffer;
+
+        let chunk = tail_read_once(&log, &state, 4).unwrap();
+        assert_eq!(chunk.lines, vec!["hello".to_string()]);
+        assert_eq!(chunk.new_buffer, "");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tail_detects_truncation_and_resets_offset() {
+        let dir = temp_log_dir("truncate");
+        let log = dir.join("t.log");
+        fs::write(&log, b"alpha\nbeta\ngamma\n").unwrap();
+
+        // Cursor past the current file length simulates a rotation.
+        let state = TailState {
+            offset: 1024,
+            buffer: "stale".into(),
+        };
+        let chunk = tail_read_once(&log, &state, 64 * 1024).unwrap();
+        assert!(chunk.reset);
+        // Reset should have wiped the stale partial-line buffer before reading.
+        assert!(!chunk.lines.is_empty());
+        assert!(chunk.lines.iter().any(|l| l == "alpha"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tail_respects_chunk_cap_leaves_rest_for_next_call() {
+        let dir = temp_log_dir("cap");
+        let log = dir.join("c.log");
+        let mut body = String::new();
+        for i in 0..10 {
+            body.push_str(&format!("line-{i:02}\n"));
+        }
+        fs::write(&log, body.as_bytes()).unwrap();
+
+        // Small cap so we can prove the second call reads the remainder.
+        let mut state = TailState::default();
+        let chunk = tail_read_once(&log, &state, 8).unwrap();
+        // 8 bytes = "line-00\n" — one complete line.
+        assert_eq!(chunk.lines, vec!["line-00".to_string()]);
+        state.offset = chunk.new_offset;
+        state.buffer = chunk.new_buffer;
+
+        // Loop until we drain the rest.
+        let mut collected = Vec::new();
+        for _ in 0..30 {
+            let chunk = tail_read_once(&log, &state, 8).unwrap();
+            if chunk.lines.is_empty() && chunk.new_offset == state.offset {
+                break;
+            }
+            collected.extend(chunk.lines);
+            state.offset = chunk.new_offset;
+            state.buffer = chunk.new_buffer;
+        }
+        assert!(collected.contains(&"line-09".to_string()));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn status_variant_stable_labels() {
+        assert_eq!(status_variant(&ServiceStatus::Stopped), "stopped");
+        assert_eq!(status_variant(&ServiceStatus::Starting), "starting");
+        assert_eq!(
+            status_variant(&ServiceStatus::Running { pid: 1 }),
+            "running"
+        );
+        assert_eq!(
+            status_variant(&ServiceStatus::Unhealthy {
+                pid: None,
+                reason: "x".into()
+            }),
+            "unhealthy"
+        );
+        assert_eq!(status_variant(&ServiceStatus::Stopping), "stopping");
+        assert_eq!(
+            status_variant(&ServiceStatus::Error {
+                message: "x".into()
+            }),
+            "error"
+        );
+        assert_eq!(
+            status_variant(&ServiceStatus::Unavailable {
+                reason: "x".into()
+            }),
+            "unavailable"
+        );
+    }
+
+    #[test]
+    fn is_crash_ignores_user_stopped_and_intermediates() {
+        // Running → Stopped without user stop is a crash.
+        assert!(is_crash(
+            &ServiceStatus::Running { pid: 1 },
+            &ServiceStatus::Stopped,
+            false
+        ));
+        // Same transition with user_stopped set is NOT a crash.
+        assert!(!is_crash(
+            &ServiceStatus::Running { pid: 1 },
+            &ServiceStatus::Stopped,
+            true
+        ));
+        // Stopped → Running is not a crash (recovery).
+        assert!(!is_crash(
+            &ServiceStatus::Stopped,
+            &ServiceStatus::Running { pid: 1 },
+            false
+        ));
+        // Running → Stopping is not a crash (in-flight user stop).
+        assert!(!is_crash(
+            &ServiceStatus::Running { pid: 1 },
+            &ServiceStatus::Stopping,
+            false
+        ));
+        // Running → Unhealthy is a crash.
+        assert!(is_crash(
+            &ServiceStatus::Running { pid: 1 },
+            &ServiceStatus::Unhealthy {
+                pid: None,
+                reason: "flatlined".into()
+            },
+            false
+        ));
     }
 }

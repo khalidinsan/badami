@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/khalidinsan/badami/releases/tag/v1.14.1"><code>v1.14.1</code></a>
+  <a href="https://github.com/khalidinsan/badami/releases/tag/v1.15.0"><code>v1.15.0</code></a>
   ·
   <a href="https://github.com/khalidinsan/badami/releases">Releases</a>
 </p>
@@ -35,8 +35,8 @@ Builds are signed for the **in-app updater** but not Apple-notarized yet, so Gat
 
 ```bash
 # DMG
-xattr -cr ~/Downloads/badami_1.14.1_aarch64.dmg
-open ~/Downloads/badami_1.14.1_aarch64.dmg
+xattr -cr ~/Downloads/badami_1.15.0_aarch64.dmg
+open ~/Downloads/badami_1.15.0_aarch64.dmg
 
 # After dragging to Applications
 xattr -cr /Applications/badami.app
@@ -93,17 +93,22 @@ Artifacts are minisign-signed; the public key is embedded in `src-tauri/tauri.co
 | Capability | Default |
 | --- | --- |
 | HTTP | **Mode A** — unprivileged nginx on **`127.0.0.1:8080`** (`http://{site}.test:8080`) |
-| Sites | Valet-style parks/links, PHP isolation, open in browser |
+| HTTPS *(opt-in per site)* | Unprivileged nginx on **`127.0.0.1:8443`** (`https://{site}.test:8443`) — per-user CA + per-site leaf cert; Trust CA helper previews the exact `security add-trusted-cert` argv before the admin prompt |
+| Sites | Valet-style parks/links, PHP isolation, Secure / Unsecure per site, open in browser |
 | MariaDB | Reuse Herd datadir in-place; optional register into Database Client |
 | Redis / PHP-FPM | Supervised with nginx as part of **Start stack** |
 | DNS `*.test` | Adopt existing `:53`, optional B-lite dnsmasq LaunchDaemon, or degraded mode |
+| Uninstall | `ld_bootstrap_uninstall` reverses only Badami-written LaunchDaemon units + staged plist; resolver file removal opt-in, gated on `# managed-by: badami` marker |
 
 Design notes: [`plan-local-dev.md`](./plan-local-dev.md).
 
 ### Safety notes
 
 - **Never deletes** the Herd MariaDB datadir (or Herd app data) as part of normal ops.
-- **Mode A (`:8080`)** is the default so nginx needs no root. Port `:80` is optional after explicit bootstrap.
+- **Mode A (`:8080` / `:8443`)** is the default so nginx needs no root. Port `:80` is optional after explicit bootstrap.
+- **Root-owned LaunchDaemon staging** — Badami renders a **root variant** of every nginx/dnsmasq config (rewriting `include`, `error_log`, `pid`, `log-facility`, and `ssl_certificate*` paths so they point under `/Library/Application Support/Badami/local-dev-root/<role>/`), tokenizes the config (quote- and comment-aware, multi-line + inline `;`-chain safe), and rejects outright-dangerous directives (`load_module`, `env`, `ssl_engine`, `perl*`, `js_*`, `lua*`, `*_by_lua*`, `njs*`, `user root`; dnsmasq `dhcp-script`, `conf-*`, `*hostsfile`, `tftp-*`, `user=root`, backslash line-continuation, and anything outside the dnsmasq allowlist) before any admin prompt. The privileged shell first **reclaims the ancestor chain** (`/Library/Application Support/Badami` + `.../local-dev-root`) to `root:wheel 755`, rejecting any pre-planted symlink or non-dir with `exit 1`, so an admin-group user process cannot swap staged dirs between hash verify and `launchctl`. It then `install -o root -g wheel` the pending files into place and **verifies each root-owned copy's SHA-256 against the Rust-computed digest with `/usr/bin/shasum`** before `launchctl bootstrap` runs; every pending digest is bound to the source bytes Rust read in-process, so overwriting the pending file after staging still fails the privileged shasum check. Mismatch → rollback of plist + staging dir + `exit 1`. Labels must match `^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$` and start with the Tauri bundle identifier (`com.khalid.badami.local-dev.*`).
+- **Resolver install writes in-process content** — `/etc/resolver/<tld>` is populated via `printf '%s' <content> > <tmp> && mv -f <tmp> /etc/resolver/<tld>` where `<content>` is composed in Rust (not read from a user-writable draft at exec time), so a user process cannot race between the osascript admin prompt and the kernel exec to swap in a different resolver file.
+- **Trust CA via root-owned copy** — the CA cert is `install -o root -g wheel -m 0644`'d into `/Library/Application Support/Badami/local-dev-root/tls/BadamiLocalDevCA.crt` and shasum-verified against a Rust-computed SHA-256 inside the same privileged sequence; `security add-trusted-cert` only runs against the hash-verified root-owned copy. Trust **removal** is manual — run `security remove-trusted-cert …` or use Keychain Access.
 - **Import preserves data** — parks, isolates, and service paths are registered; no `DROP DATABASE` / `mysql_install_db`.
 - **Double-open guard** — starting MariaDB hard-fails if another process already holds the same datadir.
 - Browser **Secure DNS / DoH** (e.g. Chrome → 1.1.1.1) bypasses `/etc/resolver` — turn it off for `*.test` to work in the browser even when Doctor’s system DNS probe is green.
@@ -195,8 +200,8 @@ Pushing a version tag runs [`.github/workflows/release.yml`](./.github/workflows
 
 ```bash
 # Bump version in package.json, src-tauri/tauri.conf.json, and Cargo.toml (keep in sync)
-git tag v1.14.1
-git push origin v1.14.1
+git tag v1.15.0
+git push origin v1.15.0
 ```
 
 Required secret: `TAURI_SIGNING_PRIVATE_KEY` (and optional password).  

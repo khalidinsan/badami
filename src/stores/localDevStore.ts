@@ -1,10 +1,14 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { sendNotification } from "@tauri-apps/plugin-notification";
 import { toast } from "sonner";
 import type {
   BootstrapInstallRequest,
   BootstrapInstallResult,
   BootstrapStatus,
+  BootstrapUninstallRequest,
+  BootstrapUninstallResult,
   DiscoveryReport,
   DnsProbeResult,
   DoctorReport,
@@ -18,16 +22,25 @@ import type {
   LinkResult,
   ListSitesResult,
   LogTailResult,
+  MariaDbCrashedEvent,
   OpenSiteUrlResult,
   ParkResult,
   ProblemsReport,
   ReloadNginxResult,
   RegisterMariaDbResult,
+  SecureSiteCommandResult,
+  ServiceCrashedEvent,
   ServiceGroupId,
+  ServiceRateLimitedEvent,
+  ServiceRestartedEvent,
+  ServiceRestartFailedEvent,
+  ServiceStatusEvent,
   ServiceStatusReport,
   StackActionResult,
   StackHealth,
   ServiceActionResult,
+  TlsStatus,
+  TrustCaResult,
   LocalDevSettingKey,
   BinaryRole,
   BinarySource,
@@ -39,9 +52,12 @@ import {
   computeStackHealth,
   DEFAULT_LOCAL_DEV_SETTINGS,
   isServiceRunning,
+  LD_EVENT,
   serviceGroupOf,
 } from "@/types/localDev";
 import {
+  addEvent as dbAddEvent,
+  clearEvents as dbClearEvents,
   createBinary,
   createParkPath,
   createService,
@@ -60,12 +76,33 @@ import {
 } from "@/db/queries/localDev";
 import { registerLocalMariaDbConnection } from "@/lib/localDevMariaDb";
 import { openInOS } from "@/lib/osOpen";
+import { parseDnsUnhealthyError } from "@/lib/localDevUtils";
 import type { LocalDevSiteRow } from "@/types/db";
 
 const POLL_MS = 2500;
 
 /** Doctor is expensive (port probes + `nginx -t`) — reuse a recent report. */
 const DOCTOR_TTL_MS = 60_000;
+
+/** Cap kept in-memory for the Recent Events panel. */
+const MAX_RECENT_EVENTS = 50;
+
+/**
+ * One supervisor transition the UI considers worth remembering.
+ *
+ * Normalised across `ld://service-status`, `ld://service-crashed`,
+ * `ld://service-restarted`, `ld://service-restart-failed` and the dedicated
+ * `ld://mariadb-crashed` topics — the view only needs severity, who, when, and
+ * a one-liner. The authoritative audit still lives in `local_dev_events`.
+ */
+export interface RecentServiceEvent {
+  id: string;
+  topic: keyof typeof LD_EVENT;
+  service_id: string;
+  level: "info" | "warn" | "error" | "debug";
+  message: string;
+  at: string;
+}
 
 /** Keys for `siteBusy` — scoped so one action never disables the whole table. */
 export const SITE_ACTION_PARK = "park";
@@ -88,9 +125,13 @@ interface LocalDevState {
   doctorRanAt: number | null;
   bootstrapStatus: BootstrapStatus | null;
   bootstrapResult: BootstrapInstallResult | null;
+  /** Last uninstall report (surfaced in BootstrapCard after confirmation). */
+  bootstrapUninstallResult: BootstrapUninstallResult | null;
   herdStatus: HerdRuntimeStatus | null;
   /** Live DNS resolve probe — the only proof that `*.tld` actually resolves. */
   dnsProbe: DnsProbeResult | null;
+  /** TLS CA + per-site cert snapshot from `ld_tls_status`. */
+  tlsStatus: TlsStatus | null;
   settings: Record<string, string>;
   stackBusy: boolean;
   /** Service ids currently starting/stopping via UI action */
@@ -104,6 +145,7 @@ interface LocalDevState {
   importBusy: boolean;
   doctorBusy: boolean;
   bootstrapBusy: boolean;
+  tlsBusy: boolean;
   settingsBusy: boolean;
   registerBusy: boolean;
   herdBusy: boolean;
@@ -121,6 +163,12 @@ interface LocalDevState {
   logMode: "tail" | "problems";
   problemsReport: ProblemsReport | null;
   problemsLoading: boolean;
+  /**
+   * Recent supervisor transitions / crashes, newest first. Capped at
+   * `MAX_RECENT_EVENTS` so an endlessly flapping service does not consume
+   * memory. The authoritative audit lives in `local_dev_events` on disk.
+   */
+  recentEvents: RecentServiceEvent[];
 
   setSelectedServiceId: (id: string | null) => void;
   setLogsOpen: (open: boolean) => void;
@@ -183,8 +231,26 @@ interface LocalDevState {
   unlinkSite: (site: string) => Promise<void>;
   isolatePhp: (site: string, version: string) => Promise<void>;
   unisolatePhp: (site: string) => Promise<void>;
-  openSiteUrl: (site: string) => Promise<void>;
+  openSiteUrl: (site: string, options?: { force?: boolean }) => Promise<void>;
   reloadNginx: () => Promise<void>;
+
+  /** Per-site TLS (Phase B). Reload nginx when it is running. */
+  secureSite: (site: string) => Promise<void>;
+  unsecureSite: (site: string) => Promise<void>;
+
+  // TLS CA
+  loadTlsStatus: () => Promise<void>;
+  ensureTlsCa: () => Promise<void>;
+  /**
+   * Trust the local CA in the System keychain.
+   *
+   * `run=false` returns the argv so the UI can preview before confirming.
+   * `run=true` triggers the osascript admin prompt via `bootstrap::build_osascript_command`.
+   */
+  trustTlsCa: (options?: { run?: boolean }) => Promise<TrustCaResult | null>;
+
+  // Recent events + clear
+  clearRecentEvents: () => void;
 
   // Import
   importHerd: (request?: ImportHerdRequest) => Promise<ImportResult | null>;
@@ -194,6 +260,9 @@ interface LocalDevState {
   runDoctor: (options?: { force?: boolean }) => Promise<void>;
   loadBootstrapStatus: (tld?: string) => Promise<void>;
   bootstrapInstall: (request: BootstrapInstallRequest) => Promise<void>;
+  bootstrapUninstall: (
+    request: BootstrapUninstallRequest,
+  ) => Promise<BootstrapUninstallResult | null>;
 
   // Settings
   loadSettings: () => Promise<void>;
@@ -254,8 +323,10 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
   doctorRanAt: null,
   bootstrapStatus: null,
   bootstrapResult: null,
+  bootstrapUninstallResult: null,
   herdStatus: null,
   dnsProbe: null,
+  tlsStatus: null,
   settings: {},
   stackBusy: false,
   serviceBusy: {},
@@ -265,6 +336,7 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
   importBusy: false,
   doctorBusy: false,
   bootstrapBusy: false,
+  tlsBusy: false,
   settingsBusy: false,
   registerBusy: false,
   herdBusy: false,
@@ -279,6 +351,7 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
   logMode: "tail",
   problemsReport: null,
   problemsLoading: false,
+  recentEvents: [],
 
   setSelectedServiceId: (id) => set({ selectedServiceId: id }),
   setLogsOpen: (open) => set({ logsOpen: open }),
@@ -1001,11 +1074,44 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
     }
   },
 
-  openSiteUrl: async (site) => {
+  openSiteUrl: async (site, options) => {
+    const force = options?.force ?? false;
     try {
-      const result = await invoke<OpenSiteUrlResult>("ld_open_site_url", { site });
+      const result = await invoke<OpenSiteUrlResult>("ld_open_site_url", {
+        site,
+        force,
+      });
       await openInOS(result.url);
     } catch (err) {
+      // DNS gate: backend prefixes the error so the UI can offer an opt-out
+      // without reasoning about the message body. "Open anyway" re-invokes
+      // with force=true (bypasses the probe entirely); "Open Doctor" jumps to
+      // the DNS section. Rust still refuses invalid site names regardless of
+      // force, which is why we don't just retry blindly.
+      const dnsDetail = parseDnsUnhealthyError(err);
+      if (dnsDetail) {
+        toast.error(`DNS unhealthy for ${site}`, {
+          description: dnsDetail,
+          duration: 15_000,
+          action: {
+            label: "Open anyway",
+            onClick: () => {
+              void get().openSiteUrl(site, { force: true });
+            },
+          },
+          cancel: {
+            label: "Open Doctor",
+            onClick: () => {
+              // Hand off to the route — subscribers switch to the Doctor
+              // sub-tab. Fires app-wide; if no Local Dev route is mounted,
+              // the openDoctorRequested fallback (routing layer) will open
+              // the Local Dev tab first.
+              openDoctorEmitter.emit();
+            },
+          },
+        });
+        return;
+      }
       toast.error("Open site failed", { description: errMessage(err) });
     }
   },
@@ -1031,6 +1137,134 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
       markSiteBusy(SITE_ACTION_NGINX, false);
     }
   },
+
+  // ── TLS (Phase B — `ld_secure` / `ld_unsecure` / `ld_tls_*`) ──────
+
+  secureSite: async (site) => {
+    const key = siteActionKey(site);
+    markSiteBusy(key, true);
+    try {
+      const result = await invoke<SecureSiteCommandResult>("ld_secure", { site });
+      toast.success(`Secured ${result.site}.${result.tld}`, {
+        description:
+          result.notes.find((n) => n.includes("trust")) ??
+          result.notes.slice(0, 2).join(" · ") ??
+          undefined,
+      });
+      // Persist to local DB so project panels pick it up without re-listing.
+      try {
+        const tld = result.tld;
+        const existing = await getSiteByNameTld(site, tld);
+        if (existing) {
+          await updateSite(existing.id, { secured: 1 });
+        }
+      } catch {
+        /* DB optional */
+      }
+      // The conf changed — reload nginx when it is running, otherwise the
+      // new HTTPS listener is inert until the next start.
+      const nginxRunning =
+        get().services.find((s) => s.id === "nginx")?.status.status === "running";
+      if (nginxRunning) await get().reloadNginx();
+      await get().listSites();
+      await get().loadTlsStatus();
+    } catch (err) {
+      toast.error("Secure failed", { description: errMessage(err) });
+    } finally {
+      markSiteBusy(key, false);
+    }
+  },
+
+  unsecureSite: async (site) => {
+    const key = siteActionKey(site);
+    markSiteBusy(key, true);
+    try {
+      const result = await invoke<SecureSiteCommandResult>("ld_unsecure", { site });
+      if (result.action === "noop") {
+        toast.message(`${site} is already plain HTTP`);
+      } else {
+        toast.success(`Unsecured ${result.site}.${result.tld}`);
+      }
+      try {
+        const tld = result.tld;
+        const existing = await getSiteByNameTld(site, tld);
+        if (existing) {
+          await updateSite(existing.id, { secured: 0 });
+        }
+      } catch {
+        /* DB optional */
+      }
+      const nginxRunning =
+        get().services.find((s) => s.id === "nginx")?.status.status === "running";
+      if (nginxRunning) await get().reloadNginx();
+      await get().listSites();
+      await get().loadTlsStatus();
+    } catch (err) {
+      toast.error("Unsecure failed", { description: errMessage(err) });
+    } finally {
+      markSiteBusy(key, false);
+    }
+  },
+
+  loadTlsStatus: async () => {
+    try {
+      // skip_live=false so the "CA trusted" badge reflects the real keychain
+      // state. The subprocess is cheap and only runs on explicit TLS panel
+      // loads, not the status poller.
+      const tlsStatus = await invoke<TlsStatus>("ld_tls_status", {
+        skipLive: false,
+      });
+      set({ tlsStatus });
+    } catch (err) {
+      console.error("ld_tls_status failed", err);
+    }
+  },
+
+  ensureTlsCa: async () => {
+    set({ tlsBusy: true });
+    try {
+      const tlsStatus = await invoke<TlsStatus>("ld_tls_ensure_ca");
+      set({ tlsStatus, tlsBusy: false });
+      toast.success("Local CA ready", {
+        description: tlsStatus.ca_trusted
+          ? "Already trusted in the System keychain."
+          : "Trust the CA to open https://*.test without warnings.",
+      });
+    } catch (err) {
+      set({ tlsBusy: false });
+      toast.error("Could not create local CA", { description: errMessage(err) });
+    }
+  },
+
+  trustTlsCa: async (options) => {
+    const run = options?.run ?? false;
+    set({ tlsBusy: true });
+    try {
+      const result = await invoke<TrustCaResult>("ld_tls_trust_ca", { run });
+      set({ tlsBusy: false });
+      if (!run) {
+        // Dry-run only: UI will show the step/argv for confirmation.
+        return result;
+      }
+      if (result.executed) {
+        toast.success("Local CA trusted", {
+          description: "https://*.test will now show as valid in the system.",
+        });
+      } else {
+        toast.warning("Trust CA was not confirmed", {
+          description: result.notes.slice(0, 2).join(" · ") || undefined,
+        });
+      }
+      await get().loadTlsStatus();
+      return result;
+    } catch (err) {
+      set({ tlsBusy: false });
+      toast.error("Trust CA failed", { description: errMessage(err) });
+      return null;
+    }
+  },
+
+  clearRecentEvents: () => set({ recentEvents: [] }),
 
   // ── Import ─────────────────────────────────────────────────────────
 
@@ -1265,6 +1499,72 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
     } catch (err) {
       set({ bootstrapBusy: false });
       toast.error("Bootstrap install failed", { description: errMessage(err) });
+    }
+  },
+
+  bootstrapUninstall: async (request) => {
+    set({ bootstrapBusy: true });
+    try {
+      const result = await invoke<BootstrapUninstallResult>("ld_bootstrap_uninstall", {
+        request: {
+          package: request.package,
+          dry_run: request.dry_run ?? false,
+          confirm_resolver: request.confirm_resolver ?? false,
+          tld: request.tld ?? get().settings.tld ?? null,
+        },
+      });
+      set({ bootstrapUninstallResult: result, bootstrapBusy: false });
+
+      // Reset the matching settings so the UI no longer claims the install is
+      // complete. Keeps the user from seeing a green "bootstrap complete" tick
+      // immediately after an uninstall that actually removed the LaunchDaemon.
+      try {
+        if (
+          request.package === "dns_only" ||
+          request.package === "full" ||
+          request.package === "resolver"
+        ) {
+          await setLocalDevSetting("dns_bootstrap_complete", "false");
+          set((s) => ({
+            settings: { ...s.settings, dns_bootstrap_complete: "false" },
+          }));
+        }
+        if (request.package === "http_80" || request.package === "full") {
+          // Mode A is the only mode that can run unprivileged, so stepping down
+          // to Mode A is the honest default here.
+          await setLocalDevSetting("http_mode", "unprivileged");
+          await setLocalDevSetting("http_port", "8080");
+          set((s) => ({
+            settings: {
+              ...s.settings,
+              http_mode: "unprivileged",
+              http_port: "8080",
+            },
+          }));
+        }
+      } catch (persistErr) {
+        console.error("post-uninstall settings reset failed", persistErr);
+      }
+
+      if (result.dry_run) {
+        toast.message("Uninstall dry-run", {
+          description: `${result.steps.length} step(s) planned — nothing executed`,
+        });
+      } else if (result.executed) {
+        toast.success("Bootstrap package uninstalled", {
+          description: result.labels.join(" · ") || undefined,
+        });
+      } else {
+        toast.warning("Uninstall did not complete", {
+          description: result.notes.slice(0, 2).join(" · ") || undefined,
+        });
+      }
+      await get().loadBootstrapStatus(request.tld ?? undefined);
+      return result;
+    } catch (err) {
+      set({ bootstrapBusy: false });
+      toast.error("Bootstrap uninstall failed", { description: errMessage(err) });
+      return null;
     }
   },
 
@@ -1582,23 +1882,455 @@ let pollTimer: number | null = null;
 let pollSubscribers = 0;
 
 /**
+ * True when the status poller should run right now.
+ *
+ * Two gates layered: `document.hidden` catches the whole window being
+ * minimised / hidden, and `appTabActive` keeps us from hitting the backend on
+ * every tick while the user is working in a different app tab (Local Dev
+ * stays mounted under the keep-alive scheme, so this is the only honest signal).
+ * The flag is updated from the Local Dev route — stays `true` by default so
+ * other callers that have not opted into gating still get the old behaviour.
+ */
+let appTabActive = true;
+
+/**
+ * Called by the Local Dev route to tell the poller whether we are the active
+ * app tab. Flipping to `true` fires an immediate tick so the UI does not sit
+ * on a stale snapshot for `POLL_MS` after regaining focus.
+ */
+export function setLocalDevTabActive(active: boolean): void {
+  const wasActive = appTabActive;
+  appTabActive = active;
+  if (!wasActive && active && pollSubscribers > 0) {
+    void useLocalDevStore.getState().refreshStatus();
+  }
+}
+
+/**
  * Acquire the shared status poller. Multiple Local Dev tab instances share one
  * interval; the timer stops when the last subscriber releases.
+ *
+ * The tick is skipped while `document.hidden` is true (window hidden or
+ * minimised) or while the active app tab is not Local Dev — hammering the
+ * supervisor every 2.5s to update a panel nobody is looking at is pure waste.
+ * On visibility regain we fire an immediate tick so the UI is current.
  */
 export function acquireStatusPolling(): () => void {
   pollSubscribers += 1;
+  const tick = () => {
+    // Honest "don't look" signal: no network / supervisor hit while hidden.
+    if (typeof document !== "undefined" && document.hidden) return;
+    if (!appTabActive) return;
+    void useLocalDevStore.getState().refreshStatus();
+  };
+  const onVisibility = () => {
+    if (
+      typeof document !== "undefined" &&
+      !document.hidden &&
+      appTabActive &&
+      pollSubscribers > 0
+    ) {
+      // Immediate catch-up on wake / tab-switch — then the regular interval
+      // takes over.
+      tick();
+    }
+  };
   if (pollTimer === null) {
-    const tick = () => {
-      void useLocalDevStore.getState().refreshStatus();
-    };
     tick();
     pollTimer = window.setInterval(tick, POLL_MS);
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibility);
+    }
   }
   return () => {
     pollSubscribers = Math.max(0, pollSubscribers - 1);
     if (pollSubscribers === 0 && pollTimer !== null) {
       window.clearInterval(pollTimer);
       pollTimer = null;
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibility);
+      }
     }
   };
+}
+
+// ── Open-Doctor emitter ─────────────────────────────────────────────
+
+/** Pending flag — see `openDoctorEmitter`. */
+let pendingOpenDoctor = false;
+
+/**
+ * Lightweight pub/sub so a toast action (e.g. "Open Doctor" from
+ * `openSiteUrl`'s DNS gate) can hand control back to the route component
+ * without the store importing a React router.
+ *
+ * Routes call `useLocalDevStore.getState()` sync, but they cannot switch
+ * tab state from a toast click without re-rendering. This emitter is the
+ * seam: the Local Dev route subscribes once and flips its own `tab` state;
+ * the app root also subscribes to open the Local Dev app tab if it does not
+ * yet exist. `consumePendingOpenDoctor()` lets the Local Dev route pick up
+ * the request on its first mount if the emit happened before the subscriber
+ * was wired.
+ */
+export const openDoctorEmitter = (() => {
+  const listeners = new Set<() => void>();
+  return {
+    subscribe(cb: () => void): () => void {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+    emit(): void {
+      // Always record the "please open" intent so a late subscriber (route
+      // mount) can honour it even if no one was listening at emit time.
+      pendingOpenDoctor = true;
+      for (const cb of listeners) {
+        try {
+          cb();
+        } catch (err) {
+          console.error("openDoctorEmitter listener threw", err);
+        }
+      }
+    },
+  };
+})();
+
+/**
+ * Pop the pending "open doctor" flag. Called by the Local Dev route on mount
+ * so that an emit that happened before the route was wired is honoured
+ * exactly once. The flag is one-shot — subsequent calls return `false`.
+ */
+export function consumePendingOpenDoctor(): boolean {
+  const pending = pendingOpenDoctor;
+  pendingOpenDoctor = false;
+  return pending;
+}
+
+// ── Service event subscription (ld://service-* + ld://mariadb-crashed) ─
+
+let eventsUnlisten: UnlistenFn[] | null = null;
+let eventSubscribers = 0;
+/** Backoff — one shared promise so concurrent acquires do not re-subscribe. */
+let eventsSetupPromise: Promise<void> | null = null;
+
+function serviceLabelFor(serviceId: string): string {
+  return serviceLabel(serviceId);
+}
+
+function pushRecentEvent(event: RecentServiceEvent): void {
+  useLocalDevStore.setState((s) => {
+    const next = [event, ...s.recentEvents];
+    if (next.length > MAX_RECENT_EVENTS) next.length = MAX_RECENT_EVENTS;
+    return { recentEvents: next };
+  });
+}
+
+function makeEventId(topic: string, at: string, serviceId: string): string {
+  return `${topic}:${serviceId}:${at}:${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/**
+ * Mirror a service transition into `local_dev_services` (telemetry columns).
+ * Best-effort: failures are logged but never propagate — the UI must not fail
+ * because an audit write did.
+ */
+async function persistTransition(
+  serviceId: string,
+  update: {
+    last_status?: string | null;
+    last_error?: string | null;
+    last_started_at?: string | null;
+  },
+): Promise<void> {
+  try {
+    const kind = mapServiceKind(stripFpmSuffix(serviceId)) ?? mapServiceKind(serviceId);
+    if (!kind) return;
+    const existing = await getServiceByKind(kind);
+    if (!existing) return;
+    await updateService(existing.id, update);
+  } catch (err) {
+    console.error(`persist transition for ${serviceId} failed`, err);
+  }
+}
+
+/** `php-fpm-8.4` → `php_fpm` so `mapServiceKind` matches. */
+function stripFpmSuffix(id: string): string {
+  if (id.startsWith("php-fpm-")) return "php_fpm";
+  return id;
+}
+
+/** Append a row to `local_dev_events`; swallows failures. */
+function logEvent(
+  level: "info" | "warn" | "error" | "debug",
+  serviceId: string | null,
+  message: string,
+): void {
+  dbAddEvent({ service_id: serviceId, level, message }).catch((err) => {
+    console.error("local_dev_events insert failed", err);
+  });
+}
+
+/**
+ * Acquire the Local Dev service-event bus (shared refcount, like
+ * {@link acquireStatusPolling}). First acquire wires `tauri::listen` for every
+ * `ld://` topic the supervisor emits; subsequent acquires simply bump the
+ * subscriber count. The returned function releases the subscription — the
+ * actual `UnlistenFn`s only run when the last subscriber lets go.
+ *
+ * Side effects per event:
+ * * Transitions update `local_dev_services.last_status` /
+ *   `last_error` / `last_started_at` (non-blocking).
+ * * Every event is appended to `local_dev_events` (DB audit).
+ * * Crashes toast; MariaDB crashes additionally OS-notify.
+ * * Rate-limit events toast and persist as warnings.
+ */
+export function acquireServiceEvents(): () => void {
+  eventSubscribers += 1;
+  if (eventSubscribers === 1 && eventsUnlisten === null && eventsSetupPromise === null) {
+    eventsSetupPromise = (async () => {
+      const unlistens: UnlistenFn[] = [];
+      try {
+        unlistens.push(
+          await listen<ServiceStatusEvent>(LD_EVENT.serviceStatus, (e) => {
+            handleStatusEvent(e.payload);
+          }),
+        );
+        unlistens.push(
+          await listen<ServiceCrashedEvent>(LD_EVENT.serviceCrashed, (e) => {
+            handleCrashedEvent(e.payload);
+          }),
+        );
+        unlistens.push(
+          await listen<ServiceRestartedEvent>(LD_EVENT.serviceRestarted, (e) => {
+            handleRestartedEvent(e.payload);
+          }),
+        );
+        unlistens.push(
+          await listen<ServiceRestartFailedEvent>(
+            LD_EVENT.serviceRestartFailed,
+            (e) => {
+              handleRestartFailedEvent(e.payload);
+            },
+          ),
+        );
+        unlistens.push(
+          await listen<ServiceRateLimitedEvent>(LD_EVENT.serviceRateLimited, (e) => {
+            handleRateLimitedEvent(e.payload);
+          }),
+        );
+        unlistens.push(
+          await listen<MariaDbCrashedEvent>(LD_EVENT.mariadbCrashed, (e) => {
+            handleMariaDbCrashedEvent(e.payload);
+          }),
+        );
+        eventsUnlisten = unlistens;
+      } catch (err) {
+        console.error("acquireServiceEvents setup failed", err);
+        for (const u of unlistens) {
+          try {
+            u();
+          } catch {
+            /* ignore */
+          }
+        }
+        eventsUnlisten = null;
+      }
+    })();
+  }
+  return () => {
+    eventSubscribers = Math.max(0, eventSubscribers - 1);
+    if (eventSubscribers === 0) {
+      // Tear down only after any in-flight setup resolves — otherwise we leak
+      // handles because `eventsUnlisten` is still null when we tried to clean.
+      const teardown = async () => {
+        if (eventsSetupPromise) {
+          try {
+            await eventsSetupPromise;
+          } catch {
+            /* already logged */
+          }
+          eventsSetupPromise = null;
+        }
+        if (eventsUnlisten) {
+          for (const u of eventsUnlisten) {
+            try {
+              u();
+            } catch (err) {
+              console.error("ld:// unlisten failed", err);
+            }
+          }
+          eventsUnlisten = null;
+        }
+      };
+      void teardown();
+    }
+  };
+}
+
+function handleStatusEvent(payload: ServiceStatusEvent): void {
+  const label = serviceLabelFor(payload.service_id);
+  const message = payload.message || `${payload.from} → ${payload.to}`;
+  pushRecentEvent({
+    id: makeEventId("status", payload.at, payload.service_id),
+    topic: "serviceStatus",
+    service_id: payload.service_id,
+    level: payload.level,
+    message,
+    at: payload.at,
+  });
+  logEvent(payload.level, payload.service_id, `${label}: ${message}`);
+  // Transitions update the DB mirror. `last_started_at` only on the entry
+  // into `running` so repeated running→running (no-op) events don't rewrite it.
+  const update: {
+    last_status?: string | null;
+    last_error?: string | null;
+    last_started_at?: string | null;
+  } = {
+    last_status: payload.to,
+  };
+  if (payload.to === "running") {
+    update.last_started_at = payload.at;
+    update.last_error = null;
+  } else if (payload.to === "error" || payload.to === "unhealthy") {
+    update.last_error = payload.reason || message;
+  } else if (payload.to === "stopped") {
+    update.last_error = null;
+  }
+  void persistTransition(payload.service_id, update);
+}
+
+function handleCrashedEvent(payload: ServiceCrashedEvent): void {
+  const label = serviceLabelFor(payload.service_id);
+  const title = `${label} crashed`;
+  pushRecentEvent({
+    id: makeEventId("crashed", payload.at, payload.service_id),
+    topic: "serviceCrashed",
+    service_id: payload.service_id,
+    level: "error",
+    message: payload.message || payload.reason || "crashed",
+    at: payload.at,
+  });
+  logEvent("error", payload.service_id, `${label} crashed: ${payload.reason || payload.message}`);
+  toast.error(title, {
+    description: payload.reason || "service exited unexpectedly",
+    duration: 10_000,
+    action: {
+      label: "View log",
+      onClick: () => {
+        useLocalDevStore.getState().revealServiceLog(payload.service_id);
+      },
+    },
+  });
+  void persistTransition(payload.service_id, {
+    last_status: payload.to,
+    last_error: payload.reason || payload.message,
+  });
+}
+
+function handleRestartedEvent(payload: ServiceRestartedEvent): void {
+  const label = serviceLabelFor(payload.service_id);
+  const message = payload.message || `restarted`;
+  pushRecentEvent({
+    id: makeEventId("restarted", payload.at, payload.service_id),
+    topic: "serviceRestarted",
+    service_id: payload.service_id,
+    level: payload.level,
+    message,
+    at: payload.at,
+  });
+  logEvent(payload.level, payload.service_id, `${label} auto-restart: ${message}`);
+  if (payload.status === "running") {
+    toast.success(`${label} auto-restarted`, {
+      description: message,
+      duration: 5000,
+    });
+    void persistTransition(payload.service_id, {
+      last_status: "running",
+      last_started_at: payload.at,
+      last_error: null,
+    });
+  }
+}
+
+function handleRestartFailedEvent(payload: ServiceRestartFailedEvent): void {
+  const label = serviceLabelFor(payload.service_id);
+  pushRecentEvent({
+    id: makeEventId("restart_failed", payload.at, payload.service_id),
+    topic: "serviceRestartFailed",
+    service_id: payload.service_id,
+    level: "error",
+    message: payload.message,
+    at: payload.at,
+  });
+  logEvent("error", payload.service_id, `${label} auto-restart failed: ${payload.message}`);
+  toast.error(`${label} auto-restart failed`, {
+    description: payload.message,
+    duration: 10_000,
+    action: {
+      label: "View log",
+      onClick: () => {
+        useLocalDevStore.getState().revealServiceLog(payload.service_id);
+      },
+    },
+  });
+}
+
+function handleRateLimitedEvent(payload: ServiceRateLimitedEvent): void {
+  const label = serviceLabelFor(payload.service_id);
+  pushRecentEvent({
+    id: makeEventId("rate_limited", payload.at, payload.service_id),
+    topic: "serviceRateLimited",
+    service_id: payload.service_id,
+    level: "warn",
+    message: payload.message,
+    at: payload.at,
+  });
+  logEvent("warn", payload.service_id, `${label} rate limited: ${payload.message}`);
+  toast.warning(`${label} is flapping`, {
+    description: payload.message,
+    duration: 8000,
+  });
+}
+
+function handleMariaDbCrashedEvent(payload: MariaDbCrashedEvent): void {
+  const label = serviceLabelFor(payload.service_id);
+  pushRecentEvent({
+    id: makeEventId("mariadb_crashed", payload.at, payload.service_id),
+    topic: "mariadbCrashed",
+    service_id: payload.service_id,
+    level: "error",
+    message: payload.message,
+    at: payload.at,
+  });
+  logEvent("error", payload.service_id, `${label}: ${payload.message}`);
+  // Separate toast so the user still sees it when the app is foregrounded.
+  toast.error(payload.title || `${label} stopped unexpectedly`, {
+    description: payload.message,
+    duration: 15_000,
+    action: {
+      label: "View log",
+      onClick: () => {
+        useLocalDevStore.getState().revealServiceLog(payload.service_id);
+      },
+    },
+  });
+  // The Rust side explicitly leaves OS notifications to the frontend
+  // (`useNotifications` is the authoritative surface for sendNotification).
+  // MariaDB crash + user not focused = exactly the case this is for.
+  try {
+    sendNotification({
+      title: payload.title || "MariaDB crashed",
+      body: payload.message,
+    });
+  } catch (err) {
+    console.error("sendNotification failed", err);
+  }
+}
+
+/** Public: wipe `local_dev_events` on disk. Called from UI "Clear" buttons. */
+export async function clearPersistedEvents(serviceId?: string): Promise<void> {
+  try {
+    await dbClearEvents(serviceId);
+  } catch (err) {
+    console.error("clearEvents failed", err);
+  }
 }

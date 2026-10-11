@@ -17,6 +17,10 @@ import { register, unregisterAll } from "@tauri-apps/plugin-global-shortcut";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useExpiryCheck } from "@/hooks/useExpiryCheck";
 import { useReminderChecker } from "@/hooks/useReminderChecker";
+import { acquireServiceEvents, openDoctorEmitter } from "@/stores/localDevStore";
+import { useSettingsStore } from "@/stores/settingsStore";
+import { isMacOS } from "@/lib/platform";
+import { LOCAL_DEV_ENABLED_SETTING_KEY } from "@/types/localDev";
 
 // Tab types rendered by the router's Outlet (e.g. project detail with nested routes)
 const ROUTER_TAB_TYPES = new Set(["project"]);
@@ -47,6 +51,56 @@ function RootComponent() {
 
   // Check reminders every 60s and send OS notifications
   useReminderChecker();
+
+  // Local Dev — subscribe to supervisor events globally when the feature is
+  // enabled on macOS. The subscription is refcounted inside the store, so
+  // additional per-route acquires are safe. Globally mounted so a MariaDB
+  // crash toast / OS notification fires even when the user is on another
+  // app tab. Non-macOS skips entirely (supervisor is a no-op there).
+  const localDevEventsEnabled = useSettingsStore(
+    (s) =>
+      isMacOS() &&
+      (s.settings[LOCAL_DEV_ENABLED_SETTING_KEY] ?? "true") !== "false",
+  );
+  useEffect(() => {
+    if (!localDevEventsEnabled) return;
+    const release = acquireServiceEvents();
+    return () => {
+      try {
+        release();
+      } catch (err) {
+        console.error("release service events failed", err);
+      }
+    };
+  }, [localDevEventsEnabled]);
+
+  // Local Dev — route-level handler for `openDoctorEmitter`. If the Local Dev
+  // tab is already mounted (tab keep-alive), its own subscriber flips to the
+  // Doctor sub-tab. If no Local Dev tab exists yet (user triggered DNS
+  // unhealthy from a project panel without ever visiting Local Dev), we open
+  // one here first and the route's mount effect picks up the pending request
+  // via `consumePendingOpenDoctor()`.
+  useEffect(() => {
+    if (!isMacOS()) return;
+    const unsub = openDoctorEmitter.subscribe(() => {
+      const { tabs, openTab, setActiveTab, activeTabId } = useAppTabStore.getState();
+      const existing = tabs.find((t) => t.type === "local-dev");
+      if (existing) {
+        if (existing.id !== activeTabId) setActiveTab(existing.id);
+      } else {
+        openTab({
+          type: "local-dev",
+          title: "Local Dev",
+          icon: "HardDrive",
+          route: "/local-dev",
+        });
+      }
+      navigate({ to: "/local-dev" });
+    });
+    return () => {
+      unsub();
+    };
+  }, [navigate]);
 
   // Set overlay titlebar on macOS main window so traffic lights sit inside content
   useEffect(() => {

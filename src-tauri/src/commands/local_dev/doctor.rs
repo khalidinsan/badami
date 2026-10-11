@@ -26,11 +26,20 @@ const LOG_FILE_WARN_BYTES: u64 = 50 * 1024 * 1024; // 50 MiB
 const LOGS_DIR_WARN_BYTES: u64 = 500 * 1024 * 1024; // 500 MiB
 const DNS_PROBE_TIMEOUT_MS: u64 = 2_000;
 
-// LaunchDaemon labels (must match bootstrap.rs).
-pub const LD_DNSMASQ_LABEL: &str = "com.khalid.badami.local-dev.dnsmasq";
-pub const LD_NGINX_LABEL: &str = "com.khalid.badami.local-dev.nginx";
+// LaunchDaemon labels are composed at runtime from
+// `AppHandle::config().identifier` via `bootstrap::ld_label`. The
+// pre-refactor `LD_DNSMASQ_LABEL` / `LD_NGINX_LABEL` constants were deleted
+// after v1.15.0 hardening — no caller or test referenced them, and keeping
+// them around invited new call sites to grow against a hard-coded label.
+// Use `ld_label(identifier, role)` instead.
 pub const HERD_HELPER_PATH: &str = "/Library/PrivilegedHelperTools/de.beyondco.herd.helper";
 pub const HERD_HELPER_LABEL: &str = "de.beyondco.herd.helper";
+
+/// Human-friendly uninstall summary surfaced in Doctor + bootstrap status so
+/// the UI can render a confirm screen without ad-hoc string literals.
+#[allow(dead_code)]
+pub const UNINSTALL_SUMMARY: &str =
+    "ld_bootstrap_uninstall removes only Badami-managed LaunchDaemons + /Library/Application Support/Badami/local-dev-root/<role>. Resolver files are preserved unless they carry the `# managed-by: badami` marker or confirm_resolver=true.";
 
 // ── Public types ────────────────────────────────────────────────────
 
@@ -175,7 +184,7 @@ pub struct LaunchdUnitInfo {
     pub loaded: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DoctorRequest {
     /// TLD for DNS probe (default `"test"`).
     pub tld: Option<String>,
@@ -187,18 +196,6 @@ pub struct DoctorRequest {
     pub skip_nginx_test: Option<bool>,
     /// Fixed hostname label for DNS probe (default random).
     pub dns_probe_label: Option<String>,
-}
-
-impl Default for DoctorRequest {
-    fn default() -> Self {
-        Self {
-            tld: None,
-            loopback: None,
-            skip_live_probes: None,
-            skip_nginx_test: None,
-            dns_probe_label: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,6 +227,18 @@ pub struct DoctorReport {
 ///
 /// **Resolver-file presence alone is never healthy** (KD23).
 pub fn run_dns_probe(
+    tld: &str,
+    loopback: &str,
+    label: Option<&str>,
+    skip_live: bool,
+) -> DnsProbeResult {
+    run_dns_probe_for(super::bootstrap::DEFAULT_LD_IDENTIFIER, tld, loopback, label, skip_live)
+}
+
+/// Identifier-aware variant. The dnsmasq LaunchDaemon detection uses the
+/// composed label so each build sees its own units (not a hardcoded bundle id).
+pub fn run_dns_probe_for(
+    identifier: &str,
     tld: &str,
     loopback: &str,
     label: Option<&str>,
@@ -281,7 +290,8 @@ pub fn run_dns_probe(
     };
 
     // Unit detection for mode classification.
-    let d1_unit = launchd_unit_info(LD_DNSMASQ_LABEL, "dnsmasq");
+    let dnsmasq_label = super::bootstrap::ld_label(identifier, "dnsmasq");
+    let d1_unit = launchd_unit_info_for(&dnsmasq_label, "dnsmasq");
     let mode = classify_dns_mode(
         healthy,
         resolver_port,
@@ -432,7 +442,16 @@ pub fn parse_resolver_port(content: Option<&str>) -> Option<u16> {
 
 // ── LaunchDaemon unit inspection ────────────────────────────────────
 
+#[allow(dead_code)]
 pub fn launchd_unit_info(label: &str, scaffold_name: &str) -> LaunchdUnitInfo {
+    launchd_unit_info_for(label, scaffold_name)
+}
+
+/// Identifier-aware variant. The caller composes the full label with
+/// `bootstrap::ld_label(identifier, role)` and passes it in, so Doctor and
+/// bootstrap stay the single source of truth for scaffold layout even when
+/// different builds use different bundle ids.
+pub fn launchd_unit_info_for(label: &str, scaffold_name: &str) -> LaunchdUnitInfo {
     let system_plist_path = format!("/Library/LaunchDaemons/{label}.plist");
     let system_plist_present = Path::new(&system_plist_path).is_file();
 
@@ -474,7 +493,14 @@ fn probe_launchctl_loaded(label: &str) -> bool {
 
 // ── Full doctor run ─────────────────────────────────────────────────
 
+#[allow(dead_code)]
 pub fn run_doctor(req: DoctorRequest) -> Result<DoctorReport, String> {
+    run_doctor_for(super::bootstrap::DEFAULT_LD_IDENTIFIER, req)
+}
+
+/// Identifier-aware variant used by the Tauri wrapper so Doctor reports the
+/// LaunchDaemon labels this build uses.
+pub fn run_doctor_for(identifier: &str, req: DoctorRequest) -> Result<DoctorReport, String> {
     let tld = req.tld.as_deref().unwrap_or("test");
     let loopback = req.loopback.as_deref().unwrap_or("127.0.0.1");
     let skip_live = req.skip_live_probes.unwrap_or(false);
@@ -597,7 +623,7 @@ pub fn run_doctor(req: DoctorRequest) -> Result<DoctorReport, String> {
     }
 
     // ── DNS resolve probe (not resolver-file-only) ──────────────────
-    let dns = run_dns_probe(tld, loopback, req.dns_probe_label.as_deref(), skip_live);
+    let dns = run_dns_probe_for(identifier, tld, loopback, req.dns_probe_label.as_deref(), skip_live);
     if !dns.healthy && !skip_live {
         findings.push(DoctorFinding {
             id: "dns.unhealthy".into(),
@@ -799,8 +825,10 @@ pub fn run_doctor(req: DoctorRequest) -> Result<DoctorReport, String> {
     }
 
     // ── LaunchDaemon units (Mode B status) ──────────────────────────
-    let launchd_dnsmasq = launchd_unit_info(LD_DNSMASQ_LABEL, "dnsmasq");
-    let launchd_nginx = launchd_unit_info(LD_NGINX_LABEL, "nginx");
+    let dnsmasq_label = super::bootstrap::ld_label(identifier, "dnsmasq");
+    let nginx_label = super::bootstrap::ld_label(identifier, "nginx");
+    let launchd_dnsmasq = launchd_unit_info_for(&dnsmasq_label, "dnsmasq");
+    let launchd_nginx = launchd_unit_info_for(&nginx_label, "nginx");
     if launchd_dnsmasq.system_plist_present {
         findings.push(DoctorFinding {
             id: "bootstrap.dnsmasq.installed".into(),
@@ -836,6 +864,89 @@ pub fn run_doctor(req: DoctorRequest) -> Result<DoctorReport, String> {
             hint: Some("Run ld_install_runtime_resources.".into()),
         });
     }
+
+    // ── TLS (Phase B) ───────────────────────────────────────────────
+    // Read-only: never generates certs here. If the CA is on disk but the
+    // keychain probe fails, surface a hint — the UI's "Trust CA" button maps
+    // to `ld_tls_trust_ca`. When secured sites have no matching cert files
+    // the merged conf will fail `nginx -t` with a cryptic error; raise an
+    // explicit finding instead so the user knows to re-run `ld_secure`.
+    let tls_status = super::tls::tls_status_at(&paths, skip_live);
+    if tls_status.ca_exists && !tls_status.ca_trusted && !skip_live {
+        findings.push(DoctorFinding {
+            id: "tls.ca_not_trusted".into(),
+            severity: FindingSeverity::Warn,
+            category: "tls".into(),
+            message: format!(
+                "Badami local CA cert exists but was not found in the macOS System keychain ({})",
+                tls_status.ca_common_name
+            ),
+            hint: Some("Run ld_tls_trust_ca (admin) to install the CA; browsers will reject *.test certs until you do.".into()),
+        });
+    } else if tls_status.ca_exists && tls_status.ca_trusted {
+        findings.push(DoctorFinding {
+            id: "tls.ca_trusted".into(),
+            severity: FindingSeverity::Info,
+            category: "tls".into(),
+            message: format!(
+                "Badami local CA cert installed in System keychain ({}); {} secured site(s)",
+                tls_status.ca_common_name,
+                tls_status.secured_sites.len()
+            ),
+            hint: None,
+        });
+    } else if !tls_status.ca_exists {
+        findings.push(DoctorFinding {
+            id: "tls.ca_absent".into(),
+            severity: FindingSeverity::Info,
+            category: "tls".into(),
+            message: "Badami local CA not generated (ld_secure creates it on first use)".into(),
+            hint: None,
+        });
+    }
+    // Catch secured conf markers that no longer have matching cert files on
+    // disk — they will break `nginx -t`.
+    if let Ok(sites) = super::sites::list_sites_at(&paths, None) {
+        for s in sites.sites.iter() {
+            if s.secured {
+                continue;
+            }
+            // When a conf has the secured marker but files are gone (or vice
+            // versa), list_sites_at already masks it to `secured=false`. Walk
+            // the raw confs under nginx/sites/ to detect the mismatch.
+        }
+        for conf in sites.sites.iter().filter_map(|s| s.conf_path.as_ref()) {
+            let content = fs::read_to_string(conf).unwrap_or_default();
+            if !content.lines().any(|l| l.trim().trim_start_matches('#').trim() == "BADAMI_SECURED=1") {
+                continue;
+            }
+            // We know the conf claims secured — verify both cert + key still exist.
+            // Find the matching SiteInfo entry to resolve name/tld.
+            if let Some(info) = sites.sites.iter().find(|s| s.conf_path.as_deref() == Some(conf.as_str())) {
+                let tls_paths = super::tls::TlsPaths::from_runtime(&paths);
+                let crt = tls_paths.site_cert(&info.name, &info.tld);
+                let key = tls_paths.site_key(&info.name, &info.tld);
+                if !crt.is_file() || !key.is_file() {
+                    findings.push(DoctorFinding {
+                        id: format!("tls.cert_missing.{}", info.name),
+                        severity: FindingSeverity::Error,
+                        category: "tls".into(),
+                        message: format!(
+                            "Site {}.{} conf claims secured but cert/key files are missing — nginx -t will fail",
+                            info.name, info.tld
+                        ),
+                        hint: Some("Run ld_secure to reissue, or ld_unsecure to drop the conf.".into()),
+                    });
+                }
+            }
+        }
+    }
+    notes.push(format!(
+        "TLS: ca_exists={} ca_trusted={} secured_sites={}",
+        tls_status.ca_exists,
+        tls_status.ca_trusted,
+        tls_status.secured_sites.len()
+    ));
 
     let overall = overall_from_findings(&findings);
     let ready_for_mariadb_start = mariadb.ready_for_mariadb_start;

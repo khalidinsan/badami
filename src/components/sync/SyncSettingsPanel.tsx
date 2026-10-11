@@ -30,6 +30,8 @@ import { TursoDatabaseCreator } from "./TursoDatabaseCreator";
 import { invoke } from "@tauri-apps/api/core";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import { HardDrive } from "lucide-react";
+import { isMacOS } from "@/lib/platform";
 
 dayjs.extend(relativeTime);
 
@@ -188,6 +190,22 @@ export function SyncSettingsPanel() {
         </div>
         {statusIndicator()}
       </div>
+
+      {/* macOS Local Dev settings are intentionally excluded from the sync
+          replica. Device-specific paths (nginx binary, PHP-FPM socket, Herd
+          MariaDB datadir) would create cross-device conflicts; the plan calls
+          out the full-copy filter in `plan-local-dev.md § sync`. Say so here
+          so users don't expect to find Local Dev state on a second machine. */}
+      {isMacOS() && (
+        <div className="flex items-start gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-xs text-sky-900 dark:text-sky-200">
+          <HardDrive className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>
+            Local Dev configuration is <strong>device-specific</strong> and is not synced.
+            Binary paths, nginx / PHP-FPM / MariaDB settings, sites, parks and TLS state stay
+            on this machine.
+          </p>
+        </div>
+      )}
 
       {syncEnabled && lastSyncedAt && (
         <p className="text-xs text-muted-foreground">

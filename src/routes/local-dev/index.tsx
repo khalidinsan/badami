@@ -16,7 +16,14 @@ import { SitesPanel } from "@/components/local-dev/SitesPanel";
 import { ImportHerdWizard } from "@/components/local-dev/ImportHerdWizard";
 import { DoctorPanel } from "@/components/local-dev/DoctorPanel";
 import { BinarySettings } from "@/components/local-dev/BinarySettings";
-import { acquireStatusPolling, useLocalDevStore } from "@/stores/localDevStore";
+import {
+  acquireServiceEvents,
+  acquireStatusPolling,
+  consumePendingOpenDoctor,
+  openDoctorEmitter,
+  setLocalDevTabActive,
+  useLocalDevStore,
+} from "@/stores/localDevStore";
 import { useAppTabStore } from "@/stores/appTabStore";
 import { isMacOS } from "@/lib/platform";
 
@@ -46,6 +53,10 @@ export function LocalDevPage() {
 
   useEffect(() => {
     if (!mac || !localDevActive) return;
+    // Tell the shared poller we are the active app tab so it stops skipping.
+    // Returned flag is per-mount: unmount sets back to false and the poller
+    // pauses until the next activation.
+    setLocalDevTabActive(true);
     void discover();
     void loadSettings();
     // Sites feed the required-PHP-version set behind the honest service counts,
@@ -57,7 +68,17 @@ export function LocalDevPage() {
     // only proof that resolution works.
     void loadBootstrapStatus();
     void probeDns();
-    return acquireStatusPolling();
+    const releasePolling = acquireStatusPolling();
+    // Service event bus is already acquired at the app root (so crashes toast
+    // when the user is on another app tab too). Acquire again here only to
+    // keep the subscription alive when the root count drops to zero during
+    // sync-settings or feature-flag changes — refcounted, so safe.
+    const releaseEvents = acquireServiceEvents();
+    return () => {
+      setLocalDevTabActive(false);
+      releasePolling();
+      releaseEvents();
+    };
   }, [
     mac,
     localDevActive,
@@ -71,6 +92,23 @@ export function LocalDevPage() {
 
   const openDoctor = useCallback(() => setTab("doctor"), []);
   const openBootstrap = useCallback(() => setTab("settings"), []);
+
+  // Toast actions emit via `openDoctorEmitter` so the store never imports a
+  // router — subscribe here and switch tab in response. One listener per
+  // route mount; cleaned up on unmount. Also honour any pending request that
+  // fired before the route was mounted (user clicked "Open Doctor" from a
+  // project panel without ever having opened Local Dev before).
+  useEffect(() => {
+    if (consumePendingOpenDoctor()) {
+      setTab("doctor");
+    }
+    const unsub = openDoctorEmitter.subscribe(() => {
+      setTab("doctor");
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
   /**
    * Doctor's "View nginx log" — select the service and expand the log pane.
    * Asking for a log is explicit, so overriding the collapsed default is right.

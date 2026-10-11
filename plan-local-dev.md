@@ -5,8 +5,8 @@
 | **Title** | Badami Local Dev (Laravel Herd replacement) |
 | **Author** | TBD |
 | **Date** | 2026-07-22 |
-| **Status** | Implemented MVP Phase A (rev 3 design; docs PR 11 / v1.13.0) |
-| **Target release** | v1.13.0 (MVP Phase A) |
+| **Status** | Implemented Phase B (rev 3 design; v1.15.0 — TLS, live logs, event stream, `ld_bootstrap_uninstall`, root-owned LaunchDaemon staging) |
+| **Target release** | v1.15.0 (Phase B) |
 | **Platform (MVP)** | macOS (Apple Silicon primary; Intel binary selection supported) |
 | **Related modules** | Database Client, Projects, Servers (explicit non-overlap) |
 
@@ -847,6 +847,47 @@ Optional: connect UDP/TCP to configured DNS port. Fail closed for “Open site.�
 | **MVP must — hostname URL** | `http://office_sumedang.test:8080` works after DNS is healthy via **D0 adopt or D1 B-lite or D2**. Doctor must report DNS healthy before claiming this. First-run import on this machine should detect D0 if Herd dnsmasq still answers; otherwise prompt B-lite. |
 | **MVP should** | Full Mode B portless `http://office_sumedang.test`. |
 
+### Security: root-owned LaunchDaemon staging (v1.15.0)
+
+LaunchDaemon units are **privileged** (run as `root`). To avoid writing arbitrary user-controlled plists directly under `/Library/LaunchDaemons/` — and, more insidiously, to stop a root-loaded nginx master from re-reading the user-writable `nginx.conf` whose `include "{nginx_dir}/sites/*.conf"` or `ssl_certificate "…"` directive points back into the user tree — v1.15.0 adopts a **root-variant render + hash-verified staging** flow:
+
+| Stage | Path (user data dir) | Owner | Writable by | Purpose |
+| --- | --- | --- | --- | --- |
+| **Scaffold (draft)** | `local-dev/launchd/{role}.plist` | current user | current user | Human-reviewable preview rendered from fixed argv + validated binary paths (`ld_bootstrap_install { dry_run: true }`). |
+| **Pending (per-install)** | `local-dev/launchd/pending-<pid>-<nanos>/` | current user | current user | Root variants of every config file + the plist + the discovered binary, rendered fresh per install. Deleted best-effort after osascript returns. |
+| **Installed** | `/Library/Application Support/Badami/local-dev-root/<role>/` + `/Library/LaunchDaemons/{label}.plist` | **`root:wheel`** | **root only** | Everything the LaunchDaemon reads — config, binary, certs. |
+
+The privileged install (single `osascript -e 'do shell script …with administrator privileges'` prompt) runs this sequence inside `set -euo pipefail`:
+
+1. **Render root variants** (user-side, before osascript). Rust rewrites every absolute `{{NGINX_DIR}}` / `{{LOGS_DIR}}` / `{{PIDS_DIR}}` reference inside `nginx.conf`, `badami.conf`, `sites/*.conf`, `mime.types`, and `fastcgi_params` to point under `local-dev-root/<role>/`. Site confs that reference TLS certs under `config/valet/Certificates/` get the cert + key copied into `pending/.../nginx/certs/` and the directive rewritten to the root-staged path. Dnsmasq `pid-file=` / `log-facility=` rewrite the same way.
+2. **Validate**. Each rewritten file passes `validate_nginx_root_variant` / `validate_dnsmasq_root_variant`:
+   * The nginx validator **tokenizes** the config (quote-aware, comment-stripping, `;`/`{`/`}` statement splitter) and inspects every statement — not just the first directive on a line. This closes four bypasses the previous line-based scanner missed: `include "/safe"; load_module …;` on one line, multi-line `include\n  /tmp/evil.conf;`, and chained `include "/safe"; ssl_certificate "/tmp/evil.pem";` / `include "/safe"; include "/tmp/evil.conf";`.
+   * Every absolute path on `include`, `ssl_certificate`, `ssl_certificate_key`, `ssl_trusted_certificate`, `ssl_client_certificate`, `ssl_dhparam`, `ssl_password_file`, `ssl_crl`, `ssl_stapling_file`, `ssl_session_ticket_key`, `auth_basic_user_file`, `pid`, `error_log`, `access_log`, `lock_file`, `working_directory`, `geoip*` (nginx) and `pid-file`, `log-facility` (dnsmasq) must sit under `ROOT_SAFE_PREFIXES`. `..` path components are rejected on both absolute and relative paths.
+   * `fastcgi_pass unix:…`, `fastcgi_param SCRIPT_FILENAME`, `fastcgi_index`, `fastcgi_param HERD_HOME`, `rewrite … last;`, `error_page`, `root`, `alias`, `try_files`, `return`, `server_name`, `listen`, and `location` args keep their user paths — those are read by the user-side php-fpm process, consumed as HTTP routing data by nginx, or are block openers that never load code off disk.
+   * Any directive outside the allowlist with an absolute-path arg is rejected conservatively — a future `include`-shaped directive we forgot to list still fails closed.
+   * Forbidden nginx directives (`load_module`, `env`, `ssl_engine`, `perl*`, `js_*`, `lua*`, any directive whose name contains `by_lua`, any directive starting with `njs`, `user root`) → `Err`.
+   * Forbidden dnsmasq keys (`dhcp-script`, `conf-dir`, `conf-file`, `servers-file`, `addn-hosts`, `dhcp-hostsfile`, `dhcp-optsfile`, `script-arp`, `dhcp-luascript`, `tftp-*`, `user=root`) + anything outside the dnsmasq **allowlist** (`listen-address`, `bind-interfaces`, `port`, `no-resolv`, `no-hosts`, `address`, `pid-file`, `log-facility`, `local`, `domain-needed`, `bogus-priv`, `cache-size`, `log-queries`, `server`) + any line ending with `\` (continuation smuggling) → `Err`.
+   * Recursive: every file staged by `render_nginx_root_variants` (nginx.conf, badami.conf, mime.types, fastcgi_params, sites/*.conf) is passed through `validate_nginx_root_variant` individually, so each potential `include` target is itself validated.
+3. **Hash in Rust**. SHA-256 of every pending file (via `sha2 =0.10.9`, already in `Cargo.lock`) and the plist body is computed in-process and embedded into the osascript body — never read back from a file as root.
+4. **Install root-owned**. For each file: `install -o root -g wheel -m MODE pending/<path> /Library/.../local-dev-root/<role>/<path>` (ensures parent dir with `install -d`). Modes: `755` for binaries, `600` for `*.key`, `644` otherwise. Plist copies into `/Library/LaunchDaemons/{label}.plist`.
+5. **Verify hashes under root**. `/usr/bin/shasum -a 256 -- /Library/.../file` must equal the Rust-computed digest. Any mismatch → `rm -rf /Library/.../local-dev-root/<role> /Library/LaunchDaemons/{label}.plist` and `exit 1`. launchctl is **never reached** on mismatch.
+6. **Launchctl**. `launchctl bootout system/{label} 2>/dev/null || true` → `launchctl bootstrap system <plist>` → `launchctl enable system/{label}` → `launchctl kickstart -k system/{label} 2>/dev/null || true`. The `|| true` wrappers survive both first-install (unit not loaded yet, so `bootout` fails) and uninstall of half-installed state.
+7. **Cleanup**. User-side best-effort `fs::remove_dir_all(pending_dir)` after osascript returns.
+
+**Labels** must match `^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$` and start with the Tauri app bundle identifier (`com.khalid.badami.local-dev.*`); `validate_launchd_label` applies at every call site (`ld_label`, `bootstrap_install`, `bootstrap_uninstall`, `resync`). Rust rejects any label or identifier with shell meta-characters or whitespace before any downstream `system/{label}` interpolation. Argv[0] in the plist must sit under `ROOT_SAFE_PREFIXES`; the Rust validator rejects user-writable paths before scaffolding.
+
+**Resync** (`ld_bootstrap_install { package: "resync" }`): re-renders root variants of the current user configs into a fresh pending dir, re-hashes, installs → verifies → `launchctl kickstart -k … 2>/dev/null || true`. One admin prompt. The unit need not be loaded for resync to succeed (the `|| true` makes it a no-op in that case).
+
+**Uninstall** (`ld_bootstrap_uninstall`, see Appendix B v1.15.0): `launchctl bootout system/{label} 2>/dev/null || true` (tolerant of unloaded) → `rm -f -- {plist}` → `rm -rf -- {staging}`. Resolver file removal is **opt-in** (requires `confirm_resolver: true` AND the `# managed-by: badami` marker in the resolver file). **CA trust removal is NOT automatic** — Badami leaves `BadamiLocalDevCA.crt` in the System keychain; run `security remove-trusted-cert /Library/Keychains/System.keychain -t /Library/Application\ Support/Badami/local-dev-root/tls/BadamiLocalDevCA.crt` manually (or use Keychain Access) to revoke.
+
+**Resolver install (D2 high-port):** the privileged shell writes `/etc/resolver/<tld>` from **in-process Badami content** (via `printf '%s' <content> > /etc/resolver/<tld>.badami-tmp && chmod 644 … && mv -f … /etc/resolver/<tld>`), not from a user-writable draft file. The content is argv-escaped in Rust and carries the `# managed-by: badami` marker. A user process cannot race between the osascript auth prompt and the kernel `exec` to swap in a different resolver file.
+
+**Trust CA install:** `security add-trusted-cert` reads the certificate off disk as root. Badami installs the user-generated CA cert into the root-owned staging path `/Library/Application Support/Badami/local-dev-root/tls/BadamiLocalDevCA.crt` with `install -o root -g wheel -m 0644` **and** shasum-verifies it against a Rust-computed SHA-256 **before** calling `security add-trusted-cert <root_copy>`. Mismatch → `rm -f` the planted copy + `exit 1` — the keychain never sees a tampered cert. Preview-mode (`ld_tls_trust_ca { run: false }`) returns the full argv sequence (install → shasum verify → security) so the UI can show the exact root-owned path the keychain will receive.
+
+**Ancestor-chain reclaim (TOCTOU):** `/Library/Application Support/` is `root:admin 775`, so any admin-group user process can pre-create `/Library/Application Support/Badami` or `.../local-dev-root` user-owned and swap a staged subdir between the shasum verify and the subsequent `launchctl bootstrap` / `security add-trusted-cert` exec. Every privileged bootstrap sequence (install, resync, trust CA, uninstall) now **prepends a reclaim prelude** (`reclaim_ancestor_chain_argv`) that, for each ancestor in parent → child order, rejects symlinks + non-dirs (`exit 1`) and reclaims the dir to `root:wheel 755` via `install -d` + explicit `chown root:wheel` + `chmod 755` (no `-R` on ancestors). The role leaf (`.../local-dev-root/<role>`) is then symlink-checked, `rm -rf`-ed, and re-created root-owned so every subsequent `install -o root` step lands in a known-good tree. Uninstall additionally guards its `rm -rf` with a symlink reject (`safe_rm_rf_dir_argv`) so a race between reclaim and rm cannot follow a freshly-planted symlink.
+
+**Hash-from-source-bytes:** every pending-file SHA-256 is now computed from the **source bytes Rust observed in-memory** (binaries, certs, and rendered configs alike) rather than re-reading the pending copy after `fs::copy`. Previously `build_unit_pending_files` and the cert copy loop used `fs::copy(source, pending)` + `fs::read(pending)` for hashing, which left a brief window where a user process could overwrite the pending file after the copy and before the hash, producing a digest that no longer described what shasum would see at install time. The new `let bytes = fs::read(source)?; fs::write(&pending, &bytes)?; sha256_hex(&bytes)` pattern binds the digest to the pre-write buffer — even if an attacker overwrites `pending_src` after staging, the privileged shasum step compares a Rust-known hash against the (also-tampered) root-installed file and fails closed.
+
 Open Question #1 (HTTP) and residual DNS gap are **closed** by this section.
 
 ---
@@ -1085,7 +1126,7 @@ Prefix: `ld_`. Register in `lib.rs` + `commands/mod.rs`.
 | --- | --- |
 | `ld_bootstrap_status` | |
 | `ld_bootstrap_install` | `{ package: "dns_only" \| "dns_high_port" \| "http_80" \| "full" }` — D1/D2/Mode B |
-| `ld_bootstrap_uninstall` | **Phase B optional** — remove only Badami-written units; **never** remove `/etc/resolver/test` if shared with Herd without confirm |
+| `ld_bootstrap_uninstall` | **Implemented (v1.15.0)** — removes only Badami-written LaunchDaemon units + staged plist; **never** removes `/etc/resolver/{tld}` unless `confirm_resolver: true` AND the file carries the `# managed-by: badami` marker |
 | `ld_doctor` | ports, datadir locks, **DNS resolve probe** (not resolver-file-only), Herd helper info, missing FPM, log size, FPM chdir sanity |
 
 ### Integrations
@@ -1387,12 +1428,12 @@ MVP: Rust + UI gate. Stub message only.
 | Import preserves data | Parks/isolates/services registered; no 15GB copy by default; no auto-kill of Herd |
 | Mode A default | nginx binds **`:8080`** unprivileged; Mode B `:80` is opt-in bootstrap only |
 | Double MariaDB open | Hard-fail second start on same datadir |
-| Bootstrap uninstall | **`ld_bootstrap_uninstall` deferred to Phase B (v1.14.0)** — would remove only Badami-written LaunchDaemon units, never shared Herd resolver without confirm |
+| Bootstrap uninstall | **`ld_bootstrap_uninstall` implemented in v1.15.0** — removes only Badami-written LaunchDaemon units + staged plist; resolver file removal opt-in (`confirm_resolver: true`) and gated on `# managed-by: badami` marker |
 
 ### Rollback
 
 - Stop stack; disable flag; delete Badami `local-dev/` runtime only.
-- Mode B uninstall removes **Badami** LaunchDaemon only (command ships in Phase B).
+- Mode B uninstall removes **Badami** LaunchDaemon only (shipped v1.15.0 as `ld_bootstrap_uninstall`).
 
 ---
 
@@ -1566,8 +1607,9 @@ Generators must **not** embed these literals; resolve at runtime.
 | App version | Scope |
 | --- | --- |
 | v1.13.0 | MVP Phase A (this document rev 3) — Local Dev module + docs |
-| v1.14.0 | Phase B TLS + live logs + **`ld_bootstrap_uninstall`** |
-| v1.15.0+ | Phase C optional binary bundle |
+| v1.14.0 | Phase B interim — carried over to v1.15.0 (no public tag) |
+| **v1.15.0** | **Phase B shipped** — TLS (CA + per-site leaf, trust helper, `:8443` HTTPS), live log stream (`ld://log/{service_id}`), supervisor health loop + 6 `ld://service-*` events, `ld_bootstrap_uninstall`, root-owned LaunchDaemon staging (TOCTOU-safe install/resync), DNS-gated open-site with `force` override, identifier-derived LaunchDaemon labels. |
+| v1.16.0+ | Phase C optional binary bundle |
 
 ### v1.13.0 release notes (docs)
 
@@ -1575,6 +1617,17 @@ Generators must **not** embed these literals; resolve at runtime.
 - **HTTP default:** Mode A **`:8080`** (unprivileged). Site URLs include the port.
 - **Safety:** never deletes Herd datadir; import preserves data; hard-fail double MariaDB open; Turso excludes `local_dev_%`.
 - **Deferred:** TLS, live log subscribe, `ld_bootstrap_uninstall`, binary bundling.
+
+### v1.15.0 release notes (Phase B)
+
+- **TLS (`:8443`):** per-user CA under `local-dev/tls/ca/` (ECDSA P-256, 10-year validity, key `0600`), per-site leaf certs under `local-dev/tls/sites/{site}/{cert,key}.pem` (leaf validity ≤ 825 days, SANs for `{site}.{tld}` and `*.{site}.{tld}`), nginx `server` block appended by `secure_site_merge_conf` keyed on `BADAMI_SECURED=1` marker. HTTPS listener binds **`127.0.0.1:8443`** (Mode A — unprivileged). Trust helper previews the exact `security add-trusted-cert …` argv in a shadcn `AlertDialog` **before** any admin prompt; `ld_tls_trust_ca { run: false }` returns argv only; `ld_tls_trust_ca { run: true }` is the only path that touches the login keychain. Commands: `ld_tls_status`, `ld_tls_ensure_ca`, `ld_tls_trust_ca`, `ld_secure`, `ld_unsecure`.
+- **Live logs:** `ld_log_subscribe { service_id }` → `LogSubscribeResult { subscription_id }`; frames emitted on `ld://log/{service_id}` carry `{ kind: "append" | "reset", lines: string[] }`. `ld_log_unsubscribe { subscription_id }` is idempotent. Supervisor rotates `.log` → `.log.1` → `.log.2` and emits `reset` on truncation / rotation so the UI clears its buffer.
+- **Supervisor event stream:** background health loop runs on a Tokio task (not UI-polled). Emits `ld://service-status`, `ld://service-crashed`, `ld://service-restarted`, `ld://service-restart-failed`, `ld://service-rate-limited`, `ld://mariadb-crashed`. Crash classifier ignores user-initiated stops, intermediate statuses, and the Herd user-stop sentinel. Auto-restart uses a bounded sliding window and emits `rate-limited` instead of looping on fast-crash services.
+- **`ld_bootstrap_uninstall`:** symmetric reverse of `ld_bootstrap_install` under the same single-admin-prompt model. Four package IDs: `dns_only`, `http_80`, `full`, `resolver`. Only `resolver` touches `/etc/resolver/{tld}` and only when `confirm_resolver: true` AND the file contains `# managed-by: badami`. Dry-run returns the exact shell-quoted argv; UI shows argv in a shadcn code block.
+- **Root-owned LaunchDaemon staging:** see the *Security* subsection under *Privilege, HTTP port & DNS model*. User-side scaffolds live under `local-dev/launchd/{role}.plist`; a per-install pending temp dir (`local-dev/launchd/pending-<pid>-<nanos>/`) holds root-variant configs + the plist + the discovered binary; the privileged shell `install -o root -g wheel`s them into `/Library/Application Support/Badami/local-dev-root/<role>/` and `/Library/LaunchDaemons/`, then **hash-verifies each root-owned copy with `/usr/bin/shasum -a 256` against a Rust-computed SHA-256** before `launchctl bootstrap`. Mismatch → rollback of plist + staging + `exit 1` (launchctl never reached). Resync re-renders + re-verifies in one admin prompt. `bootout` and `kickstart` wrap in `... 2>/dev/null || true` so the sequence survives first-install and half-installed uninstall. Labels **must** match `^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$` and start with the Tauri app bundle identifier (`com.khalid.badami.local-dev.*`); argv[0] in the plist must sit under `ROOT_SAFE_PREFIXES`.
+- **DNS-gated open-site:** `ld_open_site_url { site, force?, https_port? }` runs the Doctor DNS probe before returning the URL. Unhealthy DNS returns `Err("DNS_UNHEALTHY: …")` which the frontend parses into a sonner toast with **Open anyway** (re-invoke with `force=true`) + **Open Doctor** actions.
+- **DB migration `022_local_dev_tls.sql`:** adds `local_dev_sites.secured` (`INTEGER DEFAULT 0`) + `local_dev_events` (ring buffer for supervisor transitions). Both `local_dev_%` tables remain in Turso sync exclusion.
+- **Frontend:** macOS-only `isMacOS() && local_dev_enabled` gating on Sidebar, Command Palette (`Open Local Dev` / `Start stack` / `Stop stack` / `Open Doctor`), and app-level event listener acquisition. Local Dev config is explicitly marked device-specific in the Sync settings panel.
 
 ## Appendix C — Sample HERD_HOME layout after import
 

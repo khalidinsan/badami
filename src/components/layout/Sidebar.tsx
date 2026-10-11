@@ -40,7 +40,9 @@ import { useCredentialStore } from "@/stores/credentialStore";
 import { getExpiryBadgeCount } from "@/hooks/useExpiryCheck";
 import { SyncStatusIndicator } from "@/components/sync/SyncStatusIndicator";
 import { useAppTabStore, type AppTabType } from "@/stores/appTabStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { isMacOS } from "@/lib/platform";
+import { LOCAL_DEV_ENABLED_SETTING_KEY } from "@/types/localDev";
 
 interface NavItem {
   to: string;
@@ -82,6 +84,16 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
   const navigate = useNavigate();
   const { credentials, loadAllCredentials } = useCredentialStore();
   const { loadSmartListCounts } = useTaskStore();
+  /**
+   * Feature flag. Fallback to `true` so a user without the row (very first
+   * run before migration 021 lands) still sees the Local Dev entry on macOS.
+   * The flag is stored only in `settings`, never in `local_dev_settings`
+   * (Key Decision 25).
+   */
+  const localDevEnabled = useSettingsStore(
+    (s) => (s.settings[LOCAL_DEV_ENABLED_SETTING_KEY] ?? "true") !== "false",
+  );
+  const macOk = isMacOS() && localDevEnabled;
 
   useEffect(() => {
     if (credentials.length === 0) loadAllCredentials();
@@ -182,7 +194,7 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
 
         {/* Main nav */}
         <nav className="flex-1 space-y-0.5 px-2 py-3">
-          {navItems.filter((item) => !item.macOnly || isMacOS()).map((item) => {
+          {navItems.filter((item) => !item.macOnly || macOk).map((item) => {
             const isActive = currentPath.startsWith(item.to);
 
             const handleClick = (e: React.MouseEvent) => {

@@ -23,6 +23,7 @@ import migration018 from "./migrations/018_ai_chat.sql?raw";
 import migration019 from "./migrations/019_remove_daily_plan_fk.sql?raw";
 import migration020 from "./migrations/020_notifications.sql?raw";
 import migration021 from "./migrations/021_local_dev_module.sql?raw";
+import migration022 from "./migrations/022_local_dev_tls.sql?raw";
 
 interface DbInitResult {
   success: boolean;
@@ -52,6 +53,7 @@ export async function initDatabase(): Promise<DbInitResult> {
     migration019,
     migration020,
     migration021,
+    migration022,
   ];
 
   return await invoke<DbInitResult>("db_init", { migrations });

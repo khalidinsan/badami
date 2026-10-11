@@ -7,6 +7,8 @@ import {
   FolderPlus,
   Link2,
   Loader2,
+  Lock,
+  LockOpen,
   RefreshCw,
   RotateCw,
   Unlink,
@@ -68,6 +70,8 @@ export function SitesPanel() {
   const unisolatePhp = useLocalDevStore((s) => s.unisolatePhp);
   const openSiteUrl = useLocalDevStore((s) => s.openSiteUrl);
   const reloadNginx = useLocalDevStore((s) => s.reloadNginx);
+  const secureSite = useLocalDevStore((s) => s.secureSite);
+  const unsecureSite = useLocalDevStore((s) => s.unsecureSite);
   const linkSiteToProject = useLocalDevStore((s) => s.linkSiteToProject);
 
   const [parkOpen, setParkOpen] = useState(false);
@@ -290,7 +294,15 @@ export function SitesPanel() {
                     className="border-b border-border/30 last:border-0"
                   >
                     <td className="px-3 py-2.5">
-                      <div className="font-medium">{site.name}</div>
+                      <div className="flex items-center gap-1.5 font-medium">
+                        {site.secured && (
+                          <Lock
+                            className="h-3 w-3 shrink-0 text-emerald-600"
+                            aria-label="HTTPS"
+                          />
+                        )}
+                        {site.name}
+                      </div>
                       <div className="font-mono text-[10px] text-muted-foreground">
                         {site.url}
                       </div>
@@ -353,6 +365,34 @@ export function SitesPanel() {
                           <ExternalLink className="h-3 w-3" />
                           Open
                         </Button>
+                        {/* Secure / Unsecure (Phase B TLS). Button writes a leaf
+                            cert + rewrites the per-site conf; nginx reload is
+                            handled inside the store action when it's running. */}
+                        {site.secured ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 gap-1 px-2 text-[11px]"
+                            disabled={rowBusy}
+                            onClick={() => void unsecureSite(site.name)}
+                            title="Remove the HTTPS listener and leaf cert"
+                          >
+                            <LockOpen className="h-3 w-3" />
+                            Unsecure
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 gap-1 px-2 text-[11px]"
+                            disabled={rowBusy}
+                            onClick={() => void secureSite(site.name)}
+                            title="Issue a cert from the Badami local CA and listen on HTTPS"
+                          >
+                            <Lock className="h-3 w-3" />
+                            Secure
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="ghost"

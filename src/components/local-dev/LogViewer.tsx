@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   ChevronDown,
   CircleAlert,
@@ -23,7 +25,12 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLocalDevStore } from "@/stores/localDevStore";
 import { cn } from "@/lib/utils";
-import { phpVersionOf, serviceStatusShort } from "@/types/localDev";
+import {
+  phpVersionOf,
+  serviceStatusShort,
+  type LogStreamFrame,
+  type LogSubscribeResult,
+} from "@/types/localDev";
 
 interface LogViewerProps {
   className?: string;
@@ -37,8 +44,10 @@ interface LogViewerProps {
   active: boolean;
 }
 
-/** How often to re-tail while following. Matches the status poller's cadence. */
-const FOLLOW_MS = 2500;
+/** Max lines kept in-memory before trimming the head of the view. */
+const MAX_LIVE_LINES = 2000;
+/** How often to refresh Problems scan while following (no per-service event). */
+const PROBLEMS_POLL_MS = 2500;
 
 type LineLevel = "error" | "warn" | null;
 
@@ -118,6 +127,13 @@ export function LogViewer({ className, active }: LogViewerProps) {
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  /**
+   * Live-streamed tail of the currently-selected service. Starts as the
+   * backlog from `fetchLogs` and grows with frames from `ld://log/{id}`.
+   * `null` means "we have not yet synced with the backlog for this service" —
+   * the view falls back to the store's `logTail` snapshot in that case.
+   */
+  const [liveLines, setLiveLines] = useState<string[] | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   /** Sticky bottom until the user scrolls up — then stop yanking them back. */
   const stickToBottom = useRef(true);
@@ -125,27 +141,123 @@ export function LogViewer({ className, active }: LogViewerProps) {
   const selected = selectedServiceId;
   const tailMode = logMode === "tail";
 
-  // Fetch on open / source change. A collapsed pane never reads a log file.
+  // Fetch backlog on open / source change. A collapsed pane never reads a log file.
   useEffect(() => {
     if (!logsOpen || !active || !tailMode || !selected) return;
+    // Reset the live view so a service switch does not briefly show the other
+    // service's lines while the new backlog loads.
+    setLiveLines(null);
     void fetchLogs(selected);
   }, [selected, logsOpen, active, tailMode, fetchLogs]);
 
+  // Seed liveLines from the backlog once it lands for this service.
+  useEffect(() => {
+    if (!logsOpen || !tailMode || !selected) return;
+    if (logTail?.service_id !== selected) return;
+    setLiveLines((prev) => (prev === null ? logTail.lines.slice() : prev));
+  }, [logTail, selected, logsOpen, tailMode]);
+
+  // Live log stream — replaces the former setInterval tail polling.
+  //
+  // Lifecycle: subscribe when the pane is open, in Tail mode, actively
+  // followed and visible; unsubscribe on any of those flipping off, on
+  // service change, or on unmount. `ld_log_unsubscribe` is idempotent, so
+  // double-teardown is harmless.
+  useEffect(() => {
+    if (!logsOpen || !tailMode || !logFollow || !active || !selected) {
+      return;
+    }
+    let cancelled = false;
+    let subscriptionId: string | null = null;
+    let unlisten: UnlistenFn | null = null;
+
+    const start = async () => {
+      try {
+        const sub = await invoke<LogSubscribeResult>("ld_log_subscribe", {
+          serviceId: selected,
+        });
+        if (cancelled) {
+          // The caller already unmounted/switched — tear down what we just made.
+          void invoke("ld_log_unsubscribe", { subscriptionId: sub.subscription_id });
+          return;
+        }
+        subscriptionId = sub.subscription_id;
+        unlisten = await listen<LogStreamFrame>(sub.topic, (event) => {
+          const payload = event.payload;
+          // Ignore stale frames (shouldn't happen but defensive).
+          if (payload.service_id !== selected) return;
+          if (payload.reset) {
+            // File truncated / rotated. The reset flag already clears the
+            // persistent cursor on the backend; the view must match.
+            setLiveLines([]);
+            return;
+          }
+          if (payload.error) {
+            // Transient filesystem issue — surface as one visible line so the
+            // user sees it, then let the tail task back off.
+            setLiveLines((prev) => {
+              const base = prev ?? [];
+              return [...base.slice(-MAX_LIVE_LINES + 1), `! ${payload.error}`];
+            });
+            return;
+          }
+          const incoming = payload.lines ?? [];
+          if (incoming.length === 0) return;
+          setLiveLines((prev) => {
+            const base = prev ?? [];
+            const combined = base.concat(incoming);
+            // Hard cap: trim from the head so the newest lines stay visible.
+            if (combined.length > MAX_LIVE_LINES) {
+              return combined.slice(combined.length - MAX_LIVE_LINES);
+            }
+            return combined;
+          });
+        });
+        if (cancelled) {
+          // Caller cancelled between listen() and here.
+          try {
+            unlisten();
+          } catch {
+            /* ignore */
+          }
+          unlisten = null;
+          void invoke("ld_log_unsubscribe", { subscriptionId });
+          subscriptionId = null;
+        }
+      } catch (err) {
+        console.error("ld_log_subscribe failed", err);
+      }
+    };
+    void start();
+
+    return () => {
+      cancelled = true;
+      if (unlisten) {
+        try {
+          unlisten();
+        } catch {
+          /* ignore */
+        }
+        unlisten = null;
+      }
+      if (subscriptionId !== null) {
+        void invoke("ld_log_unsubscribe", { subscriptionId });
+        subscriptionId = null;
+      }
+    };
+  }, [selected, logsOpen, active, tailMode, logFollow]);
+
+  // Problems view has no event stream — poll it on an interval while
+  // following. Cheap: the backend caps the scan window per service.
   useEffect(() => {
     if (!logsOpen || !active || tailMode) return;
     void fetchProblems();
-  }, [logsOpen, active, tailMode, fetchProblems]);
-
-  // Follow mode: re-tail on an interval so "Reload" stops being a chore.
-  useEffect(() => {
-    if (!logsOpen || !logFollow || !active) return;
+    if (!logFollow) return;
     const timer = window.setInterval(() => {
-      const store = useLocalDevStore.getState();
-      if (store.logMode === "problems") void store.fetchProblems();
-      else if (store.selectedServiceId) void store.fetchLogs(store.selectedServiceId);
-    }, FOLLOW_MS);
+      void useLocalDevStore.getState().fetchProblems();
+    }, PROBLEMS_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [logsOpen, logFollow, active, logMode, selected]);
+  }, [logsOpen, active, tailMode, logFollow, fetchProblems]);
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -153,7 +265,12 @@ export function LogViewer({ className, active }: LogViewerProps) {
     stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
   }, []);
 
-  const lines = logTail?.service_id === selected ? logTail.lines : [];
+  const lines =
+    liveLines !== null
+      ? liveLines
+      : logTail?.service_id === selected
+        ? logTail.lines
+        : [];
   const path = logTail?.service_id === selected ? logTail.path : null;
 
   const visibleLines = useMemo(() => {
@@ -370,7 +487,9 @@ export function LogViewer({ className, active }: LogViewerProps) {
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-[10px]">
-                {logFollow ? `Auto-refreshing every ${FOLLOW_MS / 1000}s` : "Paused"}
+                {logFollow
+                  ? "Live tail via ld_log_subscribe"
+                  : "Paused — resume to stream new lines"}
               </TooltipContent>
             </Tooltip>
             <Button
@@ -381,7 +500,13 @@ export function LogViewer({ className, active }: LogViewerProps) {
               disabled={loading}
               onClick={() => {
                 stickToBottom.current = true;
-                if (tailMode && selected) void fetchLogs(selected);
+                if (tailMode && selected) {
+                  // Reseed from backlog — the stream picks up from end-of-file,
+                  // so a Reload button that only fetched tail without clearing
+                  // the view would just show stale lines on top of fresh ones.
+                  setLiveLines(null);
+                  void fetchLogs(selected);
+                }
                 if (!tailMode) void fetchProblems();
               }}
             >

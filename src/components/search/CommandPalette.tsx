@@ -13,6 +13,10 @@ import {
   Globe,
   Zap,
   Database,
+  HardDrive,
+  Stethoscope,
+  Play,
+  Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as projectQueries from "@/db/queries/projects";
@@ -23,6 +27,10 @@ import * as apiQueries from "@/db/queries/api";
 import * as dbClientQueries from "@/db/queries/dbClient";
 import { invoke } from "@tauri-apps/api/core";
 import type { PageRow } from "@/types/db";
+import { isMacOS } from "@/lib/platform";
+import { useLocalDevStore } from "@/stores/localDevStore";
+import { useSettingsStore } from "@/stores/settingsStore";
+import { LOCAL_DEV_ENABLED_SETTING_KEY } from "@/types/localDev";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -32,6 +40,12 @@ interface SearchItem {
   title: string;
   subtitle?: string;
   route: string;
+  /**
+   * Side-effecting commands (e.g. Start / Stop stack). When present, the
+   * action runs instead of navigating. The route is still used for
+   * dedup / highlighting.
+   */
+  run?: () => void | Promise<void>;
 }
 
 type CategoryFilter = "all" | "projects" | "tasks" | "servers" | "credentials" | "api" | "database" | "commands";
@@ -101,6 +115,13 @@ export function CommandPalette(props: CommandPaletteProps) {
   const [category, setCategory] = useState<CategoryFilter>("all");
   const fuseRef = useRef<Fuse<SearchItem> | null>(null);
 
+  // Reactive settings subscription so toggling `local_dev_enabled` adds /
+  // removes the commands the next time the palette opens (without reload).
+  const localDevEnabled = useSettingsStore(
+    (s) => (s.settings[LOCAL_DEV_ENABLED_SETTING_KEY] ?? "true") !== "false",
+  );
+  const localDevGate = isMacOS() && localDevEnabled;
+
   const handleClose = useCallback(() => {
     if (isWindow) {
       props.onClose();
@@ -123,6 +144,44 @@ export function CommandPalette(props: CommandPaletteProps) {
   useEffect(() => {
     if (!isOpen) return;
     const load = async () => {
+      // Local Dev commands are gated on macOS (the stack is macOS-only in
+      // intent — supervisor is a no-op elsewhere) and the user-facing
+      // `local_dev_enabled` setting. Mirrors the sidebar gate exactly.
+      const localDevCommands: SearchItem[] = localDevGate
+        ? [
+            {
+              id: "cmd-ld-open",
+              type: "command",
+              title: "Open Local Dev",
+              subtitle: "Local nginx / PHP-FPM / MariaDB stack",
+              route: "/local-dev",
+            },
+            {
+              id: "cmd-ld-start-stack",
+              type: "command",
+              title: "Local Dev: Start stack",
+              subtitle: "ld_stack_start — bring the whole web + data tier up",
+              route: "/local-dev",
+              run: () => useLocalDevStore.getState().startStack(),
+            },
+            {
+              id: "cmd-ld-stop-stack",
+              type: "command",
+              title: "Local Dev: Stop stack",
+              subtitle: "ld_stack_stop — shut every service down",
+              route: "/local-dev",
+              run: () => useLocalDevStore.getState().stopStack(),
+            },
+            {
+              id: "cmd-ld-doctor",
+              type: "command",
+              title: "Local Dev: Open Doctor",
+              subtitle: "Diagnostics + repair actions",
+              route: "/local-dev",
+            },
+          ]
+        : [];
+
       const [projects, tasks, allPages, allCredentials, allServers, allCollections, allRequests, allDbConnections] = await Promise.all([
         projectQueries.getProjects(),
         taskQueries.getTasks(),
@@ -191,6 +250,7 @@ export function CommandPalette(props: CommandPaletteProps) {
           subtitle: `${d.engine.toUpperCase()} · ${d.host}:${d.port}`,
           route: "/database",
         })),
+        ...localDevCommands,
         ...COMMANDS,
       ];
 
@@ -203,7 +263,7 @@ export function CommandPalette(props: CommandPaletteProps) {
     load();
     setSearch("");
     setCategory("all");
-  }, [isOpen]);
+  }, [isOpen, localDevGate]);
 
   // Filter by category then search
   const filtered = useMemo(() => {
@@ -262,12 +322,43 @@ export function CommandPalette(props: CommandPaletteProps) {
   const handleSelect = useCallback(
     async (item: SearchItem) => {
       addRecentItem(item.id);
+      // Local Dev "Open Doctor" uses the emitter so a route-level subscriber
+      // can switch the sub-tab after we navigate to /local-dev. Keeping this
+      // branch separate avoids coupling the palette to Local Dev state.
+      if (item.id === "cmd-ld-doctor") {
+        const { openDoctorEmitter } = await import("@/stores/localDevStore");
+        openDoctorEmitter.emit();
+        if (isWindow) {
+          handleClose();
+        } else {
+          handleClose();
+        }
+        return;
+      }
+      if (item.run) {
+        // Fire-and-forget: toast feedback (success / failure) lives inside
+        // the store action. Close the palette before awaiting so the UI
+        // feels responsive.
+        handleClose();
+        try {
+          await item.run();
+        } catch (err) {
+          console.error(`command ${item.id} failed`, err);
+        }
+        return;
+      }
       navigateInMain(item.route);
     },
-    [navigateInMain],
+    [navigateInMain, handleClose, isWindow],
   );
 
-  const getIcon = (type: string) => {
+  const getIcon = (type: string, id?: string) => {
+    // Local Dev commands get domain-specific icons so they stand out from
+    // the generic "navigate" command set.
+    if (id === "cmd-ld-open") return <HardDrive className="h-4 w-4 shrink-0 text-sky-500" />;
+    if (id === "cmd-ld-start-stack") return <Play className="h-4 w-4 shrink-0 text-emerald-500" />;
+    if (id === "cmd-ld-stop-stack") return <Square className="h-4 w-4 shrink-0 text-red-500" />;
+    if (id === "cmd-ld-doctor") return <Stethoscope className="h-4 w-4 shrink-0 text-amber-500" />;
     switch (type) {
       case "project": return <FolderKanban className="h-4 w-4 shrink-0 text-blue-500" />;
       case "task": return <CheckSquare className="h-4 w-4 shrink-0 text-orange-500" />;
@@ -391,7 +482,7 @@ export function CommandPalette(props: CommandPaletteProps) {
                   className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-150 select-none hover:bg-accent/60 data-[selected=true]:bg-accent"
                 >
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60">
-                    {getIcon(item.type)}
+                    {getIcon(item.type, item.id)}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium leading-snug">{item.title}</p>

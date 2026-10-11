@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLocalDevStore } from "@/stores/localDevStore";
+import { RecentEventsCard } from "@/components/local-dev/RecentEventsCard";
 import {
   formatBytes,
   type DoctorFinding,
@@ -416,6 +417,11 @@ export function DoctorPanel({ onOpenBootstrap, onShowServiceLog }: DoctorPanelPr
                 )}
               </CardContent>
             </Card>
+
+            {/* Live supervisor transition log — fed by the `ld://service-*`
+                event bus wired up at the app root. Collapsed by default to
+                keep the Doctor focused on checks the first time it opens. */}
+            <RecentEventsCard />
           </>
         )}
       </div>

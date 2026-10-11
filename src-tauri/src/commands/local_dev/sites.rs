@@ -15,12 +15,14 @@
 
 use super::config_gen::{
     ensure_path_under_root, validate_php_version_display, validate_site_name, validate_tld,
-    write_isolated_site_conf, write_valet_config, IsolatedSiteRequest,
+    write_isolated_site_conf, write_site_conf, write_valet_config, IsolatedSiteRequest,
+    SiteConfOptions,
 };
 use super::discovery::{build_runtime_paths, discover, preferred_suffix, RuntimePaths};
 use super::import_herd::normalize_park_path;
 use super::mariadb_guard::{pid_is_alive, read_pid_file};
 use super::service_specs::parse_nginx_http_port;
+use super::tls::{self, TlsPaths};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -70,6 +72,7 @@ pub struct ListSitesResult {
     pub tld: String,
     pub loopback: String,
     pub http_port: u16,
+    pub https_port: u16,
     pub notes: Vec<String>,
 }
 
@@ -108,7 +111,22 @@ pub struct OpenSiteUrlResult {
     pub site: String,
     pub tld: String,
     pub http_port: u16,
+    pub https_port: Option<u16>,
+    pub secured: bool,
     pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecureSiteCommandResult {
+    pub site: String,
+    pub tld: String,
+    pub action: String,
+    pub secured: bool,
+    pub cert_path: Option<String>,
+    pub key_path: Option<String>,
+    pub conf_path: Option<String>,
+    pub written: Vec<String>,
+    pub notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,10 +218,23 @@ fn write_parks(
     Ok(written)
 }
 
-/// Build site URL respecting Mode A http_port (omit port when 80).
-pub fn site_url(name: &str, tld: &str, http_port: u16) -> String {
+/// Default HTTPS listen port in Mode A (unprivileged). Mirrors
+/// `local_dev_settings.https_port` default seed from migration 022. Callers
+/// that persist a different value in SQLite pass it through `ld_list_sites`
+/// / `ld_secure` arguments.
+pub const DEFAULT_HTTPS_PORT: u16 = 8443;
+
+/// Build site URL. When `secured` is true an `https://host[:port]` URL is
+/// emitted (port omitted for `:443`); otherwise `http://` with `http_port`.
+pub fn site_url(name: &str, tld: &str, http_port: u16, https_port: u16, secured: bool) -> String {
     let host = format!("{name}.{tld}");
-    if http_port == 80 {
+    if secured {
+        if https_port == 443 {
+            format!("https://{host}")
+        } else {
+            format!("https://{host}:{https_port}")
+        }
+    } else if http_port == 80 {
         format!("http://{host}")
     } else {
         format!("http://{host}:{http_port}")
@@ -243,16 +274,44 @@ fn parse_isolated_version_from_conf(content: &str) -> Option<String> {
     None
 }
 
-fn read_isolation(paths: &RuntimePaths, site: &str) -> (bool, Option<String>, Option<String>) {
+/// True when the per-site conf carries the `# BADAMI_SECURED=1` marker.
+fn parse_secured_marker_from_conf(content: &str) -> bool {
+    for line in content.lines() {
+        let trimmed = line.trim().trim_start_matches('#').trim();
+        if trimmed == "BADAMI_SECURED=1" {
+            return true;
+        }
+    }
+    false
+}
+
+/// Combined read of per-site conf state. Returns:
+/// (isolated, php_version_display, secured, conf_path_if_present).
+fn read_site_conf_state(
+    paths: &RuntimePaths,
+    site: &str,
+) -> (bool, Option<String>, bool, Option<String>) {
     let Ok(conf) = isolated_conf_path(paths, site) else {
-        return (false, None, None);
+        return (false, None, false, None);
     };
     if !conf.is_file() {
-        return (false, None, None);
+        return (false, None, false, None);
     }
     let content = fs::read_to_string(&conf).unwrap_or_default();
     let ver = parse_isolated_version_from_conf(&content);
-    (true, ver, Some(conf.to_string_lossy().into_owned()))
+    let secured = parse_secured_marker_from_conf(&content);
+    (
+        ver.is_some(),
+        ver,
+        secured,
+        Some(conf.to_string_lossy().into_owned()),
+    )
+}
+
+#[allow(dead_code)]
+fn read_isolation(paths: &RuntimePaths, site: &str) -> (bool, Option<String>, Option<String>) {
+    let (isolated, ver, _, conf) = read_site_conf_state(paths, site);
+    (isolated, ver, conf)
 }
 
 fn resolve_link_target(link: &Path) -> Option<String> {
@@ -282,9 +341,18 @@ fn is_hidden_or_junk(name: &str) -> bool {
 // ── Core: list sites ────────────────────────────────────────────────
 
 /// Scan valet config park paths + Sites/ links and build site inventory.
-pub fn list_sites_at(paths: &RuntimePaths) -> Result<ListSitesResult, String> {
+///
+/// `https_port` governs the URL emitted for sites flagged `secured`. Defaults
+/// to [`DEFAULT_HTTPS_PORT`] (`8443`) when the caller passes `None` — SQLite
+/// `local_dev_settings.https_port` is the source of truth from the frontend's
+/// perspective.
+pub fn list_sites_at(
+    paths: &RuntimePaths,
+    https_port: Option<u16>,
+) -> Result<ListSitesResult, String> {
     let cfg = read_valet_config(paths);
     let http_port = parse_nginx_http_port(paths);
+    let https_port = https_port.unwrap_or(DEFAULT_HTTPS_PORT);
     let mut notes = Vec::new();
 
     if !valet_config_path(paths).is_file() {
@@ -321,18 +389,20 @@ pub fn list_sites_at(paths: &RuntimePaths) -> Result<ListSitesResult, String> {
                 }
                 let target = resolve_link_target(&link_path)
                     .unwrap_or_else(|| link_path.to_string_lossy().into_owned());
-                let (isolated, php_version, conf_path) = read_isolation(paths, &name);
+                let (isolated, php_version, secured_marker, conf_path) =
+                    read_site_conf_state(paths, &name);
+                let secured = secured_marker && tls::site_has_certs(paths, &name, &cfg.tld);
                 by_name.insert(
                     name.clone(),
                     SiteInfo {
                         name: name.clone(),
                         tld: cfg.tld.clone(),
-                        url: site_url(&name, &cfg.tld, http_port),
+                        url: site_url(&name, &cfg.tld, http_port, https_port, secured),
                         path: target,
                         kind: "linked".into(),
                         php_version,
                         isolated,
-                        secured: false,
+                        secured,
                         conf_path,
                         park_path: Some(links_dir.to_string_lossy().into_owned()),
                     },
@@ -380,18 +450,20 @@ pub fn list_sites_at(paths: &RuntimePaths) -> Result<ListSitesResult, String> {
             let path_str = fs::canonicalize(&child)
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_else(|_| child.to_string_lossy().into_owned());
-            let (isolated, php_version, conf_path) = read_isolation(paths, &name);
+            let (isolated, php_version, secured_marker, conf_path) =
+                read_site_conf_state(paths, &name);
+            let secured = secured_marker && tls::site_has_certs(paths, &name, &cfg.tld);
             by_name.insert(
                 name.clone(),
                 SiteInfo {
                     name: name.clone(),
                     tld: cfg.tld.clone(),
-                    url: site_url(&name, &cfg.tld, http_port),
+                    url: site_url(&name, &cfg.tld, http_port, https_port, secured),
                     path: path_str,
                     kind: "parked".into(),
                     php_version,
                     isolated,
-                    secured: false,
+                    secured,
                     conf_path,
                     park_path: Some(park.clone()),
                 },
@@ -399,7 +471,7 @@ pub fn list_sites_at(paths: &RuntimePaths) -> Result<ListSitesResult, String> {
         }
     }
 
-    // 3) Isolated confs without a matching park/link entry (orphan isolates)
+    // 3) Isolated / secured confs without a matching park/link entry (orphan confs)
     let sites_conf_dir = PathBuf::from(&paths.nginx).join("sites");
     if sites_conf_dir.is_dir() {
         if let Ok(entries) = fs::read_dir(&sites_conf_dir) {
@@ -416,17 +488,20 @@ pub fn list_sites_at(paths: &RuntimePaths) -> Result<ListSitesResult, String> {
                 }
                 let content = fs::read_to_string(entry.path()).unwrap_or_default();
                 let php_version = parse_isolated_version_from_conf(&content);
+                let isolated = php_version.is_some();
+                let secured_marker = parse_secured_marker_from_conf(&content);
+                let secured = secured_marker && tls::site_has_certs(paths, name, &cfg.tld);
                 by_name.insert(
                     name.to_string(),
                     SiteInfo {
                         name: name.to_string(),
                         tld: cfg.tld.clone(),
-                        url: site_url(name, &cfg.tld, http_port),
+                        url: site_url(name, &cfg.tld, http_port, https_port, secured),
                         path: String::new(),
                         kind: "parked".into(),
                         php_version,
-                        isolated: true,
-                        secured: false,
+                        isolated,
+                        secured,
                         conf_path: Some(entry.path().to_string_lossy().into_owned()),
                         park_path: None,
                     },
@@ -440,7 +515,7 @@ pub fn list_sites_at(paths: &RuntimePaths) -> Result<ListSitesResult, String> {
 
     let sites: Vec<SiteInfo> = by_name.into_values().collect();
     notes.push(format!(
-        "Found {} site(s) across {} park path(s); http_port={http_port}",
+        "Found {} site(s) across {} park path(s); http_port={http_port} https_port={https_port}",
         sites.len(),
         cfg.paths.len()
     ));
@@ -451,12 +526,13 @@ pub fn list_sites_at(paths: &RuntimePaths) -> Result<ListSitesResult, String> {
         tld: cfg.tld,
         loopback: cfg.loopback,
         http_port,
+        https_port,
         notes,
     })
 }
 
-pub fn list_sites() -> Result<ListSitesResult, String> {
-    list_sites_at(&build_runtime_paths()?)
+pub fn list_sites(https_port: Option<u16>) -> Result<ListSitesResult, String> {
+    list_sites_at(&build_runtime_paths()?, https_port)
 }
 
 // ── Park / unpark ───────────────────────────────────────────────────
@@ -734,6 +810,10 @@ fn php_version_available(version: &str) -> Result<(bool, Option<String>), String
 }
 
 /// Write isolated nginx conf with static unix socket. Refuses if PHP binary missing.
+///
+/// Preserves any pre-existing `BADAMI_SECURED=1` marker — if the site is
+/// already secured we re-render the merged conf with both isolated + secured
+/// flags set so the TLS listener stays in place.
 pub fn isolate_php_at(
     paths: &RuntimePaths,
     site: &str,
@@ -760,14 +840,42 @@ pub fn isolate_php_at(
     let http_port = parse_nginx_http_port(paths);
 
     let mut written = Vec::new();
-    let req = IsolatedSiteRequest {
-        site_name: site.to_string(),
-        tld: Some(cfg.tld.clone()),
-        php_version: version.to_string(),
-        php_tag: tag.clone(),
-        http_port: Some(http_port),
-    };
-    write_isolated_site_conf(paths, &req, &mut written)?;
+    // Preserve TLS state if the site is already secured.
+    let (_, _, prev_secured, _) = read_site_conf_state(paths, site);
+    let secured_now = prev_secured && tls::site_has_certs(paths, site, &cfg.tld);
+    if secured_now {
+        let tls_paths = TlsPaths::from_runtime(paths);
+        let opts = SiteConfOptions {
+            site_name: site.to_string(),
+            tld: cfg.tld.clone(),
+            http_port,
+            https_port: Some(DEFAULT_HTTPS_PORT),
+            cert_path: Some(
+                tls_paths
+                    .site_cert(site, &cfg.tld)
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            key_path: Some(
+                tls_paths
+                    .site_key(site, &cfg.tld)
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            php_tag: Some(tag.clone()),
+            php_version_display: Some(version.to_string()),
+        };
+        write_site_conf(paths, &opts, &mut written).map(|_| ())?;
+    } else {
+        let req = IsolatedSiteRequest {
+            site_name: site.to_string(),
+            tld: Some(cfg.tld.clone()),
+            php_version: version.to_string(),
+            php_tag: tag.clone(),
+            http_port: Some(http_port),
+        };
+        write_isolated_site_conf(paths, &req, &mut written)?;
+    }
 
     let conf = isolated_conf_path(paths, site)?;
     Ok(IsolateResult {
@@ -777,7 +885,10 @@ pub fn isolate_php_at(
         action: "isolated".into(),
         written,
         notes: vec![
-            format!("isolated {site}.{} → php{tag} (static socket)", cfg.tld),
+            format!(
+                "isolated {site}.{} → php{tag} (static socket; secured={secured_now})",
+                cfg.tld
+            ),
             "run ld_reload_nginx to apply".into(),
         ],
         refused: false,
@@ -789,6 +900,11 @@ pub fn isolate_php(site: &str, version: &str) -> Result<IsolateResult, String> {
 }
 
 /// Remove isolated site conf under `nginx/sites/`. Never touches Herd nginx confs.
+///
+/// If the per-site conf also carries `BADAMI_SECURED=1`, we re-render the
+/// conf as "secured only" instead of deleting it — the TLS listener and leaf
+/// cert files stay in place so the site keeps serving over https while
+/// falling back to the default FPM socket.
 pub fn unisolate_site_at(paths: &RuntimePaths, site: &str) -> Result<IsolateResult, String> {
     validate_site_name(site)?;
     // Path-component-safe confinement (same helper as conf writer).
@@ -806,9 +922,51 @@ pub fn unisolate_site_at(paths: &RuntimePaths, site: &str) -> Result<IsolateResu
         });
     }
 
-    let php_version = fs::read_to_string(&conf)
-        .ok()
-        .and_then(|c| parse_isolated_version_from_conf(&c));
+    let content = fs::read_to_string(&conf).unwrap_or_default();
+    let php_version = parse_isolated_version_from_conf(&content);
+    let secured_marker = parse_secured_marker_from_conf(&content);
+    let cfg = read_valet_config(paths);
+    let http_port = parse_nginx_http_port(paths);
+
+    let secured_now = secured_marker && tls::site_has_certs(paths, site, &cfg.tld);
+    if secured_now {
+        // Re-render without the isolated marker but with secured bits intact.
+        let tls_paths = TlsPaths::from_runtime(paths);
+        let opts = SiteConfOptions {
+            site_name: site.to_string(),
+            tld: cfg.tld.clone(),
+            http_port,
+            https_port: Some(DEFAULT_HTTPS_PORT),
+            cert_path: Some(
+                tls_paths
+                    .site_cert(site, &cfg.tld)
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            key_path: Some(
+                tls_paths
+                    .site_key(site, &cfg.tld)
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            php_tag: None,
+            php_version_display: None,
+        };
+        let mut written = Vec::new();
+        write_site_conf(paths, &opts, &mut written).map(|_| ())?;
+        return Ok(IsolateResult {
+            site: site.to_string(),
+            php_version,
+            conf_path: Some(conf.to_string_lossy().into_owned()),
+            action: "unisolated".into(),
+            written,
+            notes: vec![
+                format!("removed isolate from {site} (secured conf kept)"),
+                "run ld_reload_nginx to apply".into(),
+            ],
+            refused: false,
+        });
+    }
 
     fs::remove_file(&conf).map_err(|e| format!("remove isolate conf: {e}"))?;
 
@@ -833,21 +991,238 @@ pub fn unisolate_site(site: &str) -> Result<IsolateResult, String> {
 
 // ── Open URL ────────────────────────────────────────────────────────
 
+/// Pure wrapper over the DNS probe so tests can swap in a deterministic one.
+/// The signature mirrors `(tld, loopback) -> healthy` so neither tests nor
+/// the production call site need to construct a `DnsProbeResult`.
+#[allow(dead_code)]
+pub type DnsHealthProbe = dyn Fn(&str, &str) -> bool + Send + Sync;
+
+/// Error prefix used when the gate refuses to return a URL — the frontend
+/// looks for this literal to decide whether to show the "DNS unhealthy" dialog
+/// with a *Open anyway* button that re-invokes with `force=true`.
+pub const DNS_UNHEALTHY_PREFIX: &str = "DNS_UNHEALTHY:";
+
+/// Default production probe: run the live DNS resolve + loopback check.
+fn default_dns_probe(tld: &str, loopback: &str) -> bool {
+    super::doctor::run_dns_probe(tld, loopback, None, false).healthy
+}
+
+#[allow(dead_code)]
 pub fn open_site_url_at(paths: &RuntimePaths, site: &str) -> Result<OpenSiteUrlResult, String> {
+    open_site_url_at_with_probe(paths, site, false, None, &default_dns_probe)
+}
+
+/// Identifier-aware / probe-injectable variant.
+///
+/// When `force` is false and the probe returns unhealthy, this returns an
+/// `Err("DNS_UNHEALTHY: …")`. The UI distinguishes this from other errors and
+/// can offer an *Open anyway* retry. `force=true` skips the probe entirely so
+/// users can still open sites while debugging DNS (localhost + manual host
+/// entries both work).
+///
+/// `https_port` controls the port used in the emitted URL when the site is
+/// secured on disk (`BADAMI_SECURED=1` + both cert and key present). Passing
+/// `None` falls back to [`DEFAULT_HTTPS_PORT`].
+pub fn open_site_url_at_with_probe(
+    paths: &RuntimePaths,
+    site: &str,
+    force: bool,
+    https_port: Option<u16>,
+    probe: &(dyn Fn(&str, &str) -> bool + Send + Sync),
+) -> Result<OpenSiteUrlResult, String> {
     validate_site_name(site)?;
     let cfg = read_valet_config(paths);
     let http_port = parse_nginx_http_port(paths);
-    let url = site_url(site, &cfg.tld, http_port);
+    let https_port = https_port.unwrap_or(DEFAULT_HTTPS_PORT);
+
+    if !force && !probe(&cfg.tld, &cfg.loopback) {
+        return Err(format!(
+            "{} DNS probe for *.{} failed (expected loopback {}). Install DNS Mode B-lite (D1), use high-port resolver (D2), or disable browser secure DNS. Call ld_open_site_url with force=true to open anyway.",
+            DNS_UNHEALTHY_PREFIX, cfg.tld, cfg.loopback
+        ));
+    }
+
+    let (_, _, secured_marker, _) = read_site_conf_state(paths, site);
+    let secured = secured_marker && tls::site_has_certs(paths, site, &cfg.tld);
+    let url = site_url(site, &cfg.tld, http_port, https_port, secured);
     Ok(OpenSiteUrlResult {
         site: site.to_string(),
         tld: cfg.tld,
         http_port,
+        https_port: if secured { Some(https_port) } else { None },
+        secured,
         url,
     })
 }
 
+#[allow(dead_code)]
 pub fn open_site_url(site: &str) -> Result<OpenSiteUrlResult, String> {
     open_site_url_at(&build_runtime_paths()?, site)
+}
+
+pub fn open_site_url_with_force(
+    site: &str,
+    force: bool,
+    https_port: Option<u16>,
+) -> Result<OpenSiteUrlResult, String> {
+    open_site_url_at_with_probe(
+        &build_runtime_paths()?,
+        site,
+        force,
+        https_port,
+        &default_dns_probe,
+    )
+}
+
+// ── Secure / unsecure (Phase B TLS) ────────────────────────────────
+
+/// Secure a site: generate a leaf cert (CA auto-created on first run) and
+/// write / rewrite the per-site nginx conf so it listens on `https_port`
+/// (SSL) plus an HTTP → HTTPS redirect on `http_port`.
+///
+/// Preserves any pre-existing `ISOLATED_PHP_VERSION=…` isolate state. On
+/// failure the leaf cert files + the conf are left in whatever state they
+/// were in before — callers can retry.
+pub fn secure_site_at(
+    paths: &RuntimePaths,
+    site: &str,
+    https_port: Option<u16>,
+) -> Result<SecureSiteCommandResult, String> {
+    validate_site_name(site)?;
+    let cfg = read_valet_config(paths);
+    validate_tld(&cfg.tld)?;
+    let http_port = parse_nginx_http_port(paths);
+    let https_port = https_port.unwrap_or(DEFAULT_HTTPS_PORT);
+
+    // 1. Issue certs under config/valet/Certificates/.
+    let tls_result = tls::secure_site_at(paths, site, &cfg.tld)?;
+    let cert_path = tls_result.cert_path.clone();
+    let key_path = tls_result.key_path.clone();
+
+    // 2. Rewrite the per-site conf preserving any existing isolate state.
+    let (prev_isolated, prev_version, _, _) = read_site_conf_state(paths, site);
+    let (php_tag, php_version_display) = if prev_isolated {
+        let v = prev_version
+            .clone()
+            .ok_or_else(|| "secured: isolated conf missing version marker".to_string())?;
+        validate_php_version_display(&v)?;
+        let tag = version_to_tag(&v)?;
+        (Some(tag), Some(v))
+    } else {
+        (None, None)
+    };
+    let opts = SiteConfOptions {
+        site_name: site.to_string(),
+        tld: cfg.tld.clone(),
+        http_port,
+        https_port: Some(https_port),
+        cert_path: cert_path.clone(),
+        key_path: key_path.clone(),
+        php_tag,
+        php_version_display,
+    };
+
+    let mut written: Vec<String> = tls_result.written.clone();
+    let conf = write_site_conf(paths, &opts, &mut written)?;
+
+    let mut notes = tls_result.notes.clone();
+    notes.push(format!(
+        "wrote merged https conf for {site}.{} on :{https_port}",
+        cfg.tld
+    ));
+    notes.push(
+        "run ld_tls_trust_ca (admin) if you have not yet trusted the Badami CA".into(),
+    );
+    notes.push("run ld_reload_nginx to apply".into());
+
+    Ok(SecureSiteCommandResult {
+        site: site.to_string(),
+        tld: cfg.tld,
+        action: "secured".into(),
+        secured: true,
+        cert_path,
+        key_path,
+        conf_path: Some(conf.to_string_lossy().into_owned()),
+        written,
+        notes,
+    })
+}
+
+pub fn secure_site(site: &str, https_port: Option<u16>) -> Result<SecureSiteCommandResult, String> {
+    secure_site_at(&build_runtime_paths()?, site, https_port)
+}
+
+/// Unsecure a site: remove the leaf cert + key files (never the CA) and
+/// rewrite / remove the per-site nginx conf.
+///
+/// If the site is still isolated, the conf is rewritten as isolated-only. If
+/// neither isolated nor secured, the per-site conf is removed outright and
+/// the site falls back to the catch-all server.
+pub fn unsecure_site_at(
+    paths: &RuntimePaths,
+    site: &str,
+) -> Result<SecureSiteCommandResult, String> {
+    validate_site_name(site)?;
+    let cfg = read_valet_config(paths);
+    validate_tld(&cfg.tld)?;
+    let http_port = parse_nginx_http_port(paths);
+
+    // 1. Delete leaf cert + key (idempotent).
+    let tls_result = tls::unsecure_site_at(paths, site, &cfg.tld)?;
+    let mut written = tls_result.written.clone();
+    let mut notes = tls_result.notes.clone();
+
+    // 2. Rewrite / remove the per-site conf.
+    let (prev_isolated, prev_version, _, _) = read_site_conf_state(paths, site);
+    let conf_path = isolated_conf_path(paths, site)?;
+    let conf_removed_or_updated = if prev_isolated {
+        let v = prev_version
+            .ok_or_else(|| "unsecure: isolated conf missing version marker".to_string())?;
+        validate_php_version_display(&v)?;
+        let tag = version_to_tag(&v)?;
+        let opts = SiteConfOptions {
+            site_name: site.to_string(),
+            tld: cfg.tld.clone(),
+            http_port,
+            https_port: None,
+            cert_path: None,
+            key_path: None,
+            php_tag: Some(tag),
+            php_version_display: Some(v),
+        };
+        write_site_conf(paths, &opts, &mut written)?;
+        notes.push("conf rewritten as isolated-only (TLS removed)".into());
+        Some(conf_path.to_string_lossy().into_owned())
+    } else if conf_path.is_file() {
+        fs::remove_file(&conf_path)
+            .map_err(|e| format!("remove per-site conf: {e}"))?;
+        notes.push(format!(
+            "removed per-site conf {} (site falls back to catch-all)",
+            conf_path.display()
+        ));
+        Some(conf_path.to_string_lossy().into_owned())
+    } else {
+        notes.push("no per-site conf existed; nothing to remove".into());
+        None
+    };
+
+    notes.push("run ld_reload_nginx to apply".into());
+
+    Ok(SecureSiteCommandResult {
+        site: site.to_string(),
+        tld: cfg.tld,
+        action: "unsecured".into(),
+        secured: false,
+        cert_path: None,
+        key_path: None,
+        conf_path: conf_removed_or_updated,
+        written,
+        notes,
+    })
+}
+
+pub fn unsecure_site(site: &str) -> Result<SecureSiteCommandResult, String> {
+    unsecure_site_at(&build_runtime_paths()?, site)
 }
 
 // ── Nginx reload ────────────────────────────────────────────────────
@@ -1042,8 +1417,8 @@ pub fn reload_nginx() -> Result<ReloadNginxResult, String> {
 // ── Tauri commands ──────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn ld_list_sites() -> Result<ListSitesResult, String> {
-    tokio::task::spawn_blocking(list_sites)
+pub async fn ld_list_sites(https_port: Option<u16>) -> Result<ListSitesResult, String> {
+    tokio::task::spawn_blocking(move || list_sites(https_port))
         .await
         .map_err(|e| format!("ld_list_sites task failed: {e}"))?
 }
@@ -1091,10 +1466,32 @@ pub async fn ld_unisolate(site: String) -> Result<IsolateResult, String> {
 }
 
 #[tauri::command]
-pub async fn ld_open_site_url(site: String) -> Result<OpenSiteUrlResult, String> {
-    tokio::task::spawn_blocking(move || open_site_url(&site))
+pub async fn ld_open_site_url(
+    site: String,
+    force: Option<bool>,
+    https_port: Option<u16>,
+) -> Result<OpenSiteUrlResult, String> {
+    let force = force.unwrap_or(false);
+    tokio::task::spawn_blocking(move || open_site_url_with_force(&site, force, https_port))
         .await
         .map_err(|e| format!("ld_open_site_url task failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn ld_secure(
+    site: String,
+    https_port: Option<u16>,
+) -> Result<SecureSiteCommandResult, String> {
+    tokio::task::spawn_blocking(move || secure_site(&site, https_port))
+        .await
+        .map_err(|e| format!("ld_secure task failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn ld_unsecure(site: String) -> Result<SecureSiteCommandResult, String> {
+    tokio::task::spawn_blocking(move || unsecure_site(&site))
+        .await
+        .map_err(|e| format!("ld_unsecure task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -1163,11 +1560,23 @@ mod tests {
 
     #[test]
     fn site_url_mode_a_includes_port() {
-        assert_eq!(site_url("office", "test", 8080), "http://office.test:8080");
-        assert_eq!(site_url("office", "test", 80), "http://office.test");
         assert_eq!(
-            site_url("office_oku", "test", 9090),
+            site_url("office", "test", 8080, 8443, false),
+            "http://office.test:8080"
+        );
+        assert_eq!(site_url("office", "test", 80, 8443, false), "http://office.test");
+        assert_eq!(
+            site_url("office_oku", "test", 9090, 8443, false),
             "http://office_oku.test:9090"
+        );
+        // Secured → https, port omitted for :443, included for 8443.
+        assert_eq!(
+            site_url("office", "test", 8080, 8443, true),
+            "https://office.test:8443"
+        );
+        assert_eq!(
+            site_url("office", "test", 80, 443, true),
+            "https://office.test"
         );
     }
 
@@ -1227,7 +1636,7 @@ mod tests {
         let norm = normalize_park_path(&park_dir.to_string_lossy());
         assert!(res.park_paths.iter().any(|p| p == &norm));
 
-        let listed = list_sites_at(&tmp.paths).expect("list");
+        let listed = list_sites_at(&tmp.paths, None).expect("list");
         assert!(listed.park_paths.iter().any(|p| p == &norm));
         assert!(
             listed
@@ -1257,7 +1666,7 @@ mod tests {
         assert_eq!(res.action, "linked");
         assert!(Path::new(&res.link_path).symlink_metadata().is_ok());
 
-        let listed = list_sites_at(&tmp.paths).expect("list");
+        let listed = list_sites_at(&tmp.paths, None).expect("list");
         let site = listed
             .sites
             .iter()
@@ -1289,7 +1698,10 @@ mod tests {
     #[test]
     fn open_site_url_respects_port_temp() {
         let tmp = TempLocalDev::new("url");
-        let res = open_site_url_at(&tmp.paths, "office").expect("url");
+        // Inject a healthy probe so the test does not depend on the host's
+        // live resolver — this unit is about URL composition, not DNS.
+        let healthy = |_tld: &str, _lo: &str| true;
+        let res = open_site_url_at_with_probe(&tmp.paths, "office", false, None, &healthy).expect("url");
         assert_eq!(res.url, "http://office.test:8080");
         assert_eq!(res.http_port, 8080);
 
@@ -1299,7 +1711,8 @@ mod tests {
             "listen 127.0.0.1:80;\n",
         )
         .unwrap();
-        let res80 = open_site_url_at(&tmp.paths, "office").expect("url80");
+        let res80 =
+            open_site_url_at_with_probe(&tmp.paths, "office", false, None, &healthy).expect("url80");
         assert_eq!(res80.url, "http://office.test");
     }
 
@@ -1371,5 +1784,196 @@ mod tests {
         let tmp = TempLocalDev::new("trav");
         // validate_site_name catches this at API boundary; ensure helper also safe
         assert!(isolated_conf_path(&tmp.paths, "../pwned").is_err());
+    }
+
+    #[test]
+    fn open_site_url_dns_gate_unhealthy_without_force() {
+        let tmp = TempLocalDev::new("dns-gate-unh");
+        let probe = |_tld: &str, _lo: &str| false;
+        let err = open_site_url_at_with_probe(&tmp.paths, "office", false, None, &probe).unwrap_err();
+        assert!(
+            err.starts_with(DNS_UNHEALTHY_PREFIX),
+            "expected DNS_UNHEALTHY prefix, got {err}"
+        );
+        assert!(err.contains("force=true"));
+    }
+
+    #[test]
+    fn open_site_url_dns_gate_force_bypasses_probe() {
+        let tmp = TempLocalDev::new("dns-gate-force");
+        // Probe would say unhealthy; force=true skips it entirely.
+        let probe = |_tld: &str, _lo: &str| false;
+        let res = open_site_url_at_with_probe(&tmp.paths, "office", true, None, &probe).unwrap();
+        assert_eq!(res.site, "office");
+        assert_eq!(res.tld, "test");
+        assert!(res.url.starts_with("http://office.test"));
+    }
+
+    #[test]
+    fn open_site_url_dns_gate_healthy_returns_url() {
+        let tmp = TempLocalDev::new("dns-gate-ok");
+        let probe = |_tld: &str, _lo: &str| true;
+        let res = open_site_url_at_with_probe(&tmp.paths, "office", false, None, &probe).unwrap();
+        assert!(res.url.starts_with("http://office.test"));
+    }
+
+    #[test]
+    fn open_site_url_dns_gate_rejects_invalid_site_regardless_of_force() {
+        let tmp = TempLocalDev::new("dns-gate-bad");
+        let probe = |_tld: &str, _lo: &str| true;
+        assert!(open_site_url_at_with_probe(&tmp.paths, "../etc", true, None, &probe).is_err());
+        assert!(open_site_url_at_with_probe(&tmp.paths, "bad name", false, None, &probe).is_err());
+    }
+
+    // ── Phase B TLS wiring ─────────────────────────────────────────
+
+    #[test]
+    fn secure_site_writes_merged_conf_and_lists_secured() {
+        let tmp = TempLocalDev::new("secure-merged");
+        // Park a dir so the site shows up in list_sites.
+        let park = unique_tmp("secure-src");
+        fs::create_dir_all(park.join("office")).unwrap();
+        park_path_at(&tmp.paths, &park.to_string_lossy()).unwrap();
+
+        let res = secure_site_at(&tmp.paths, "office", Some(8443)).expect("secure");
+        assert_eq!(res.action, "secured");
+        assert!(res.secured);
+        let conf_path = res.conf_path.unwrap();
+        let body = fs::read_to_string(&conf_path).unwrap();
+        // Marker + two server blocks (https + http redirect).
+        assert!(body.contains("# BADAMI_SECURED=1"));
+        assert!(body.contains("# BADAMI_SITE=office.test"));
+        assert!(body.contains("listen 127.0.0.1:8443 ssl"));
+        assert!(body.contains("ssl_certificate     \""));
+        assert!(body.contains("ssl_certificate_key \""));
+        assert!(body.contains("return 301 https://office.test:8443"));
+        assert!(body.contains("listen 127.0.0.1:8080;"));
+        // No isolated marker because the site wasn't previously isolated.
+        assert!(!body.contains("ISOLATED_PHP_VERSION="));
+
+        // list_sites must flip `secured` on the office entry and use https.
+        let listed = list_sites_at(&tmp.paths, Some(8443)).unwrap();
+        let site = listed
+            .sites
+            .iter()
+            .find(|s| s.name == "office")
+            .expect("office listed");
+        assert!(site.secured, "secured must reflect cert+conf state");
+        assert_eq!(site.url, "https://office.test:8443");
+
+        // ld_open_site_url with injected healthy probe must emit https url.
+        let healthy = |_tld: &str, _lo: &str| true;
+        let open_res =
+            open_site_url_at_with_probe(&tmp.paths, "office", false, Some(8443), &healthy).unwrap();
+        assert!(open_res.secured);
+        assert_eq!(open_res.https_port, Some(8443));
+        assert_eq!(open_res.url, "https://office.test:8443");
+    }
+
+    #[test]
+    fn secure_then_isolate_merges_both_blocks() {
+        let report = match discover() {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+        let has_74 = report
+            .herd
+            .php_versions
+            .iter()
+            .any(|v| v.version == "7.4" && v.available);
+        if !has_74 {
+            // Skip when the host does not have php 7.4 installed.
+            return;
+        }
+
+        let tmp = TempLocalDev::new("secure-plus-isolate");
+        // Secure first.
+        let secured = secure_site_at(&tmp.paths, "office", Some(8443)).expect("secure");
+        assert!(secured.secured);
+        let conf_path = secured.conf_path.unwrap();
+        // Then isolate — merged conf must keep both markers.
+        let iso = isolate_php_at(&tmp.paths, "office", "7.4").expect("isolate");
+        assert_eq!(iso.action, "isolated");
+        let body = fs::read_to_string(&conf_path).unwrap();
+        assert!(body.contains("# ISOLATED_PHP_VERSION=7.4"));
+        assert!(body.contains("# BADAMI_SECURED=1"));
+        assert!(body.contains("listen 127.0.0.1:8443 ssl"));
+        // Isolated FPM socket is wired into the https server block.
+        assert!(body.contains("php74.sock"));
+        // Still has the http redirect.
+        assert!(body.contains("return 301 https://office.test:8443"));
+    }
+
+    #[test]
+    fn unsecure_removes_leaf_and_rewrites_conf_to_plain() {
+        let tmp = TempLocalDev::new("unsecure-plain");
+        // Secure a site first so there's something to remove.
+        let _ = secure_site_at(&tmp.paths, "office", Some(8443)).unwrap();
+        let tls_paths = tls::TlsPaths::from_runtime(&tmp.paths);
+        let crt_before = tls_paths.site_cert("office", "test");
+        let key_before = tls_paths.site_key("office", "test");
+        assert!(crt_before.is_file() && key_before.is_file());
+
+        // Add an unrelated file under Certificates/ to assert unsecure never
+        // touches anything other than the two files it owns.
+        let foreign = tls_paths.certificates_dir.join("foreign.test.crt");
+        fs::write(&foreign, b"not ours").unwrap();
+
+        let res = unsecure_site_at(&tmp.paths, "office").expect("unsecure");
+        assert_eq!(res.action, "unsecured");
+        assert!(!res.secured);
+        // Leaf files gone; foreign file untouched.
+        assert!(!crt_before.is_file());
+        assert!(!key_before.is_file());
+        assert!(foreign.is_file(), "unrelated file must survive unsecure");
+
+        // CA key + cert untouched.
+        assert!(tls_paths.ca_cert.is_file());
+        assert!(tls_paths.ca_key.is_file());
+
+        // Per-site conf removed outright (no isolate markers left).
+        let conf = isolated_conf_path(&tmp.paths, "office").unwrap();
+        assert!(!conf.is_file());
+
+        // Second call is idempotent.
+        let again = unsecure_site_at(&tmp.paths, "office").unwrap();
+        assert_eq!(again.action, "unsecured");
+        assert!(again.written.is_empty());
+    }
+
+    #[test]
+    fn unsecure_keeps_isolate_when_both_present() {
+        let report = match discover() {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+        if !report
+            .herd
+            .php_versions
+            .iter()
+            .any(|v| v.version == "7.4" && v.available)
+        {
+            return;
+        }
+        let tmp = TempLocalDev::new("unsecure-keep-iso");
+        isolate_php_at(&tmp.paths, "office", "7.4").expect("isolate");
+        secure_site_at(&tmp.paths, "office", Some(8443)).expect("secure");
+
+        let res = unsecure_site_at(&tmp.paths, "office").expect("unsecure");
+        assert_eq!(res.action, "unsecured");
+        let conf = isolated_conf_path(&tmp.paths, "office").unwrap();
+        assert!(conf.is_file(), "conf must survive — isolate still active");
+        let body = fs::read_to_string(&conf).unwrap();
+        assert!(body.contains("# ISOLATED_PHP_VERSION=7.4"));
+        assert!(!body.contains("# BADAMI_SECURED=1"));
+        assert!(!body.contains("listen 127.0.0.1:8443 ssl"));
+        assert!(body.contains("php74.sock"));
+    }
+
+    #[test]
+    fn secure_rejects_bad_site_name() {
+        let tmp = TempLocalDev::new("secure-bad-name");
+        assert!(secure_site_at(&tmp.paths, "../etc", Some(8443)).is_err());
+        assert!(secure_site_at(&tmp.paths, "a b", None).is_err());
     }
 }

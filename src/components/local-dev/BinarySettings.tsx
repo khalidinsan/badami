@@ -18,6 +18,7 @@ import {
   type LocalDevSettingKey,
 } from "@/types/localDev";
 import { BootstrapCard } from "@/components/local-dev/BootstrapCard";
+import { TlsCard } from "@/components/local-dev/TlsCard";
 import { cn } from "@/lib/utils";
 
 function settingValue(
@@ -255,6 +256,7 @@ export function BinarySettings() {
         </Card>
 
         <BootstrapCard />
+        <TlsCard />
       </div>
     </div>
   );
