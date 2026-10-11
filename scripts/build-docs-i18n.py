@@ -140,9 +140,14 @@ def translate_text(text: str, table: dict[str, str]) -> str:
         return text
     key = normalise(text)
     if key in table:
+        result = table[key]
         lead = text[: len(text) - len(text.lstrip())]
         trail = text[len(text.rstrip()):]
-        return f"{lead}{table[key]}{trail}"
+        # A translation that opens with punctuation must not keep the space the
+        # English node carried, or the comma floats away from the word before it.
+        if result[:1] in ",.;:!?)]}":
+            lead = ""
+        return f"{lead}{result}{trail}"
     return text
 
 

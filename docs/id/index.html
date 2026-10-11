@@ -20,6 +20,10 @@
     
     
     
+    
+    
+    
+    
     <!-- seo:start -->
     <link rel="canonical" href="https://khalidinsan.github.io/badami/id/" />
     <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/" />
@@ -101,20 +105,54 @@
 
         <section id="name">
           <div class="section-head">
-            <h2>Asal nama</h2>
+            <h2 id="the-name">Asal nama</h2>
+            <p>
+              Badami adalah kata bahasa Sunda. Kata itu juga jadi batas tentang apa yang boleh dilakukan aplikasi ini.
+            </p>
           </div>
-          <div class="panel">
-            <p style="margin: 0 0 12px">
-              <strong>Badami</strong> adalah kata bahasa Sunda, sebuah kata kerja. Artinya berembuk: duduk bersama membahas sesuatu yang penting sampai mencapai kesepakatan. Dalam bahasa Indonesia, padanan yang biasa dipakai adalah
-              <em>bermusyawarah</em>.
-            </p>
-            <p style="margin: 0 0 12px">
-              Kata ini termasuk ragam <em>loma</em> , tingkat bahasa yang dipakai antar teman sebaya, bukan ragam hormat yang dipakai kepada orang yang lebih tua. Bentuk hormatnya adalah
-              <em>badanten</em>. Definisi dan tingkat bahasanya tercatat di entri Wikikamus basa Sunda, yang mengutip <em>Kamus Basa Sunda</em> karya R.A. Danadibrata.
-            </p>
-            <p style="margin: 0">
-              Itulah yang diklaim aplikasi ini tentang dirinya. Badami tidak memutuskan apa pun atas nama Anda dan tidak menentukan apa pekerjaan Anda. Aplikasi ini menyimpan bahannya di satu tempat, proyek, tugas, catatan dari waktu sebelumnya, supaya pemikirannya tetap milik Anda dan hal yang sama tidak dibahas dua kali.
-            </p>
+
+          <div class="name-grid">
+            <div class="name-prose">
+              <p>
+                <span class="term">Badami</span> adalah kata kerja. Artinya berembuk: duduk bersama membahas sesuatu yang penting sampai mencapai kesepakatan. Dalam bahasa Indonesia, padanan yang biasa dipakai adalah <em>bermusyawarah</em>.
+              </p>
+              <p>
+                Kata ini termasuk ragam <em>loma</em>, tingkat bahasa yang dipakai antar teman sebaya, bukan ragam hormat yang dipakai kepada orang yang lebih tua. Bentuk hormatnya adalah
+                <em>badanten</em>. Definisi dan tingkat bahasanya tercatat di entri Wikikamus basa Sunda, dan di <em>Kamus Bahasa Sunda-Indonesia</em>
+                (Depdikbud, 1982), yang mencatatnya sebagai <em>berunding</em>, <em>musyawarah</em>,
+                <em>berembuk</em>.
+              </p>
+              <p>
+                Itulah yang diklaim aplikasi ini tentang dirinya. Badami tidak memutuskan apa pun atas nama Anda dan tidak menentukan apa pekerjaan Anda. Aplikasi ini menyimpan bahannya di satu tempat, proyek, tugas, catatan dari waktu sebelumnya, supaya pemikirannya tetap milik Anda dan hal yang sama tidak dibahas dua kali.
+              </p>
+            </div>
+
+            <aside class="name-card">
+              <div class="name-word" lang="su-Sund" aria-label="badami in Aksara Sunda">ᮘᮓᮙᮤ</div>
+              <p class="name-gloss">badami</p>
+              <p class="name-gloss-sub">Kata kerja bahasa Sunda · <em>ragam loma</em></p>
+              <dl>
+                <div>
+                  <dt>Arti</dt>
+                  <dd>berembuk, mencapai kesepakatan bersama</dd>
+                </div>
+                <div>
+                  <dt>Akar kata</dt>
+                  <dd><em>dami</em>, sepakat</dd>
+                </div>
+                <div>
+                  <dt>Bentuk hormat</dt>
+                  <dd>badanten</dd>
+                </div>
+                <div>
+                  <dt>Sumber</dt>
+                  <dd>
+                    <a href="https://su.wiktionary.org/wiki/badami">Wikikamus</a> dan
+                    <em>Kamus Bahasa Sunda-Indonesia</em> (Depdikbud, 1982)
+                  </dd>
+                </div>
+              </dl>
+            </aside>
           </div>
         </section>
 
@@ -252,16 +290,30 @@
             </p>
           </div>
 
-          <div class="panel">
-            <pre><code>git clone https://github.com/khalidinsan/badami.git
-cd badami
-npm install
-npm run tauri dev</code></pre>
-            <p style="margin: 0; font-size: 14px; color: var(--fg-muted)">
-              Build pertama mengompilasi crate Rust dan memakan beberapa menit. Penyiapan per platform, tata letak proyek, dan cara rilis dibuat ada di
-              <a href="docs/development.html">Pengembangan</a>.
-            </p>
+          <div class="term">
+            <div class="term-bar" aria-hidden="true">
+              <span class="term-dot red"></span>
+              <span class="term-dot yellow"></span>
+              <span class="term-dot green"></span>
+              <span class="term-title">~/code/badami</span>
+            </div>
+            <pre class="term-body"><code><span class="cmd">git clone https://github.com/khalidinsan/badami.git</span>
+<span class="cmd">cd badami</span>
+<span class="cmd">npm install</span>
+<span class="out">added 654 packages in 4s</span>
+<span class="cmd">npm run tauri dev</span>
+<span class="out">  VITE v7.3.1  ready in 705 ms</span>
+<span class="out">  ➜  Local:   http://localhost:1420/</span>
+<span class="out">     Running DevCommand (`cargo run --no-default-features --color always --`)</span>
+<span class="out">   Compiling proc-macro2 v1.0.106</span>
+<span class="out">   Compiling quote v1.0.45</span>
+<span class="out">   Compiling serde v1.0.228</span>
+<span class="out">    Building [              ] 17/799: itoa, libc, zerocopy</span></code></pre>
           </div>
+          <p style="margin: 14px 0 0; font-size: 14px; color: var(--fg-muted)">
+            Build pertama mengompilasi crate Rust dan butuh beberapa menit. Setup per platform, struktur proyek, dan cara rilis dipotong ada di
+            <a href="docs/development.html">Pengembangan</a>.
+          </p>
         </section>
       </div>
     </main>

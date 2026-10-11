@@ -20,6 +20,10 @@
     
     
     
+    
+    
+    
+    
     <!-- seo:start -->
     <link rel="canonical" href="https://khalidinsan.github.io/badami/" />
     <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/" />
@@ -103,28 +107,63 @@
 
         <section id="name">
           <div class="section-head">
-            <h2>The name</h2>
+            <h2 id="the-name">The name</h2>
+            <p>
+              Badami is a Sundanese word. It is also the brief for what this app is
+              allowed to do.
+            </p>
           </div>
-          <div class="panel">
-            <p style="margin: 0 0 12px">
-              <strong>Badami</strong> is a Sundanese word, a verb. It means to deliberate:
-              to sit with something that matters and talk it through until there is
-              agreement. In Indonesian the usual translation is
-              <em>bermusyawarah</em>.
-            </p>
-            <p style="margin: 0 0 12px">
-              It is a <em>loma</em> word, the register used between peers rather than the
-              formal one kept for elders, and its polite counterpart is
-              <em>badanten</em>. The definition and the register are recorded in the
-              Sundanese Wiktionary entry, which cites <em>Kamus Basa Sunda</em> by
-              R.A. Danadibrata.
-            </p>
-            <p style="margin: 0">
-              That is the claim the app makes about itself. Badami does not decide anything
-              on your behalf and does not tell you what your work is. It keeps the material
-              in one place, the projects, the tasks, the notes from last time, so the
-              thinking stays yours and the same ground does not get covered twice.
-            </p>
+
+          <div class="name-grid">
+            <div class="name-prose">
+              <p>
+                <span class="term">Badami</span> is a verb. It means to deliberate: to sit
+                with something that matters and talk it through until there is agreement.
+                In Indonesian the usual translation is <em>bermusyawarah</em>.
+              </p>
+              <p>
+                It is a <em>loma</em> word, the register used between peers rather than the
+                formal one kept for elders, and its polite counterpart is
+                <em>badanten</em>. The definition and the register are recorded in the
+                Sundanese Wiktionary entry, and in <em>Kamus Bahasa Sunda-Indonesia</em>
+                (Depdikbud, 1982), which lists it as <em>berunding</em>, <em>musyawarah</em>,
+                <em>berembuk</em>.
+              </p>
+              <p>
+                That is the claim the app makes about itself. Badami does not decide
+                anything on your behalf and does not tell you what your work is. It keeps
+                the material in one place, the projects, the tasks, the notes from last
+                time, so the thinking stays yours and the same ground does not get covered
+                twice.
+              </p>
+            </div>
+
+            <aside class="name-card">
+              <div class="name-word" lang="su-Sund" aria-label="badami in Aksara Sunda">ᮘᮓᮙᮤ</div>
+              <p class="name-gloss">badami</p>
+              <p class="name-gloss-sub">Sundanese verb · <em>loma register</em></p>
+              <dl>
+                <div>
+                  <dt>Meaning</dt>
+                  <dd>to deliberate, to reach agreement together</dd>
+                </div>
+                <div>
+                  <dt>Root</dt>
+                  <dd><em>dami</em>, to agree</dd>
+                </div>
+                <div>
+                  <dt>Polite form</dt>
+                  <dd>badanten</dd>
+                </div>
+                <div>
+                  <dt>Source</dt>
+                  <dd>
+                    <a href="https://su.wiktionary.org/wiki/badami">Wiktionary</a> and
+                    <em>Kamus Bahasa Sunda-Indonesia</em> (Depdikbud, 1982)
+                  </dd>
+                </div>
+              </dl>
+            </aside>
           </div>
         </section>
 
@@ -277,17 +316,31 @@
             </p>
           </div>
 
-          <div class="panel">
-            <pre><code>git clone https://github.com/khalidinsan/badami.git
-cd badami
-npm install
-npm run tauri dev</code></pre>
-            <p style="margin: 0; font-size: 14px; color: var(--fg-muted)">
-              The first build compiles the Rust crates and takes a few minutes. Setup per
-              platform, the project layout, and how releases are cut are in
-              <a href="docs/development.html">Development</a>.
-            </p>
+          <div class="term">
+            <div class="term-bar" aria-hidden="true">
+              <span class="term-dot red"></span>
+              <span class="term-dot yellow"></span>
+              <span class="term-dot green"></span>
+              <span class="term-title">~/code/badami</span>
+            </div>
+            <pre class="term-body"><code><span class="cmd">git clone https://github.com/khalidinsan/badami.git</span>
+<span class="cmd">cd badami</span>
+<span class="cmd">npm install</span>
+<span class="out">added 654 packages in 4s</span>
+<span class="cmd">npm run tauri dev</span>
+<span class="out">  VITE v7.3.1  ready in 705 ms</span>
+<span class="out">  ➜  Local:   http://localhost:1420/</span>
+<span class="out">     Running DevCommand (`cargo run --no-default-features --color always --`)</span>
+<span class="out">   Compiling proc-macro2 v1.0.106</span>
+<span class="out">   Compiling quote v1.0.45</span>
+<span class="out">   Compiling serde v1.0.228</span>
+<span class="out">    Building [              ] 17/799: itoa, libc, zerocopy</span></code></pre>
           </div>
+          <p style="margin: 14px 0 0; font-size: 14px; color: var(--fg-muted)">
+            The first build compiles the Rust crates and takes a few minutes. Setup per
+            platform, the project layout, and how releases are cut are in
+            <a href="docs/development.html">Development</a>.
+          </p>
         </section>
       </div>
     </main>
