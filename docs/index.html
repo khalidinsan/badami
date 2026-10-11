@@ -25,6 +25,8 @@
     
     
     
+    
+    
     <!-- seo:start -->
     <link rel="canonical" href="https://khalidinsan.github.io/badami/" />
     <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/" />
@@ -318,24 +320,18 @@
           </div>
 
           <div class="terminal">
-            <div class="terminal-bar" aria-hidden="true">
-              <span class="terminal-dot red"></span>
-              <span class="terminal-dot yellow"></span>
-              <span class="terminal-dot green"></span>
+            <div class="terminal-bar">
+              <span class="terminal-dots" aria-hidden="true">
+                <span class="terminal-dot red"></span>
+                <span class="terminal-dot yellow"></span>
+                <span class="terminal-dot green"></span>
+              </span>
               <span class="terminal-title">~/code/badami</span>
             </div>
-            <pre class="terminal-body"><code><span class="cmd">git clone https://github.com/khalidinsan/badami.git</span>
-<span class="cmd">cd badami</span>
-<span class="cmd">npm install</span>
-<span class="out">added 654 packages in 4s</span>
-<span class="cmd">npm run tauri dev</span>
-<span class="out">  VITE v7.3.1  ready in 705 ms</span>
-<span class="out">  ➜  Local:   http://localhost:1420/</span>
-<span class="out">     Running DevCommand (`cargo run --no-default-features --color always --`)</span>
-<span class="out">   Compiling proc-macro2 v1.0.106</span>
-<span class="out">   Compiling quote v1.0.45</span>
-<span class="out">   Compiling serde v1.0.228</span>
-<span class="out">    Building [              ] 17/799: itoa, libc, zerocopy</span></code></pre>
+            <pre class="terminal-body"><code>git clone https://github.com/khalidinsan/badami.git
+cd badami
+npm install
+npm run tauri dev</code></pre>
           </div>
           <p style="margin: 14px 0 0; font-size: 14px; color: var(--fg-muted)">
             The first build compiles the Rust crates and takes a few minutes. Setup per
@@ -362,5 +358,6 @@
     </footer>
     <script src="assets/search.js" defer></script>
     <script src="assets/theme.js" defer></script>
+    <script src="assets/copy.js" defer></script>
   </body>
 </html>

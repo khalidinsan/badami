@@ -626,7 +626,10 @@ pre code {
   }
 }
 
-/* Terminal block */
+/* Terminal window.
+   The chrome marks a shell transcript. The body holds commands only, no output
+   and no build progress, so the block copies as something you can paste
+   straight into a terminal. */
 
 .terminal {
   border: 1px solid var(--border);
@@ -639,16 +642,21 @@ pre code {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 9px 12px;
+  padding: 7px 8px 7px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--code-bg);
+}
+
+.terminal-dots {
+  display: inline-flex;
+  gap: 6px;
+  flex: none;
 }
 
 .terminal-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  flex: none;
 }
 
 .terminal-dot.red {
@@ -664,7 +672,7 @@ pre code {
 }
 
 .terminal-title {
-  margin-left: 6px;
+  margin-left: 4px;
   color: var(--fg-muted);
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   font-size: 12px;
@@ -679,20 +687,110 @@ pre code {
   overflow-x: auto;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   font-size: 13px;
-  line-height: 1.65;
-}
-
-.terminal-body .cmd {
+  line-height: 1.75;
   color: var(--fg);
 }
 
-.terminal-body .out {
-  color: var(--fg-muted);
+.terminal-body code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
 }
 
-.terminal-body .cmd::before {
-  content: "$ ";
+/* Copy control.
+   Inside a terminal the button sits at the end of the title bar. Everywhere
+   else copy.js wraps the block and the button floats in the corner. */
+
+.copy-btn {
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 9px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.copy-btn:hover {
+  color: var(--fg);
+  background: var(--panel-solid);
+  border-color: var(--border);
+}
+
+.copy-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.copy-btn[data-state="done"] {
   color: var(--primary);
+  border-color: var(--primary);
+}
+
+.copy-btn[data-state="failed"] {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+
+.terminal-bar .copy-btn {
+  margin-left: auto;
+}
+
+.code-wrap {
+  position: relative;
+}
+
+.code-wrap .copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--panel-solid);
+  border-color: var(--border);
+  opacity: 0;
+}
+
+.code-wrap:hover .copy-btn,
+.code-wrap .copy-btn:focus-visible {
+  opacity: 1;
+}
+
+.code-wrap .copy-btn[data-state="done"],
+.code-wrap .copy-btn[data-state="failed"] {
+  opacity: 1;
+}
+
+.code-wrap pre {
+  padding-right: 74px;
+}
+
+/* Touch devices have no hover, so the control stays visible there. */
+@media (hover: none) {
+  .code-wrap .copy-btn {
+    opacity: 1;
+  }
+}
+
+/* Narrow screens cannot spare the top-right corner: the button would cover the
+   first line of a long command, so it takes a row of its own above the block. */
+@media (max-width: 560px) {
+  .code-wrap {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .code-wrap .copy-btn {
+    position: static;
+    order: -1;
+    align-self: flex-end;
+    margin-bottom: 6px;
+  }
+
+  .code-wrap pre {
+    padding-right: 16px;
+  }
 }
 
 /* Callouts */

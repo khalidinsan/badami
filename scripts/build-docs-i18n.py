@@ -159,7 +159,7 @@ def fix_asset_paths(html: str, rel: str) -> str:
     """
     depth = rel.count("/") + 1
     prefix = "../" * depth
-    for name in ("site.css", "search.js", "theme.js", "icon.png", "logo.png", "logo-white.png", "search-index.json"):
+    for name in ("site.css", "search.js", "theme.js", "copy.js", "icon.png", "logo.png", "logo-white.png", "search-index.json"):
         # Any existing relative reference to this asset, whatever its depth.
         html = re.sub(
             r'(?<=")(?:\.\./)*assets/' + re.escape(name),
