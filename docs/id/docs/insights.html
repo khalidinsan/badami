@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Statistik dan pencarian · Badami</title>
+    <meta name="description" content="Dasbor produktivitas, dan command palette yang mencari segalanya." />
+    <link rel="icon" href="../../assets/icon.png" />
+    <link rel="stylesheet" href="../../assets/site.css" />
+    
+    
+    
+    
+    
+    <!-- seo:start -->
+    <link rel="canonical" href="https://khalidinsan.github.io/badami/id/docs/insights.html" />
+    <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/insights.html" />
+    <link rel="alternate" hreflang="id" href="https://khalidinsan.github.io/badami/id/docs/insights.html" />
+    <link rel="alternate" hreflang="x-default" href="https://khalidinsan.github.io/badami/docs/insights.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Badami" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Statistik dan pencarian · Badami" />
+    <meta property="og:description" content="Dasbor produktivitas, dan command palette yang mencari segalanya." />
+    <meta property="og:url" content="https://khalidinsan.github.io/badami/id/docs/insights.html" />
+    <meta property="og:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Statistik dan pencarian · Badami" />
+    <meta name="twitter:description" content="Dasbor produktivitas, dan command palette yang mencari segalanya." />
+    <meta name="twitter:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">
+      {"@context": "https://schema.org", "@type": "TechArticle", "name": "Badami", "applicationCategory": "DeveloperApplication", "operatingSystem": "macOS, Windows, Linux", "url": "https://khalidinsan.github.io/badami/id/docs/insights.html", "description": "Dasbor produktivitas, dan command palette yang mencari segalanya.", "license": "https://github.com/khalidinsan/badami/blob/main/LICENSE", "codeRepository": "https://github.com/khalidinsan/badami", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "headline": "Statistik dan pencarian · Badami", "inLanguage": "id"}
+    </script>
+    <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong theme. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var saved = localStorage.getItem("badami-theme");
+          var mode = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <!-- seo:end -->
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav"><span class="nav-tools"><span class="nav-lang" role="group" aria-label="Language"><a href="../../docs/insights.html" hreflang="en" lang="en">EN</a><a href="insights.html" aria-current="true" hreflang="id" lang="id">ID</a></span></span>
+          <a href="index.html" aria-current="page">Dokumentasi</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Unduh</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Dokumentasi">
+          <p>Mulai di sini</p>
+          <ul>
+            <li><a href="index.html">Ringkasan</a></li>
+            <li><a href="install.html">Instalasi</a></li>
+          </ul>
+          <p>Modul</p>
+          <ul>
+            <li><a href="projects.html">Proyek dan halaman</a></li>
+            <li><a href="tasks.html">Tugas</a></li>
+            <li><a href="planning.html">Perencanaan dan Hari Ini</a></li>
+            <li><a href="servers.html">Server</a></li>
+            <li><a href="credentials.html">Brankas kredensial</a></li>
+            <li><a href="api.html">Alat REST API</a></li>
+            <li><a href="database.html">Klien database</a></li>
+            <li><a href="ai.html">Asisten AI</a></li>
+            <li><a href="insights.html" aria-current="page">Statistik dan pencarian</a></li>
+            <li><a href="sync.html">Sinkronisasi</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Referensi</p>
+          <ul>
+            <li><a href="settings.html">Pengaturan</a></li>
+            <li><a href="shortcuts.html">Pintasan papan tik</a></li>
+          </ul>
+          <p>Pengembangan</p>
+          <ul>
+            <li><a href="development.html">Pengembangan</a></li>
+            <li><a href="architecture.html">Arsitektur</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Statistik dan pencarian</h1>
+          <p class="sub">
+            Dua fitur kecil yang justru tentang segala hal lainnya: dasbor tentang bagaimana sebulan terakhir berjalan, dan palette yang menemukan apa pun di aplikasi dari papan tik.
+          </p>
+
+          <h2 id="statistics">Statistik</h2>
+          <p>
+            Halaman Statistik merangkum 30 hari terakhir. Tidak ada pemilih rentang; jendelanya tetap.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kartu</th>
+                  <th>Yang dihitung</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Total Sesi</strong></td>
+                  <td>Sesi Pomodoro yang selesai.</td>
+                </tr>
+                <tr>
+                  <td><strong>Total Fokus</strong></td>
+                  <td>Total menitnya, ditampilkan sebagai jam dan menit.</td>
+                </tr>
+                <tr>
+                  <td><strong>Durasi Rata-rata</strong></td>
+                  <td>Panjang rata-rata sesi yang selesai.</td>
+                </tr>
+                <tr>
+                  <td><strong>Rentetan Hari</strong></td>
+                  <td>
+                    Hari berurutan hingga hari ini dengan setidaknya satu sesi selesai. Angkanya nol sampai hari ini punya satu, jadi rentetan bisa terlihat terputus di pagi hari.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">Dua grafik mencakup jendela yang sama:</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Grafik</th>
+                  <th>Seri</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Sesi Pomodoro (30 hari)</td>
+                  <td>Sesi per hari, dan tugas yang selesai per hari.</td>
+                </tr>
+                <tr>
+                  <td>Menit Fokus (30 hari)</td>
+                  <td>Menit fokus per hari.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note">
+            <div>
+              <strong>Hanya pekerjaan yang selesai yang dihitung</strong>
+              <p>
+                Sesi Pomodoro yang Anda batalkan dikecualikan dari setiap angka, dan tugas hanya dihitung saat statusnya Selesai, jadi tugas yang dibatalkan tidak dihitung meski punya waktu penyelesaian.
+              </p>
+            </div>
+          </div>
+
+          <h2 id="search-and-commands">Pencarian dan perintah</h2>
+          <p>
+            <code>Cmd+K</code> membuka palette di atas apa pun yang sedang Anda kerjakan.
+            <code>Cmd+Shift+K</code> membuka pencarian yang sama di jendela kecilnya sendiri dari mana pun di sistem, yang berguna saat Badami tidak sedang di depan.
+          </p>
+
+          <h3 id="what-it-searches">Apa yang dicarinya</h3>
+          <p>Satu kueri mencakup setiap modul, dengan hasil dikelompokkan berdasarkan tipe:</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tipe</th>
+                  <th>Item</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Proyek</td><td>Berdasarkan nama.</td></tr>
+                <tr><td>Tugas</td><td>Setiap tugas, termasuk subtugas.</td></tr>
+                <tr><td>Halaman</td><td>Halaman proyek berdasarkan judul.</td></tr>
+                <tr><td>Server</td><td>Koneksi yang tersimpan.</td></tr>
+                <tr><td>Kredensial</td><td>Entri brankas berdasarkan nama.</td></tr>
+                <tr><td>API</td><td>Koleksi dan permintaan yang tersimpan.</td></tr>
+                <tr><td>Database</td><td>Koneksi yang tersimpan.</td></tr>
+                <tr><td>Perintah</td><td>Aksi, bukan dokumen.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="scoping-the-query">Mempersempit kueri</h3>
+          <p>Ketik awalan untuk mencari hanya satu jenis hal:</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Awalan</th>
+                  <th>Cakupan</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>&gt;</code></td><td>Perintah</td></tr>
+                <tr><td><code>#</code></td><td>Tugas</td></tr>
+                <tr><td><code>@</code></td><td>Server</td></tr>
+                <tr><td><code>/</code></td><td>Proyek</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Ada juga tab di bagian atas untuk penyaringan yang sama, dan mengeklik salah satunya menghapus apa pun yang Anda ketik.
+          </p>
+
+          <h3 id="commands">Perintah</h3>
+          <p>
+            Selain membuka hal-hal, palette dapat bertindak. Di samping entri navigasi ada perintah untuk membuat proyek atau tugas, dan, di macOS, untuk membuka Local Dev, menjalankan atau menghentikan stack lokal, serta membuka Doctor. Perintah Local Dev itu hilang saat modulnya dinonaktifkan.
+          </p>
+
+          <h3 id="recents">Terbaru</h3>
+          <p>
+            Dengan kueri kosong, palette mendaftar apa yang terakhir Anda pakai sebelum yang lain. Daftar itu disimpan secara lokal dan memuat sepuluh item terakhir.
+          </p>
+
+          <h2 id="limits">Batasan</h2>
+          <ul>
+            <li>Hasil dibatasi 25 baris, baik untuk terbaru maupun untuk kueri yang diketik.</li>
+            <li>
+              Pencocokan bersifat fuzzy hanya pada judul dan subjudul. Ia tidak membaca isi halaman atau catatan tugas.
+            </li>
+            <li>
+              Indeks dibangun saat palette dibuka, jadi sesuatu yang Anda buat saat palette sudah terbuka muncul saat Anda membukanya lagi.
+            </li>
+            <li>
+              Memilih tugas membuka tampilan Tugas tetapi tidak memilih tugas itu.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Berlisensi MIT.</span>
+        <span class="links">
+          <a href="index.html">Ringkasan</a>
+          <a href="tasks.html">Tugas</a>
+          <a href="settings.html">Pengaturan</a>
+          <a href="shortcuts.html">Pintasan</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Pengembangan</a>
+        </span>
+      </div>
+    </footer>
+    <script src="../../assets/search.js" defer></script>
+    <script src="../../assets/theme.js" defer></script>
+  </body>
+</html>

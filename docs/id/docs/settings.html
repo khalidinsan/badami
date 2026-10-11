@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pengaturan · Badami</title>
+    <meta name="description" content="Setiap setelan di Badami, beserta nilai bawaannya dan apa yang berubah jika diubah." />
+    <link rel="icon" href="../../assets/icon.png" />
+    <link rel="stylesheet" href="../../assets/site.css" />
+    
+    
+    
+    
+    
+    <!-- seo:start -->
+    <link rel="canonical" href="https://khalidinsan.github.io/badami/id/docs/settings.html" />
+    <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/settings.html" />
+    <link rel="alternate" hreflang="id" href="https://khalidinsan.github.io/badami/id/docs/settings.html" />
+    <link rel="alternate" hreflang="x-default" href="https://khalidinsan.github.io/badami/docs/settings.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Badami" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Pengaturan · Badami" />
+    <meta property="og:description" content="Setiap setelan di Badami, beserta nilai bawaannya dan apa yang berubah jika diubah." />
+    <meta property="og:url" content="https://khalidinsan.github.io/badami/id/docs/settings.html" />
+    <meta property="og:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Pengaturan · Badami" />
+    <meta name="twitter:description" content="Setiap setelan di Badami, beserta nilai bawaannya dan apa yang berubah jika diubah." />
+    <meta name="twitter:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">
+      {"@context": "https://schema.org", "@type": "TechArticle", "name": "Badami", "applicationCategory": "DeveloperApplication", "operatingSystem": "macOS, Windows, Linux", "url": "https://khalidinsan.github.io/badami/id/docs/settings.html", "description": "Setiap setelan di Badami, beserta nilai bawaannya dan apa yang berubah jika diubah.", "license": "https://github.com/khalidinsan/badami/blob/main/LICENSE", "codeRepository": "https://github.com/khalidinsan/badami", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "headline": "Pengaturan · Badami", "inLanguage": "id"}
+    </script>
+    <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong theme. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var saved = localStorage.getItem("badami-theme");
+          var mode = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <!-- seo:end -->
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav"><span class="nav-tools"><span class="nav-lang" role="group" aria-label="Language"><a href="../../docs/settings.html" hreflang="en" lang="en">EN</a><a href="settings.html" aria-current="true" hreflang="id" lang="id">ID</a></span></span>
+          <a href="index.html" aria-current="page">Dokumentasi</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Unduh</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Dokumentasi">
+          <p>Mulai di sini</p>
+          <ul>
+            <li><a href="index.html">Ringkasan</a></li>
+            <li><a href="install.html">Instalasi</a></li>
+          </ul>
+          <p>Modul</p>
+          <ul>
+            <li><a href="projects.html">Proyek dan halaman</a></li>
+            <li><a href="tasks.html">Tugas</a></li>
+            <li><a href="planning.html">Perencanaan dan Hari Ini</a></li>
+            <li><a href="servers.html">Server</a></li>
+            <li><a href="credentials.html">Brankas kredensial</a></li>
+            <li><a href="api.html">Alat REST API</a></li>
+            <li><a href="database.html">Klien database</a></li>
+            <li><a href="ai.html">Asisten AI</a></li>
+            <li><a href="insights.html">Statistik dan pencarian</a></li>
+            <li><a href="sync.html">Sinkronisasi</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Referensi</p>
+          <ul>
+            <li><a href="settings.html" aria-current="page">Pengaturan</a></li>
+            <li><a href="shortcuts.html">Pintasan papan tik</a></li>
+          </ul>
+          <p>Pengembangan</p>
+          <ul>
+            <li><a href="development.html">Pengembangan</a></li>
+            <li><a href="architecture.html">Arsitektur</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Pengaturan</h1>
+          <p class="sub">
+            Setiap opsi di aplikasi, dikelompokkan seperti cara halaman Pengaturan mengelompokkannya, beserta nilai awalnya dan apa yang berubah jika diubah.
+          </p>
+
+          <h2 id="appearance">Tampilan</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setelan</th>
+                  <th>Bawaan</th>
+                  <th>Efek</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Tema</td>
+                  <td>Gelap</td>
+                  <td>Terang, Gelap, atau mengikuti sistem. Berlaku seketika, di semua tempat.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="pomodoro-timer">Pomodoro Timer</h2>
+          <p>
+            Ini mengatur panjang setiap fase. Nilai yang berlaku saat Anda memulai sesi disimpan bersama sesi itu, jadi mengubah panjangnya nanti tidak menulis ulang riwayat.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setelan</th>
+                  <th>Bawaan</th>
+                  <th>Rentang</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Durasi kerja</td>
+                  <td>25 menit</td>
+                  <td>1 sampai 120</td>
+                </tr>
+                <tr>
+                  <td>Durasi istirahat</td>
+                  <td>5 menit</td>
+                  <td>1 sampai 60</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="today-window">Jendela Hari Ini</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setelan</th>
+                  <th>Bawaan</th>
+                  <th>Efek</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Selalu di atas secara default</td>
+                  <td>Aktif</td>
+                  <td>
+                    Dimaksudkan untuk mengatur apakah jendela Hari Ini yang mengambang tetap di atas jendela lain. Lihat catatan di bawah.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note warn">
+            <div>
+              <strong>Tombol ini saat ini tidak melakukan apa pun</strong>
+              <p>
+                Jendela Hari Ini selalu dibuat di atas terlepas dari pengaturan ini, dan tombol pin-nya sendiri hanya mengubah jendela yang sedang berjalan tanpa menyimpan perubahan. Untuk sekarang, anggap jendela ini selalu di atas.
+              </p>
+            </div>
+          </div>
+
+          <h2 id="system">Sistem</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setelan</th>
+                  <th>Bawaan</th>
+                  <th>Efek</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Jalankan saat login</td>
+                  <td>Nonaktif</td>
+                  <td>Mendaftarkan Badami sebagai item login agar sudah berjalan saat Anda masuk.</td>
+                </tr>
+                <tr>
+                  <td>Tutup ke system tray</td>
+                  <td>Aktif</td>
+                  <td>
+                    Menutup jendela membuat Badami tetap berjalan di latar belakang, sehingga pengingat dan sinkronisasi tetap bekerja. Nonaktifkan untuk keluar saat jendela ditutup.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Tampilkan aplikasi di Dock</td>
+                  <td>Aktif</td>
+                  <td>Apakah Badami muncul di Dock macOS.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="updates">Pembaruan</h2>
+          <p>
+            Menampilkan versi saat ini dan memeriksa GitHub Releases untuk build yang ditandatangani. Jika tersedia, unduh dan pasang, lalu aplikasi dimulai ulang. Pembaruan diverifikasi terhadap kunci penandatangan yang tertanam di aplikasi, sehingga build yang tidak cocok ditolak.
+          </p>
+
+          <h2 id="cross-device-sync">Sinkronisasi Lintas Perangkat</h2>
+          <p>
+            Replikasi cloud opsional melalui database Turso. Nonaktif secara default. Lihat
+            <a href="sync.html">Sinkronisasi</a> untuk gambaran lengkapnya, termasuk apa yang direplikasi dan yang tidak.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setelan</th>
+                  <th>Bawaan</th>
+                  <th>Efek</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Aktifkan sinkronisasi</td>
+                  <td>Nonaktif</td>
+                  <td>Mengaktifkan replikasi dan membuat replika lokal saat pertama kali dijalankan.</td>
+                </tr>
+                <tr>
+                  <td>URL database</td>
+                  <td>Kosong</td>
+                  <td>Endpoint Turso yang menjadi tujuan replikasi.</td>
+                </tr>
+                <tr>
+                  <td>Interval sinkronisasi</td>
+                  <td>5 menit</td>
+                  <td>Seberapa sering aplikasi mendorong dan menarik data di latar belakang.</td>
+                </tr>
+                <tr>
+                  <td>Sinkronkan saat dijalankan</td>
+                  <td>Aktif</td>
+                  <td>Menjalankan sinkronisasi saat aplikasi dimulai.</td>
+                </tr>
+                <tr>
+                  <td>Sinkronkan saat ditutup</td>
+                  <td>Aktif</td>
+                  <td>Menjalankan sinkronisasi saat aplikasi ditutup, agar perubahan terakhir tidak tertinggal.</td>
+                </tr>
+                <tr>
+                  <td>Tampilkan status sinkronisasi</td>
+                  <td>Aktif</td>
+                  <td>Menampilkan indikator sinkronisasi di antarmuka.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="ssh-terminal">Terminal SSH</h2>
+          <p>Berlaku untuk terminal yang dipakai di modul Server.</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setelan</th>
+                  <th>Bawaan</th>
+                  <th>Efek</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Ukuran font</td>
+                  <td>13</td>
+                  <td>Ukuran teks terminal.</td>
+                </tr>
+                <tr>
+                  <td>Jenis font</td>
+                  <td>JetBrains Mono</td>
+                  <td>Jenis huruf terminal.</td>
+                </tr>
+                <tr>
+                  <td>Tema</td>
+                  <td>Gelap</td>
+                  <td>Skema warna terminal.</td>
+                </tr>
+                <tr>
+                  <td>Sambung ulang otomatis</td>
+                  <td>Aktif</td>
+                  <td>Menyambung ulang sendiri saat koneksi terputus.</td>
+                </tr>
+                <tr>
+                  <td>Percobaan sambung ulang maksimum</td>
+                  <td>5</td>
+                  <td>Berapa kali mencoba ulang sebelum menyerah dan memberitahumu.</td>
+                </tr>
+                <tr>
+                  <td>Interval keepalive</td>
+                  <td>30 detik</td>
+                  <td>
+                    Seberapa sering keepalive dikirim. Memperpendeknya membantu di jaringan yang memutus koneksi menganggur.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="file-manager">Pengelola Berkas</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setelan</th>
+                  <th>Bawaan</th>
+                  <th>Efek</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Tampilkan berkas tersembunyi</td>
+                  <td>Nonaktif</td>
+                  <td>Menampilkan dotfile saat menjelajahi server.</td>
+                </tr>
+                <tr>
+                  <td>Path lokal default</td>
+                  <td><code>~/Downloads</code></td>
+                  <td>Tempat berkas yang diunduh disimpan dan tempat panel lokal dimulai.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="ai-assistant">Asisten AI</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setelan</th>
+                  <th>Bawaan</th>
+                  <th>Efek</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Kunci API OpenRouter</td>
+                  <td>Kosong</td>
+                  <td>
+                    Kunci Anda, disimpan secara lokal. Tombol uji memverifikasinya ke penyedia.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Model default</td>
+                  <td><code>deepseek/deepseek-v4-flash</code></td>
+                  <td>Dipakai untuk percakapan baru kecuali Anda mengganti model di chat.</td>
+                </tr>
+                <tr>
+                  <td>Model aktif</td>
+                  <td>Kosong</td>
+                  <td>
+                    Subset daftar model yang Anda biarkan tersedia, agar pemilih model tidak berisi ratusan entri.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="credential-vault">Brankas Kredensial</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setelan</th>
+                  <th>Bawaan</th>
+                  <th>Efek</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Batas waktu kunci otomatis</td>
+                  <td>15 menit</td>
+                  <td>Mengunci brankas setelah tidak ada aktivitas selama ini, sehingga meninggalkan meja tidak membuatnya tetap terbuka.</td>
+                </tr>
+                <tr>
+                  <td>Petunjuk kata sandi</td>
+                  <td>Kosong</td>
+                  <td>
+                    Pengingat yang ditampilkan di layar buka kunci. Disimpan sebagai teks biasa, jadi jangan menaruh kata sandinya sendiri di sana.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="pem-keys">Kunci PEM</h2>
+          <p>
+            Kelola kunci privat yang dipakai untuk autentikasi SSH: impor kunci, beri nama, dan secara opsional simpan passphrase. Kunci yang diimpor dienkripsi saat disimpan. Kunci yang tersimpan kemudian dapat dipilih sebagai metode autentikasi pada sebuah server.
+          </p>
+
+          <h2 id="local-dev">Local Dev</h2>
+          <p>
+            Pengaturan, Doctor, dan kontrol runtime untuk stack PHP lokal berada di tab Local Dev. Semuanya dibahas lengkap di halaman
+            <a href="local-dev.html">Local Dev</a> :
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setelan</th>
+                  <th>Bawaan</th>
+                  <th>Efek</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Port HTTP</td>
+                  <td>8080</td>
+                  <td>
+                    Port yang diikat nginx. Menyimpan nilai baru akan membuat ulang konfigurasi dan memulai ulang nginx.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Versi PHP default</td>
+                  <td>8.4</td>
+                  <td>Dipakai oleh situs yang tidak dipatok ke versinya sendiri.</td>
+                </tr>
+                <tr>
+                  <td>TLD</td>
+                  <td><code>test</code></td>
+                  <td>Sufiks domain untuk setiap situs lokal.</td>
+                </tr>
+                <tr>
+                  <td>Alamat loopback</td>
+                  <td><code>127.0.0.1</code></td>
+                  <td>Alamat yang di-resolve oleh situs dan DNS.</td>
+                </tr>
+                <tr>
+                  <td>Aktifkan Local Dev</td>
+                  <td>Aktif</td>
+                  <td>
+                    Menyembunyikan modul ini dari sidebar dan command palette saat dinonaktifkan. Hanya macOS.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="where-settings-are-stored">Di mana pengaturan disimpan</h2>
+          <p>
+            Semua yang ada di halaman ini adalah baris di tabel <code>settings</code> di dalam database lokal Anda, kecuali nilai yang menjadi milik sistem operasi: pendaftaran item login, serta kata sandi server dan passphrase PEM, yang berada di keychain. Pengaturan yang mendeskripsikan mesin ini, seperti path dan port Local Dev, dikecualikan dari sinkronisasi cloud agar komputer kedua tidak mewarisi path yang tidak ada di sana.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Berlisensi MIT.</span>
+        <span class="links">
+          <a href="index.html">Ringkasan</a>
+          <a href="tasks.html">Tugas</a>
+          <a href="settings.html">Pengaturan</a>
+          <a href="shortcuts.html">Pintasan</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Pengembangan</a>
+        </span>
+      </div>
+    </footer>
+    <script src="../../assets/search.js" defer></script>
+    <script src="../../assets/theme.js" defer></script>
+  </body>
+</html>

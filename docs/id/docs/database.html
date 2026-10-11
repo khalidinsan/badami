@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Klien database · Badami</title>
+    <meta name="description" content="Hubungkan ke MySQL, PostgreSQL, dan SQLite, telusuri tabel, ubah skema, dan jalankan kueri di beberapa tab." />
+    <link rel="icon" href="../../assets/icon.png" />
+    <link rel="stylesheet" href="../../assets/site.css" />
+    
+    
+    
+    
+    
+    <!-- seo:start -->
+    <link rel="canonical" href="https://khalidinsan.github.io/badami/id/docs/database.html" />
+    <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/database.html" />
+    <link rel="alternate" hreflang="id" href="https://khalidinsan.github.io/badami/id/docs/database.html" />
+    <link rel="alternate" hreflang="x-default" href="https://khalidinsan.github.io/badami/docs/database.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Badami" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Klien database · Badami" />
+    <meta property="og:description" content="Hubungkan ke MySQL, PostgreSQL, dan SQLite, telusuri tabel, ubah skema, dan jalankan kueri di beberapa tab." />
+    <meta property="og:url" content="https://khalidinsan.github.io/badami/id/docs/database.html" />
+    <meta property="og:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Klien database · Badami" />
+    <meta name="twitter:description" content="Hubungkan ke MySQL, PostgreSQL, dan SQLite, telusuri tabel, ubah skema, dan jalankan kueri di beberapa tab." />
+    <meta name="twitter:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">
+      {"@context": "https://schema.org", "@type": "TechArticle", "name": "Badami", "applicationCategory": "DeveloperApplication", "operatingSystem": "macOS, Windows, Linux", "url": "https://khalidinsan.github.io/badami/id/docs/database.html", "description": "Hubungkan ke MySQL, PostgreSQL, dan SQLite, telusuri tabel, ubah skema, dan jalankan kueri di beberapa tab.", "license": "https://github.com/khalidinsan/badami/blob/main/LICENSE", "codeRepository": "https://github.com/khalidinsan/badami", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "headline": "Klien database · Badami", "inLanguage": "id"}
+    </script>
+    <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong theme. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var saved = localStorage.getItem("badami-theme");
+          var mode = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <!-- seo:end -->
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav"><span class="nav-tools"><span class="nav-lang" role="group" aria-label="Language"><a href="../../docs/database.html" hreflang="en" lang="en">EN</a><a href="database.html" aria-current="true" hreflang="id" lang="id">ID</a></span></span>
+          <a href="index.html" aria-current="page">Dokumentasi</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Unduh</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Dokumentasi">
+          <p>Mulai di sini</p>
+          <ul>
+            <li><a href="index.html">Ringkasan</a></li>
+            <li><a href="install.html">Instalasi</a></li>
+          </ul>
+          <p>Modul</p>
+          <ul>
+            <li><a href="projects.html">Proyek dan halaman</a></li>
+            <li><a href="tasks.html">Tugas</a></li>
+            <li><a href="planning.html">Perencanaan dan Hari Ini</a></li>
+            <li><a href="servers.html">Server</a></li>
+            <li><a href="credentials.html">Brankas kredensial</a></li>
+            <li><a href="api.html">Alat REST API</a></li>
+            <li><a href="database.html" aria-current="page">Klien database</a></li>
+            <li><a href="ai.html">Asisten AI</a></li>
+            <li><a href="insights.html">Statistik dan pencarian</a></li>
+            <li><a href="sync.html">Sinkronisasi</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Referensi</p>
+          <ul>
+            <li><a href="settings.html">Pengaturan</a></li>
+            <li><a href="shortcuts.html">Pintasan papan tik</a></li>
+          </ul>
+          <p>Pengembangan</p>
+          <ul>
+            <li><a href="development.html">Pengembangan</a></li>
+            <li><a href="architecture.html">Arsitektur</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Klien database</h1>
+          <p class="sub">
+            Terhubung ke MySQL, PostgreSQL, dan SQLite dari dalam aplikasi, jelajahi isinya, ubah schema, dan jalankan query di tab.
+          </p>
+
+          <h2 id="connections">Koneksi</h2>
+          <p>
+            Sidebar menampilkan daftar koneksi tersimpan Anda. Setiap koneksi memuat engine, host, port, database, username, dan cara autentikasinya.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Engine</th>
+                  <th>Catatan</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>MySQL dan MariaDB</td>
+                  <td>Terhubung melalui TCP. Bisa dipakai untuk server lokal maupun host remote.</td>
+                </tr>
+                <tr>
+                  <td>PostgreSQL</td>
+                  <td>Terhubung melalui TCP, dengan schema opsional untuk dibuka lebih dulu.</td>
+                </tr>
+                <tr>
+                  <td>SQLite</td>
+                  <td>Membuka file di disk. Tanpa server, tanpa kredensial.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="ssl-and-ssh-tunnels">SSL dan tunnel SSH</h3>
+          <p>
+            Sebuah koneksi dapat mewajibkan TLS, dan dapat dialihkan melalui server SSH ketika database hanya bisa dijangkau dari dalam jaringan. Sisi SSH memakai ulang kredensial dan PEM key yang sama seperti modul Servers, sehingga host yang sudah Anda tambahkan di sana bisa dipilih tanpa mengetikkannya lagi.
+          </p>
+
+          <h3 id="passwords">Password</h3>
+          <p>
+            Password database disimpan ke keychain sistem operasi, bukan ke database aplikasi. Baris koneksi mencatat semuanya kecuali rahasianya.
+          </p>
+
+          <div class="note">
+            <div>
+              <strong>Mendaftarkan stack lokal</strong>
+              <p>
+                Jika Anda memakai Local Dev, MariaDB yang dikelolanya dapat didaftarkan sebagai koneksi dengan sekali klik dari panel Local Dev, sehingga database lokal muncul di sini tanpa mengetik host dan port secara manual.
+              </p>
+            </div>
+          </div>
+
+          <h2 id="browsing-objects">Menjelajahi objek</h2>
+          <p>
+            Setelah terhubung, penjelajah objek menampilkan daftar schema, tabel, view, dan kolom. Memilih sebuah tabel akan menampilkan strukturnya dan memungkinkan Anda menelusuri barisnya per halaman.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Yang bisa Anda lakukan</th>
+                  <th>Di mana</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Memeriksa kolom, tipe, key, dan default</td>
+                  <td>Tampilan struktur tabel.</td>
+                </tr>
+                <tr>
+                  <td>Membaca baris dengan paging</td>
+                  <td>Tampilan data tabel.</td>
+                </tr>
+                <tr>
+                  <td>Memfilter dan mengurutkan tanpa menulis SQL</td>
+                  <td>Header kolom dan baris filter.</td>
+                </tr>
+                <tr>
+                  <td>Mengedit sel langsung di tempat</td>
+                  <td>Klik ganda sebuah sel di tampilan data.</td>
+                </tr>
+                <tr>
+                  <td>Menyisipkan atau menghapus baris</td>
+                  <td>Kontrol baris di tampilan data.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="query-editor">Editor query</h2>
+          <p>
+            Setiap query terbuka di tabnya sendiri, sehingga Anda dapat menyimpan beberapa pernyataan berdampingan dan berpindah di antaranya. Hasil muncul di bawah editor, dan hasil eksekusi terakhir tetap ada sampai Anda menjalankan yang lain.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Aksi</th>
+                  <th>Caranya</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Menjalankan pernyataan</td>
+                  <td>Tombol jalankan, atau pintasan papan tik yang biasa di platform Anda.</td>
+                </tr>
+                <tr>
+                  <td>Tab query baru</td>
+                  <td><code>Cmd+T</code>.</td>
+                </tr>
+                <tr>
+                  <td>Menutup tab</td>
+                  <td><code>Cmd+W</code>.</td>
+                </tr>
+                <tr>
+                  <td>Melihat apa yang pernah Anda jalankan</td>
+                  <td>Panel riwayat query.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="schema-changes">Perubahan schema</h2>
+          <p>
+            Tabel dan kolom dapat dibuat, diubah, dan dihapus dari antarmuka. Pernyataan yang akan dijalankan aplikasi ditampilkan sebelum dieksekusi, sehingga perubahan tidak pernah diterapkan tanpa sepengetahuan Anda.
+          </p>
+
+          <h2 id="export-and-import">Ekspor dan impor</h2>
+          <p>
+            Hasil query dan seluruh tabel dapat dituliskan ke file, dan data dapat dibaca kembali. Formatnya dipilih saat Anda memulai ekspor.
+          </p>
+
+          <h2 id="project-scoping">Cakupan per proyek</h2>
+          <p>
+            Sebuah koneksi dapat dilekatkan ke proyek, yang menambahkan tab Database di dalam proyek tersebut sehingga database yang relevan hanya berjarak satu klik saat Anda mengerjakannya.
+          </p>
+
+          <div class="note warn">
+            <div>
+              <strong>Pernyataan destruktif tidak dijalankan di sandbox</strong>
+              <p>
+                Editor mengirim apa yang Anda tulis. <code>DROP</code> atau
+                <code>DELETE</code> tanpa <code>WHERE</code> langsung dijalankan, terhadap koneksi apa pun yang sedang dipilih. Periksa nama koneksi sebelum menjalankan apa pun yang menghancurkan data.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Berlisensi MIT.</span>
+        <span class="links">
+          <a href="index.html">Ringkasan</a>
+          <a href="tasks.html">Tugas</a>
+          <a href="settings.html">Pengaturan</a>
+          <a href="shortcuts.html">Pintasan</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Pengembangan</a>
+        </span>
+      </div>
+    </footer>
+    <script src="../../assets/search.js" defer></script>
+    <script src="../../assets/theme.js" defer></script>
+  </body>
+</html>

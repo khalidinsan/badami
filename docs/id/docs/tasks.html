@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tugas · Badami</title>
+    <meta name="description" content="Cara kerja pengelola tugas Badami: daftar pintar, filter, subtugas, pengulangan, pengingat, dan tampilan papan." />
+    <link rel="icon" href="../../assets/icon.png" />
+    <link rel="stylesheet" href="../../assets/site.css" />
+    
+    
+    
+    
+    
+    <!-- seo:start -->
+    <link rel="canonical" href="https://khalidinsan.github.io/badami/id/docs/tasks.html" />
+    <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/tasks.html" />
+    <link rel="alternate" hreflang="id" href="https://khalidinsan.github.io/badami/id/docs/tasks.html" />
+    <link rel="alternate" hreflang="x-default" href="https://khalidinsan.github.io/badami/docs/tasks.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Badami" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Tugas · Badami" />
+    <meta property="og:description" content="Cara kerja pengelola tugas Badami: daftar pintar, filter, subtugas, pengulangan, pengingat, dan tampilan papan." />
+    <meta property="og:url" content="https://khalidinsan.github.io/badami/id/docs/tasks.html" />
+    <meta property="og:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Tugas · Badami" />
+    <meta name="twitter:description" content="Cara kerja pengelola tugas Badami: daftar pintar, filter, subtugas, pengulangan, pengingat, dan tampilan papan." />
+    <meta name="twitter:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">
+      {"@context": "https://schema.org", "@type": "TechArticle", "name": "Badami", "applicationCategory": "DeveloperApplication", "operatingSystem": "macOS, Windows, Linux", "url": "https://khalidinsan.github.io/badami/id/docs/tasks.html", "description": "Cara kerja pengelola tugas Badami: daftar pintar, filter, subtugas, pengulangan, pengingat, dan tampilan papan.", "license": "https://github.com/khalidinsan/badami/blob/main/LICENSE", "codeRepository": "https://github.com/khalidinsan/badami", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "headline": "Tugas · Badami", "inLanguage": "id"}
+    </script>
+    <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong theme. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var saved = localStorage.getItem("badami-theme");
+          var mode = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <!-- seo:end -->
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav"><span class="nav-tools"><span class="nav-lang" role="group" aria-label="Language"><a href="../../docs/tasks.html" hreflang="en" lang="en">EN</a><a href="tasks.html" aria-current="true" hreflang="id" lang="id">ID</a></span></span>
+          <a href="index.html" aria-current="page">Dokumentasi</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Unduh</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Dokumentasi">
+          <p>Mulai di sini</p>
+          <ul>
+            <li><a href="index.html">Ringkasan</a></li>
+            <li><a href="install.html">Instalasi</a></li>
+          </ul>
+          <p>Modul</p>
+          <ul>
+            <li><a href="projects.html">Proyek dan halaman</a></li>
+            <li><a href="tasks.html" aria-current="page">Tugas</a></li>
+            <li><a href="planning.html">Perencanaan dan Hari Ini</a></li>
+            <li><a href="servers.html">Server</a></li>
+            <li><a href="credentials.html">Brankas kredensial</a></li>
+            <li><a href="api.html">Alat REST API</a></li>
+            <li><a href="database.html">Klien database</a></li>
+            <li><a href="ai.html">Asisten AI</a></li>
+            <li><a href="insights.html">Statistik dan pencarian</a></li>
+            <li><a href="sync.html">Sinkronisasi</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Referensi</p>
+          <ul>
+            <li><a href="settings.html">Pengaturan</a></li>
+            <li><a href="shortcuts.html">Pintasan papan tik</a></li>
+          </ul>
+          <p>Pengembangan</p>
+          <ul>
+            <li><a href="development.html">Pengembangan</a></li>
+            <li><a href="architecture.html">Arsitektur</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Tugas</h1>
+          <p class="sub">
+            Satu daftar untuk semuanya: kotak masuk yang cepat, proyek, label, subtugas, tenggat waktu, pekerjaan berulang, dan pengingat.
+          </p>
+
+          <h2 id="the-sidebar">Bilah samping</h2>
+          <p>
+            Kolom kiri adalah cara Anda menyaring daftar yang sama. Memilih apa pun di sana akan memfilter tampilan; <strong>Semua Tugas</strong> di bagian atas menghapus semua filter.
+          </p>
+
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Entri</th>
+                  <th>Apa yang dipilih</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Kotak masuk</strong></td>
+                  <td>Tugas tanpa proyek.</td>
+                </tr>
+                <tr>
+                  <td><strong>Berbintang</strong></td>
+                  <td>Tugas yang Anda tandai dengan bintang.</td>
+                </tr>
+                <tr>
+                  <td><strong>Hari ini</strong></td>
+                  <td>Jatuh tempo hari ini.</td>
+                </tr>
+                <tr>
+                  <td><strong>Besok</strong></td>
+                  <td>Jatuh tempo besok.</td>
+                </tr>
+                <tr>
+                  <td><strong>7 Hari Berikutnya</strong></td>
+                  <td>Jatuh tempo dalam sepekan ke depan.</td>
+                </tr>
+                <tr>
+                  <td><strong>Terlambat</strong></td>
+                  <td>Sudah melewati tenggat dan belum selesai.</td>
+                </tr>
+                <tr>
+                  <td><strong>Proyek</strong></td>
+                  <td>Daftar proyek aktif yang bisa dilipat. Klik salah satu untuk memfilternya.</td>
+                </tr>
+                <tr>
+                  <td><strong>Label</strong></td>
+                  <td>Daftar label yang bisa dilipat, beserta warnanya. Klik untuk memfilter.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Setiap daftar pintar menampilkan lencana jumlah. Lencana itu menghitung tugas akar yang belum selesai, sementara daftarnya sendiri tidak dibatasi status, jadi angka pada lencana bisa lebih kecil daripada jumlah baris yang Anda lihat setelah tugas selesai disembunyikan.
+          </p>
+
+          <h2 id="working-with-a-task">Bekerja dengan tugas</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Aksi</th>
+                  <th>Caranya</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Menambah tugas</td>
+                  <td>Ketik di kolom input di bagian atas lalu tekan Enter, atau tekan <code>n</code> untuk langsung ke sana.</td>
+                </tr>
+                <tr>
+                  <td>Mengubah status</td>
+                  <td>
+                    Klik kotak centangnya. Statusnya bergilir To Do, In Progress, Done, lalu kembali. Tugas yang dibatalkan juga kembali ke To Do saat diklik.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Menambah subtugas</td>
+                  <td>Arahkan kursor ke baris lalu klik <strong>+</strong>, atau pakai menu baris. Enter menambah, Escape membatalkan.</td>
+                </tr>
+                <tr>
+                  <td>Membuka panel detail</td>
+                  <td>Klik tugasnya. Escape menutupnya.</td>
+                </tr>
+                <tr>
+                  <td>Mengubah urutan</td>
+                  <td>Seret baris, tetapi hanya saat pengurutan diatur ke <strong>Manual</strong>.</td>
+                </tr>
+                <tr>
+                  <td>Memindahkan ke proyek lain</td>
+                  <td>Seret tugas ke proyek di bilah samping atau ke header kelompok proyek.</td>
+                </tr>
+                <tr>
+                  <td>Klik kanan pada baris</td>
+                  <td>Tandai selesai atau buka kembali, beri bintang, pindahkan ke proyek, tambah subtugas, atau hapus.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="the-detail-panel">Panel detail</h3>
+          <p>
+            Mengklik tugas membuka panel di sisi kanan berisi semua tentang tugas itu: judul yang bisa diedit, editor catatan, dan bagian properti yang bisa Anda tampilkan atau sembunyikan.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Properti</th>
+                  <th>Nilai</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Status</td>
+                  <td>To Do, In Progress, Done, Cancelled</td>
+                </tr>
+                <tr>
+                  <td>Prioritas</td>
+                  <td>None, Low, Medium, High, Urgent</td>
+                </tr>
+                <tr>
+                  <td>Proyek</td>
+                  <td>Tanpa proyek, atau proyek mana pun</td>
+                </tr>
+                <tr>
+                  <td>Tanggal dan waktu jatuh tempo</td>
+                  <td>Tanggal, ditambah waktu opsional</td>
+                </tr>
+                <tr>
+                  <td>Perkiraan</td>
+                  <td>
+                    Teks bebas yang menerima <code>45m</code>, <code>2h</code>, atau
+                    <code>1h 30m</code>. Angka tanpa satuan dibaca sebagai menit.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Pengulangan</td>
+                  <td>Tanpa pengulangan, setiap hari, setiap minggu, hari kerja, atau setiap bulan</td>
+                </tr>
+                <tr>
+                  <td>Label</td>
+                  <td>Berapa pun jumlah label</td>
+                </tr>
+                <tr>
+                  <td>Pengingat</td>
+                  <td>Daftar pasangan tanggal dan waktu; masing-masing bisa dihapus</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Bagian bawah panel menampilkan daftar subtugas, dan ukurannya bisa diubah dengan menyeret tepinya.
+          </p>
+
+          <h2 id="subtasks">Subtugas</h2>
+          <p>
+            Subtugas bersarang di dalam induknya dan bisa dilipat. Penyarangan berhenti di tiga tingkat: setelah tugas berada dua tingkat di bawah, opsi untuk menambah anak lagi tidak ditawarkan.
+          </p>
+          <p>
+            Menandai sebuah tugas selesai sekaligus menandai semua tugas di bawahnya sebagai selesai. Membuka kembali induk hanya mengembalikan induknya; anak-anaknya tetap selesai.
+          </p>
+
+          <h2 id="repeating-tasks">Tugas berulang</h2>
+          <p>
+            Beri tugas aturan pengulangan dan tanggal jatuh tempo, lalu menandainya selesai akan membuat kemunculan berikutnya pada tanggal berikutnya yang dihasilkan aturan itu. Tugas baru membawa judul, catatan, prioritas, proyek, waktu jatuh tempo, perkiraan, dan penyarangan, serta ditautkan kembali ke tugas asalnya.
+          </p>
+          <p>
+            Presetnya mencakup harian, mingguan, hari kerja, dan bulanan. Aturan disimpan sebagai string kalender standar, jadi tetap utuh setelah bolak-balik melalui sinkronisasi.
+          </p>
+
+          <h2 id="reminders">Pengingat</h2>
+          <p>
+            Tambahkan satu atau beberapa pasangan tanggal dan waktu ke sebuah tugas. Badami memeriksa pengingat yang jatuh tempo sekali setiap menit dan memunculkan notifikasi sistem operasi, jadi tetap berfungsi entah jendelanya di depan atau tidak. Pengingat ditandai sudah dikirim setelah menyala, dan panel menampilkannya di sebelah pengingat itu.
+          </p>
+          <p>
+            Pengingat terpisah dari tanggal jatuh tempo. Sebuah tugas bisa jatuh tempo hari Jumat dan mengingatkan Anda Kamis malam.
+          </p>
+
+          <h2 id="filtering-sorting-grouping">Pemfilteran, pengurutan, pengelompokan</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kontrol</th>
+                  <th>Opsi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Cari</td>
+                  <td>Mencocokkan judul tugas. Catatan tidak ikut dicari.</td>
+                </tr>
+                <tr>
+                  <td>Filter</td>
+                  <td>
+                    Chip status, prioritas, proyek, dan label, plus rentang tanggal jatuh tempo.
+                    <strong>Hapus semua</strong> mengatur ulang semuanya.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Urutkan</td>
+                  <td>Manual, Due Date, Priority, Title, Date Created</td>
+                </tr>
+                <tr>
+                  <td>Kelompokkan menurut</td>
+                  <td>Tanpa pengelompokan, atau berdasarkan proyek. Kelompok berfungsi sebagai target jatuh saat menyeret.</td>
+                </tr>
+                <tr>
+                  <td>Sembunyikan selesai</td>
+                  <td>Menampilkan atau menyembunyikan tugas yang sudah selesai di daftar.</td>
+                </tr>
+                <tr>
+                  <td>Tampilan</td>
+                  <td>Daftar atau papan.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Filter, pengurutan, pengelompokan, dan pilihan tampilan tidak disimpan. Semuanya kembali ke bawaan saat aplikasi dijalankan lagi.
+          </p>
+
+          <h2 id="board-view">Tampilan papan</h2>
+          <p>
+            Papan punya empat kolom tetap: To Do, In Progress, Done, dan Cancelled. Seret kartu ke kolom lain untuk mengubah statusnya. Klik singkat akan memilih tugas itu, bukan menyeretnya.
+          </p>
+
+          <h2 id="labels">Label</h2>
+          <p>
+            <strong>Kelola label</strong> membuka dialog tempat Anda bisa menambah label dengan nama dan warna, serta menghapus label yang tidak lagi dipakai. Menghapus label akan mencabutnya dari setiap tugas yang memakainya; tugasnya sendiri tetap ada.
+          </p>
+
+          <h2 id="keyboard">Papan tik</h2>
+          <p>
+            Pintasan ini berlaku saat tampilan Tugas sedang aktif di layar, dan diabaikan selama Anda mengetik di sebuah kolom.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tombol</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>↓</code> / <code>↑</code></td><td>Pindahkan pilihan antar tugas.</td></tr>
+                <tr><td><code>d</code></td><td>Putar status tugas yang dipilih.</td></tr>
+                <tr><td><code>s</code></td><td>Beri atau lepas bintang tugas yang dipilih.</td></tr>
+                <tr><td><code>Delete</code></td><td>Hapus tugas yang dipilih.</td></tr>
+                <tr><td><code>n</code></td><td>Fokuskan kolom tambah tugas.</td></tr>
+                <tr><td>Huruf apa pun</td><td>Juga memfokuskan kolom tambah tugas.</td></tr>
+                <tr><td><code>Escape</code></td><td>Tutup panel detail.</td></tr>
+                <tr><td><code>Enter</code></td><td>Kirim kolom tambah atau nama label.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="note">
+            <div>
+              <strong>Pilih banyak tidak tersedia</strong>
+              <p>
+                Kode memuat bilah aksi massal dengan Complete, Move, Priority, dan Delete untuk banyak tugas sekaligus, tetapi tidak ada apa pun di antarmuka yang bisa memilih lebih dari satu tugas, sehingga bilah itu tidak pernah muncul. Anggap pengeditan massal tidak tersedia.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Berlisensi MIT.</span>
+        <span class="links">
+          <a href="index.html">Ringkasan</a>
+          <a href="tasks.html">Tugas</a>
+          <a href="settings.html">Pengaturan</a>
+          <a href="shortcuts.html">Pintasan</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Pengembangan</a>
+        </span>
+      </div>
+    </footer>
+    <script src="../../assets/search.js" defer></script>
+    <script src="../../assets/theme.js" defer></script>
+  </body>
+</html>

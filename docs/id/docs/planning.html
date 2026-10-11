@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Perencanaan dan Hari Ini · Badami</title>
+    <meta name="description" content="Cara perencanaan bekerja di Badami: kalender dan agenda, panel rencana harian, serta jendela Hari Ini yang selalu di atas dengan pengatur waktu pomodoro." />
+    <link rel="icon" href="../../assets/icon.png" />
+    <link rel="stylesheet" href="../../assets/site.css" />
+    
+    
+    
+    
+    
+    <!-- seo:start -->
+    <link rel="canonical" href="https://khalidinsan.github.io/badami/id/docs/planning.html" />
+    <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/planning.html" />
+    <link rel="alternate" hreflang="id" href="https://khalidinsan.github.io/badami/id/docs/planning.html" />
+    <link rel="alternate" hreflang="x-default" href="https://khalidinsan.github.io/badami/docs/planning.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Badami" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Perencanaan dan Hari Ini · Badami" />
+    <meta property="og:description" content="Cara perencanaan bekerja di Badami: kalender dan agenda, panel rencana harian, serta jendela Hari Ini yang selalu di atas dengan pengatur waktu pomodoro." />
+    <meta property="og:url" content="https://khalidinsan.github.io/badami/id/docs/planning.html" />
+    <meta property="og:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Perencanaan dan Hari Ini · Badami" />
+    <meta name="twitter:description" content="Cara perencanaan bekerja di Badami: kalender dan agenda, panel rencana harian, serta jendela Hari Ini yang selalu di atas dengan pengatur waktu pomodoro." />
+    <meta name="twitter:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">
+      {"@context": "https://schema.org", "@type": "TechArticle", "name": "Badami", "applicationCategory": "DeveloperApplication", "operatingSystem": "macOS, Windows, Linux", "url": "https://khalidinsan.github.io/badami/id/docs/planning.html", "description": "Cara perencanaan bekerja di Badami: kalender dan agenda, panel rencana harian, serta jendela Hari Ini yang selalu di atas dengan pengatur waktu pomodoro.", "license": "https://github.com/khalidinsan/badami/blob/main/LICENSE", "codeRepository": "https://github.com/khalidinsan/badami", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "headline": "Perencanaan dan Hari Ini · Badami", "inLanguage": "id"}
+    </script>
+    <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong theme. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var saved = localStorage.getItem("badami-theme");
+          var mode = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <!-- seo:end -->
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav"><span class="nav-tools"><span class="nav-lang" role="group" aria-label="Language"><a href="../../docs/planning.html" hreflang="en" lang="en">EN</a><a href="planning.html" aria-current="true" hreflang="id" lang="id">ID</a></span></span>
+          <a href="index.html" aria-current="page">Dokumentasi</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Unduh</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Dokumentasi">
+          <p>Mulai di sini</p>
+          <ul>
+            <li><a href="index.html">Ringkasan</a></li>
+            <li><a href="install.html">Instalasi</a></li>
+          </ul>
+          <p>Modul</p>
+          <ul>
+            <li><a href="projects.html">Proyek dan halaman</a></li>
+            <li><a href="tasks.html">Tugas</a></li>
+            <li><a href="planning.html" aria-current="page">Perencanaan dan Hari Ini</a></li>
+            <li><a href="servers.html">Server</a></li>
+            <li><a href="credentials.html">Brankas kredensial</a></li>
+            <li><a href="api.html">Alat REST API</a></li>
+            <li><a href="database.html">Klien database</a></li>
+            <li><a href="ai.html">Asisten AI</a></li>
+            <li><a href="insights.html">Statistik dan pencarian</a></li>
+            <li><a href="sync.html">Sinkronisasi</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Referensi</p>
+          <ul>
+            <li><a href="settings.html">Pengaturan</a></li>
+            <li><a href="shortcuts.html">Pintasan papan tik</a></li>
+          </ul>
+          <p>Pengembangan</p>
+          <ul>
+            <li><a href="development.html">Pengembangan</a></li>
+            <li><a href="architecture.html">Arsitektur</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Perencanaan dan Hari Ini</h1>
+          <p class="sub">
+            Dua tampilan untuk tanggal jatuh tempo yang sama. Halaman Planning adalah tempat Anda menempatkan pekerjaan pada hari-hari tertentu. Jendela Hari Ini adalah daftar kecil yang mengambang berisi apa yang masih tersisa.
+          </p>
+
+          <h2 id="daily-planning">Perencanaan Harian</h2>
+          <p>
+            <code>/planning</code> terbuka pada tampilan Kalender dengan tombol Kalender / Agenda di atasnya. Kalendernya punya kontrol sebelumnya, berikutnya, dan hari ini, sebuah judul, serta pengalih bulan / minggu. Bulan adalah bawaannya.
+          </p>
+          <p>
+            Mengklik sebuah hari membuka panel rencana harian untuk tanggal itu. Menyeret acara ke hari lain akan menjadwalkannya ulang: penjatuhan itu menulis ulang tanggal jatuh tempo tugas yang mendasarinya. Acara yang sudah selesai tampil redup dengan garis menembusnya.
+          </p>
+
+          <h3 id="agenda-view">Tampilan agenda</h3>
+          <p>
+            Agenda menampilkan 30 hari berikutnya yang dikelompokkan menurut tanggal. Setiap header hari membuka panel rencana harian untuk tanggal itu, dan setiap tugas di daftar membawa kotak centang tiga status yang sama seperti di tempat lain.
+          </p>
+
+          <h3 id="the-daily-plan-panel">Panel rencana harian</h3>
+          <p>
+            Panel muncul dari samping dengan lebar tetap 320px. Headernya memuat tanggal, sebuah
+            <strong>Impor dari proyek</strong> dropdown, dan tombol tutup. Di bawahnya ada ringkasan bertuliskan <code>N/M completed</code> dengan bilah kemajuan, lalu daftar barisnya, masing-masing dengan pegangan seret.
+          </p>
+          <ol class="steps">
+            <li>Klik sebuah hari di kalender, atau header hari di agenda, untuk membuka panelnya.</li>
+            <li>Tambahkan rencana lewat kolom <code>Add a note...</code> Enter membuatnya untuk tanggal yang dipilih.</li>
+            <li>Jadwalkan pekerjaan yang belum terjadwal dengan mengklik tugas di kumpulan, atau menyeretnya ke dalam daftar.</li>
+            <li>Ubah urutan atau pindahkan baris dengan pegangan seretnya, dan klik kanan sebuah baris untuk membuka menunya.</li>
+          </ol>
+
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Aksi</th>
+                  <th>Caranya</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Tandai selesai atau buka kembali</td>
+                  <td>Dari menu konteks baris.</td>
+                </tr>
+                <tr>
+                  <td>Hapus dari hari ini</td>
+                  <td>Dari menu konteks baris. Ini menghapus tanggal jatuh tempo tugas tersebut.</td>
+                </tr>
+                <tr>
+                  <td>Jadwalkan ulang</td>
+                  <td>Seret acara ke hari lain di kalender.</td>
+                </tr>
+                <tr>
+                  <td>Impor proyek</td>
+                  <td>Pilih proyeknya dari <strong>Impor dari proyek</strong> dropdown.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="what-import-from-project-does">Apa yang dilakukan "Impor dari proyek"</h3>
+          <p>
+            Memilih proyek menetapkan tanggal jatuh tempo ke hari yang dipilih pada setiap tugas akar yang belum selesai dari proyek itu yang tanggal jatuh temponya kosong atau berbeda. Tindakan ini memindahkan tugas-tugas itu; bukan menyalinnya. Subtugas dan pekerjaan yang sudah selesai dilewati.
+          </p>
+
+          <h3 id="the-unscheduled-pool">Kumpulan yang belum terjadwal</h3>
+          <p>
+            Kumpulan ini menampilkan tugas akar yang belum selesai dan belum punya tanggal jatuh tempo. Klik salah satu untuk menjadwalkannya pada hari yang dipilih, atau tekan Enter atau Space pada baris yang disorot. Tugas juga bisa diseret dari kumpulan ke daftar harian.
+          </p>
+          <p>
+            Daftar kosong menampilkan <strong>Belum ada rencana untuk hari ini</strong> dan menerima penjatuhan dengan petunjuk <strong>Jatuhkan untuk menambah</strong>.
+          </p>
+
+          <h2 id="the-today-window">Jendela Hari Ini</h2>
+          <p>
+            Tombol <strong>Hari Ini</strong> di bilah samping membuka jendela kecil terpisah, secara bawaan 300x480 dan minimal 260x360. Jendela ini tanpa bilah judul, selalu berada di atas jendela lain, dan mengingat posisi serta ukurannya di antara peluncuran.
+          </p>
+          <p>
+            Headernya menampilkan <strong>Hari Ini</strong> dengan penghitung selesai dari total dan bilah kemajuan. Saat sebuah tugas sedang difokuskan, lencana <strong>Sedang fokus</strong> muncul di sebelahnya.
+          </p>
+
+          <h3 id="window-controls">Kontrol jendela</h3>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kontrol</th>
+                  <th>Fungsinya</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Ukuran huruf</td>
+                  <td>Berputar melalui tiga ukuran. Seluruh jendela ikut menyesuaikan karena ukurannya relatif.</td>
+                </tr>
+                <tr>
+                  <td>Ganti warna</td>
+                  <td>Enam palet: Default, Yellow, Green, Pink, Purple, Slate.</td>
+                </tr>
+                <tr>
+                  <td>Filter menurut proyek</td>
+                  <td>All Tasks, Inbox, dan setiap proyek yang punya tugas, beserta jumlahnya.</td>
+                </tr>
+                <tr>
+                  <td>Sematkan</td>
+                  <td>Menyematkan atau melepas jendela dari posisi teratas.</td>
+                </tr>
+                <tr>
+                  <td>Muat ulang</td>
+                  <td>Memuat ulang daftar.</td>
+                </tr>
+                <tr>
+                  <td>Tutup</td>
+                  <td>Menutup jendela.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="the-list">Daftarnya</h3>
+          <p>
+            Daftar terbagi menjadi bagian <strong>Terlambat</strong> dan bagian
+            <strong>Hari Ini</strong> . Mengarahkan kursor ke baris memunculkan aksinya: atur prioritas (Urgent, High, Medium, Low, atau None), tetapkan proyek, Focus, dan Delete.
+          </p>
+          <p>
+            Mengklik judul baris akan mengembangkannya. Baris yang diperluas memuat editor catatan, subtugas (Enter menambah, Escape membatalkan), pemilih tanggal jatuh tempo, kolom waktu jatuh tempo, dan tombol <strong>Buka di Tugas</strong> .
+          </p>
+          <p>
+            <strong>Tambah catatan</strong> memunculkan kolom tambah cepat yang mendukung penyebutan
+            <code>@</code> Mengetik <code>@</code> menampilkan hingga lima proyek yang cocok; tombol panah memindahkan sorotan, Enter memilih, dan Escape menghapus penyebutannya.
+          </p>
+
+          <h3 id="pomodoro">Pomodoro</h3>
+          <p>
+            Tombol Pomodoro berada di footer. Selama pengatur waktu berjalan, chip mm:ss yang ringkas tampil di jendela. Pengatur waktunya sendiri menyediakan Reset, Play/Pause, dan Skip, cincin kemajuan, label bertuliskan Ready, Focus, Break, atau Paused, penghitung
+            <code>N sessions today</code> , dan tombol kembali.
+          </p>
+          <p>
+            Memfokuskan tugas akan memulai pomodoro secara otomatis saat sedang menganggur. Saat sesinya berakhir, muncul bilah dengan tombol <strong>Tandai Selesai</strong> dan
+            <strong>Lanjutkan</strong>.
+          </p>
+
+          <h3 id="keyboard">Papan tik</h3>
+          <p>
+            Pintasan ini hanya berlaku saat jendela Hari Ini sedang fokus, dan diabaikan selama Anda mengetik di sebuah kolom.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tombol</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>n</code></td><td>Buka tambah cepat.</td></tr>
+                <tr><td><code>Escape</code></td><td>Lipat baris yang diperluas, lalu kosongkan pilihan.</td></tr>
+                <tr><td><code>↑</code> / <code>↓</code></td><td>Pindahkan pilihan.</td></tr>
+                <tr><td><code>Space</code></td><td>Ganti status tugas yang dipilih.</td></tr>
+                <tr><td><code>e</code></td><td>Perluas atau lipat baris yang dipilih.</td></tr>
+                <tr><td><code>f</code></td><td>Fokuskan tugas yang dipilih, dan mulai pomodoro.</td></tr>
+                <tr><td><code>p</code></td><td>Perluas baris yang dipilih.</td></tr>
+                <tr><td><code>Delete</code> / <code>Backspace</code></td><td>Hapus tugas yang dipilih.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="limits">Batasan</h2>
+          <div class="note warn">
+            <div>
+              <strong>Jendela Hari Ini mengabaikan sebagian pengaturannya sendiri</strong>
+              <p>
+                Jendela selalu dibuat di posisi teratas apa pun pengaturan di Settings, jadi pengaturan itu untuk sekarang tidak berpengaruh. Tombol semat mengubah jendela yang sedang hidup, tetapi pilihannya tidak diingat. <strong>Buka di Tugas</strong>
+                menampilkan dan memfokuskan jendela utama, tetapi tidak memilih tugas di sana.
+              </p>
+            </div>
+          </div>
+          <div class="note warn">
+            <div>
+              <strong>Sebuah "catatan" adalah tugas</strong>
+              <p>
+                Tidak ada tabel catatan tersendiri. Rencana yang Anda tambahkan di panel harian disimpan sebagai tugas yang judulnya adalah teks catatannya, sehingga juga muncul di Tasks dan di jendela Hari Ini.
+              </p>
+            </div>
+          </div>
+          <ul>
+            <li>
+              Pengurutan ulang di dalam daftar harian tidak disimpan. Urutan yang Anda tetapkan hilang saat dimuat ulang.
+            </li>
+            <li>
+              Kalender tidak punya pengubahan ukuran acara dan tidak punya pemilihan rentang dengan seret.
+            </li>
+            <li>
+              Panel rencana harian berlebar tetap tanpa kontrol pengubahan ukuran.
+            </li>
+            <li>
+              Agenda mengambil data sekali saat dipasang, jadi tidak menangkap perubahan yang dibuat di tempat lain selama agenda terbuka.
+            </li>
+            <li>
+              Tugas yang terlambat tidak muncul di panel rencana harian.
+            </li>
+            <li>
+              Jendela memuat semua tugas hari ini dan yang terlambat tanpa penomoran halaman.
+            </li>
+            <li>
+              Pengatur waktu pomodoro di jendela Hari Ini terpisah dari yang ada di jendela utama. Menjalankan keduanya berarti ada dua pengatur waktu berbeda.
+            </li>
+            <li>
+              Penyuntingan catatan di jendela ditunda 600ms, jadi menutupnya langsung setelah mengetik bisa menghilangkan editan terakhir.
+            </li>
+            <li>
+              Popover prioritas tidak dapat dibuka dari papan tik.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Berlisensi MIT.</span>
+        <span class="links">
+          <a href="index.html">Ringkasan</a>
+          <a href="tasks.html">Tugas</a>
+          <a href="settings.html">Pengaturan</a>
+          <a href="shortcuts.html">Pintasan</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Pengembangan</a>
+        </span>
+      </div>
+    </footer>
+    <script src="../../assets/search.js" defer></script>
+    <script src="../../assets/theme.js" defer></script>
+  </body>
+</html>

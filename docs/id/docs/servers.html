@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Server · Badami</title>
+    <meta name="description" content="Terminal SSH, pengelola berkas, perintah tersimpan, dan editor jarak jauh, dengan rahasia di keychain sistem." />
+    <link rel="icon" href="../../assets/icon.png" />
+    <link rel="stylesheet" href="../../assets/site.css" />
+    
+    
+    
+    
+    
+    <!-- seo:start -->
+    <link rel="canonical" href="https://khalidinsan.github.io/badami/id/docs/servers.html" />
+    <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/servers.html" />
+    <link rel="alternate" hreflang="id" href="https://khalidinsan.github.io/badami/id/docs/servers.html" />
+    <link rel="alternate" hreflang="x-default" href="https://khalidinsan.github.io/badami/docs/servers.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Badami" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Server · Badami" />
+    <meta property="og:description" content="Terminal SSH, pengelola berkas, perintah tersimpan, dan editor jarak jauh, dengan rahasia di keychain sistem." />
+    <meta property="og:url" content="https://khalidinsan.github.io/badami/id/docs/servers.html" />
+    <meta property="og:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Server · Badami" />
+    <meta name="twitter:description" content="Terminal SSH, pengelola berkas, perintah tersimpan, dan editor jarak jauh, dengan rahasia di keychain sistem." />
+    <meta name="twitter:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">
+      {"@context": "https://schema.org", "@type": "TechArticle", "name": "Badami", "applicationCategory": "DeveloperApplication", "operatingSystem": "macOS, Windows, Linux", "url": "https://khalidinsan.github.io/badami/id/docs/servers.html", "description": "Terminal SSH, pengelola berkas, perintah tersimpan, dan editor jarak jauh, dengan rahasia di keychain sistem.", "license": "https://github.com/khalidinsan/badami/blob/main/LICENSE", "codeRepository": "https://github.com/khalidinsan/badami", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "headline": "Server · Badami", "inLanguage": "id"}
+    </script>
+    <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong theme. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var saved = localStorage.getItem("badami-theme");
+          var mode = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <!-- seo:end -->
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav"><span class="nav-tools"><span class="nav-lang" role="group" aria-label="Language"><a href="../../docs/servers.html" hreflang="en" lang="en">EN</a><a href="servers.html" aria-current="true" hreflang="id" lang="id">ID</a></span></span>
+          <a href="index.html" aria-current="page">Dokumentasi</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Unduh</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Dokumentasi">
+          <p>Mulai di sini</p>
+          <ul>
+            <li><a href="index.html">Ringkasan</a></li>
+            <li><a href="install.html">Instalasi</a></li>
+          </ul>
+          <p>Modul</p>
+          <ul>
+            <li><a href="projects.html">Proyek dan halaman</a></li>
+            <li><a href="tasks.html">Tugas</a></li>
+            <li><a href="planning.html">Perencanaan dan Hari Ini</a></li>
+            <li><a href="servers.html" aria-current="page">Server</a></li>
+            <li><a href="credentials.html">Brankas kredensial</a></li>
+            <li><a href="api.html">Alat REST API</a></li>
+            <li><a href="database.html">Klien database</a></li>
+            <li><a href="ai.html">Asisten AI</a></li>
+            <li><a href="insights.html">Statistik dan pencarian</a></li>
+            <li><a href="sync.html">Sinkronisasi</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Referensi</p>
+          <ul>
+            <li><a href="settings.html">Pengaturan</a></li>
+            <li><a href="shortcuts.html">Pintasan papan tik</a></li>
+          </ul>
+          <p>Pengembangan</p>
+          <ul>
+            <li><a href="development.html">Pengembangan</a></li>
+            <li><a href="architecture.html">Arsitektur</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Server</h1>
+          <p class="sub">
+            Simpan semua mesin Anda dalam satu daftar, buka terminal atau file manager di salah satunya, dan biarkan password tersimpan di keychain sistem operasi.
+          </p>
+
+          <h2 id="the-server-list">Daftar server</h2>
+          <p>
+            Halaman Servers menampilkan jumlah server Anda dan tombol <strong>Tambah Server</strong>
+            . Setiap server berupa kartu. Mengklik kartu akan membukanya di tab aplikasi tersendiri.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kontrol</th>
+                  <th>Fungsinya</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Cari</td>
+                  <td>Filter teks bebas untuk nama, host, dan username.</td>
+                </tr>
+                <tr>
+                  <td>Filter</td>
+                  <td>
+                    Popover dengan Environment, Protocol (<strong>Semua</strong>,
+                    <strong>SSH</strong>, <strong>FTP</strong>, <strong>FTPS</strong>), dan pilihan Project.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Bersihkan filter</td>
+                  <td>Muncul saat ada filter yang aktif.</td>
+                </tr>
+                <tr>
+                  <td>Urutkan</td>
+                  <td>Terakhir terhubung (default), Nama, Dibuat, Diperbarui.</td>
+                </tr>
+                <tr>
+                  <td>Kelompokkan</td>
+                  <td>Tanpa pengelompokan, Berdasarkan proyek (default), Berdasarkan protokol.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="card-actions">Aksi pada kartu</h3>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Aksi</th>
+                  <th>Catatan</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Terminal</td>
+                  <td>Hanya SSH. Pada FTP atau FTPS, yang muncul hanya toast.</td>
+                </tr>
+                <tr>
+                  <td>Editor</td>
+                  <td>Hanya SSH. Pada FTP atau FTPS, yang muncul hanya toast.</td>
+                </tr>
+                <tr>
+                  <td>Berkas</td>
+                  <td>Selalu tersedia.</td>
+                </tr>
+                <tr>
+                  <td>Klik kanan</td>
+                  <td>Edit dan Hapus.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Penghapusan meminta konfirmasi. Tindakan ini juga menghapus password dan passphrase yang tersimpan dari keychain sistem operasi.
+          </p>
+
+          <h2 id="adding-a-server">Menambahkan server</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kolom</th>
+                  <th>Nilai</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Nama</td>
+                  <td>Teks bebas.</td>
+                </tr>
+                <tr>
+                  <td>Proyek</td>
+                  <td>Hanya ditampilkan di halaman Servers global.</td>
+                </tr>
+                <tr>
+                  <td>Environment</td>
+                  <td>Production, Staging, Development, Other.</td>
+                </tr>
+                <tr>
+                  <td>Warna</td>
+                  <td>Sembilan pilihan warna.</td>
+                </tr>
+                <tr>
+                  <td>Protocol</td>
+                  <td>SSH, FTP, FTPS.</td>
+                </tr>
+                <tr>
+                  <td>Host, Port, Username</td>
+                  <td>Target koneksi.</td>
+                </tr>
+                <tr>
+                  <td>Autentikasi</td>
+                  <td>
+                    Password, PEM Key File, Saved PEM Key, PEM Key + Passphrase, atau From Credential Manager. Opsi PEM hanya muncul untuk SSH.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Direktori Awal</td>
+                  <td>Direktori awal file manager dan terminal.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Mengubah protokol akan mengatur ulang port ke default protokol tersebut dan memaksa autentikasi password untuk protokol selain SSH. Default: SSH 22, FTP 21, FTPS 21.
+          </p>
+
+          <div class="note">
+            <div>
+              <strong>Rahasia tidak disimpan di database</strong>
+              <p>
+                Password dan passphrase disimpan ke keychain sistem operasi, tidak pernah ke database Badami. Yang disimpan bersama server hanyalah referensinya.
+              </p>
+            </div>
+          </div>
+
+          <h3 id="how-authentication-is-resolved">Cara autentikasi diselesaikan</h3>
+          <p>Saat sesi terhubung, kredensial diselesaikan dengan salah satu cara berikut:</p>
+          <ul>
+            <li>Password yang dibaca dari keychain.</li>
+            <li>Path file PEM yang dipakai langsung.</li>
+            <li>PEM key tersimpan yang didekripsi dari penyimpanan.</li>
+            <li>File PEM ditambah passphrase yang dibaca dari keychain.</li>
+            <li>Kredensial tertaut yang field password-nya didekripsi dari brankas.</li>
+          </ul>
+
+          <h2 id="sessions">Sesi</h2>
+          <p>
+            Sesi terbuka dalam tampilan satu halaman penuh dengan satu tab per sesi, dan setiap tab menampilkan titik status. Menu <strong>+</strong> mendaftarkan semua server dengan tombol
+            <strong>SSH</strong>, <strong>Berkas</strong>, dan <strong>IDE</strong>
+            tombol. Menutup tab terakhir akan mengembalikan Anda ke daftar.
+          </p>
+
+          <h3 id="ssh-terminal">Terminal SSH</h3>
+          <p>
+            Terminal terhubung sendiri. Terminal menampilkan status koneksi,
+            <code>user@host:port</code>, dan penghitung waktu berjalan. Toolbar memiliki
+            <strong>Buka File Manager</strong>, <strong>Perintah Tersimpan</strong>, tombol pencarian, dan <strong>Sambung Ulang</strong> saat koneksi terputus.
+          </p>
+          <p>
+            Pencarian terminal: <code>Enter</code> melompat ke kecocokan berikutnya,
+            <code>Shift+Enter</code> ke kecocokan sebelumnya, dan <code>Escape</code> menutup bilah pencarian.
+          </p>
+
+          <div class="note">
+            <div>
+              <strong>Membuka terminal dari breadcrumb</strong>
+              <p>
+                Saat Anda memulai terminal dari breadcrumb file manager, terminal menjalankan
+                <code>cd &lt;path&gt;</code> sekitar 300 ms setelah terhubung, sehingga shell berada di direktori yang sedang Anda jelajahi.
+              </p>
+            </div>
+          </div>
+
+          <h3 id="saved-commands">Perintah tersimpan</h3>
+          <p>
+            Panel Saved Commands memiliki kotak pencarian, formulir tambah, serta aksi edit dan hapus pada setiap entri. Toggle <strong>Jalankan</strong> vs <strong>Sisipkan</strong> menentukan apa yang terjadi saat Anda memilih perintah: Jalankan adalah default dan menambahkan baris baru, Sisipkan hanya mengetikkan teksnya. Checkbox <strong>Global</strong> membuat perintah tidak terikat server sehingga muncul di mana saja.
+          </p>
+
+          <h2 id="file-manager">File manager</h2>
+          <p>File manager juga terhubung sendiri. Toolbar-nya memiliki:</p>
+          <ul>
+            <li>Tombol naik, home, dan refresh.</li>
+            <li>
+              Breadcrumb yang bisa diedit: klik path untuk mengetik, <code>Enter</code> menavigasi,
+              <code>Escape</code> membatalkan.
+            </li>
+            <li>Buka di Terminal.</li>
+            <li>Kotak "Search files".</li>
+            <li>Riwayat transfer.</li>
+            <li>Toggle untuk file tersembunyi.</li>
+            <li>Folder baru dan Unggah file.</li>
+          </ul>
+          <p>
+            Anda juga bisa menjatuhkan file ke jendela. Dialog konfirmasi menampilkan daftar file yang dijatuhkan sebelum unggahan dimulai.
+          </p>
+
+          <h3 id="per-file-actions">Aksi per file</h3>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Aksi</th>
+                  <th>Catatan</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Pratinjau</td>
+                  <td>File teks hingga 1 MB.</td>
+                </tr>
+                <tr>
+                  <td>Unduh</td>
+                  <td>Menyimpan salinan secara lokal.</td>
+                </tr>
+                <tr>
+                  <td>Edit</td>
+                  <td>File teks hingga 5 MB.</td>
+                </tr>
+                <tr>
+                  <td>Buka di Code Editor</td>
+                  <td>
+                    Mengunduh file ke folder sementara, membukanya di editor Anda, lalu memantau dan mengunggah perubahan secara otomatis setelah jeda singkat.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Ganti nama</td>
+                  <td>Mengganti nama di tempat.</td>
+                </tr>
+                <tr>
+                  <td>Hapus</td>
+                  <td>Menghapus file di server.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="note warn">
+            <div>
+              <strong>Batasan protokol</strong>
+              <p>
+                Terminal dan Editor hanya tersedia untuk SSH. Pada server FTP atau FTPS keduanya hanya menampilkan toast, jadi gunakan Berkas untuk protokol tersebut.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Berlisensi MIT.</span>
+        <span class="links">
+          <a href="index.html">Ringkasan</a>
+          <a href="tasks.html">Tugas</a>
+          <a href="settings.html">Pengaturan</a>
+          <a href="shortcuts.html">Pintasan</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Pengembangan</a>
+        </span>
+      </div>
+    </footer>
+    <script src="../../assets/search.js" defer></script>
+    <script src="../../assets/theme.js" defer></script>
+  </body>
+</html>

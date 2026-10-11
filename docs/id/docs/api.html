@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Alat REST API · Badami</title>
+    <meta name="description" content="Susun dan kirim permintaan, atur dalam koleksi, dan simpan variabel per lingkungan." />
+    <link rel="icon" href="../../assets/icon.png" />
+    <link rel="stylesheet" href="../../assets/site.css" />
+    
+    
+    
+    
+    
+    <!-- seo:start -->
+    <link rel="canonical" href="https://khalidinsan.github.io/badami/id/docs/api.html" />
+    <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/api.html" />
+    <link rel="alternate" hreflang="id" href="https://khalidinsan.github.io/badami/id/docs/api.html" />
+    <link rel="alternate" hreflang="x-default" href="https://khalidinsan.github.io/badami/docs/api.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Badami" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Alat REST API · Badami" />
+    <meta property="og:description" content="Susun dan kirim permintaan, atur dalam koleksi, dan simpan variabel per lingkungan." />
+    <meta property="og:url" content="https://khalidinsan.github.io/badami/id/docs/api.html" />
+    <meta property="og:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Alat REST API · Badami" />
+    <meta name="twitter:description" content="Susun dan kirim permintaan, atur dalam koleksi, dan simpan variabel per lingkungan." />
+    <meta name="twitter:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">
+      {"@context": "https://schema.org", "@type": "TechArticle", "name": "Badami", "applicationCategory": "DeveloperApplication", "operatingSystem": "macOS, Windows, Linux", "url": "https://khalidinsan.github.io/badami/id/docs/api.html", "description": "Susun dan kirim permintaan, atur dalam koleksi, dan simpan variabel per lingkungan.", "license": "https://github.com/khalidinsan/badami/blob/main/LICENSE", "codeRepository": "https://github.com/khalidinsan/badami", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "headline": "Alat REST API · Badami", "inLanguage": "id"}
+    </script>
+    <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong theme. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var saved = localStorage.getItem("badami-theme");
+          var mode = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <!-- seo:end -->
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav"><span class="nav-tools"><span class="nav-lang" role="group" aria-label="Language"><a href="../../docs/api.html" hreflang="en" lang="en">EN</a><a href="api.html" aria-current="true" hreflang="id" lang="id">ID</a></span></span>
+          <a href="index.html" aria-current="page">Dokumentasi</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Unduh</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Dokumentasi">
+          <p>Mulai di sini</p>
+          <ul>
+            <li><a href="index.html">Ringkasan</a></li>
+            <li><a href="install.html">Instalasi</a></li>
+          </ul>
+          <p>Modul</p>
+          <ul>
+            <li><a href="projects.html">Proyek dan halaman</a></li>
+            <li><a href="tasks.html">Tugas</a></li>
+            <li><a href="planning.html">Perencanaan dan Hari Ini</a></li>
+            <li><a href="servers.html">Server</a></li>
+            <li><a href="credentials.html">Brankas kredensial</a></li>
+            <li><a href="api.html" aria-current="page">Alat REST API</a></li>
+            <li><a href="database.html">Klien database</a></li>
+            <li><a href="ai.html">Asisten AI</a></li>
+            <li><a href="insights.html">Statistik dan pencarian</a></li>
+            <li><a href="sync.html">Sinkronisasi</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Referensi</p>
+          <ul>
+            <li><a href="settings.html">Pengaturan</a></li>
+            <li><a href="shortcuts.html">Pintasan papan tik</a></li>
+          </ul>
+          <p>Pengembangan</p>
+          <ul>
+            <li><a href="development.html">Pengembangan</a></li>
+            <li><a href="architecture.html">Arsitektur</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Alat REST API</h1>
+          <p class="sub">
+            Susun request, atur di dalam collection, ganti environment, dan baca responsnya tanpa meninggalkan Badami.
+          </p>
+
+          <h2 id="building-a-request">Menyusun request</h2>
+          <p>
+            Tampilan request memiliki pemilih method dan field URL, lalu tab untuk bagian request lainnya:
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tab</th>
+                  <th>Isinya</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Params</td>
+                  <td>Parameter query.</td>
+                </tr>
+                <tr>
+                  <td>Headers</td>
+                  <td>Header request.</td>
+                </tr>
+                <tr>
+                  <td>Body</td>
+                  <td>Body request.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="collections-and-folders">Collection dan folder</h2>
+          <p>
+            Request tersimpan di dalam collection, dan sebuah collection dapat memuat folder. Setiap collection punya variabelnya sendiri, sehingga nilai milik satu kumpulan endpoint tidak bocor ke kumpulan lain.
+          </p>
+
+          <h2 id="environments">Environment</h2>
+          <p>
+            Environment adalah kumpulan variabel bernama. Anda menyimpan satu untuk setiap target (local, staging, production) dan berpindah di antaranya dengan pemilih environment di tampilan request. Request diselesaikan terhadap variabel di environment yang aktif.
+          </p>
+
+          <h2 id="authentication">Autentikasi</h2>
+          <p>Badami punya helper bawaan untuk skema yang umum:</p>
+          <ul>
+            <li>Token Bearer.</li>
+            <li>Basic username dan password.</li>
+            <li>API key.</li>
+          </ul>
+          <p>
+            Anda juga dapat menautkan kredensial dari brankas, sehingga token tidak pernah diketik ke dalam request. Kredensial dibaca saat pengiriman dan rahasianya tetap di brankas.
+          </p>
+
+          <h2 id="sending-and-reading-the-response">Mengirim dan membaca respons</h2>
+          <p>
+            Request dijalankan melalui backend Rust, bukan browser, sehingga tidak terkena aturan CORS browser. Penampil respons menampilkan status, header, dan body, lengkap dengan tampilan kode untuk body saat Anda ingin bentuk mentahnya.
+          </p>
+
+          <h2 id="history">Riwayat</h2>
+          <p>
+            Panel riwayat menyimpan request yang pernah Anda kirim, sehingga Anda dapat kembali ke salah satunya lalu mengirim ulang atau mengeditnya tanpa menyusunnya dari awal.
+          </p>
+
+          <h2 id="import-and-export">Impor dan ekspor</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Arah</th>
+                  <th>Format</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Impor</td>
+                  <td>Collection Postman.</td>
+                </tr>
+                <tr>
+                  <td>Ekspor</td>
+                  <td>cURL.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="scoping-to-a-project">Cakupan per proyek</h2>
+          <p>
+            Request dapat dibatasi pada sebuah proyek. Proyek punya panel API-nya sendiri, sehingga endpoint untuk satu pekerjaan berada bersama bagian proyek lainnya, bukan menumpuk di satu tempat global.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Berlisensi MIT.</span>
+        <span class="links">
+          <a href="index.html">Ringkasan</a>
+          <a href="tasks.html">Tugas</a>
+          <a href="settings.html">Pengaturan</a>
+          <a href="shortcuts.html">Pintasan</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Pengembangan</a>
+        </span>
+      </div>
+    </footer>
+    <script src="../../assets/search.js" defer></script>
+    <script src="../../assets/theme.js" defer></script>
+  </body>
+</html>

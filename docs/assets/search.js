@@ -268,11 +268,24 @@
     button.className = "nav-search";
     button.setAttribute("aria-label", "Search the docs");
     button.innerHTML =
-      '<span class="nav-search-label">Search</span><kbd>' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/>' +
+      '<path d="M20 20l-3.5-3.5"/></svg>' +
+      "<span>Search</span><kbd>" +
       (navigator.platform.indexOf("Mac") === 0 ? "⌘K" : "Ctrl K") +
       "</kbd>";
     button.addEventListener("click", open);
-    nav.insertBefore(button, nav.firstChild);
+
+    // Search sits beside the brand rather than in the link row: it is the
+    // primary action here, and the link row is already the busiest part of the
+    // header.
+    var wrap = document.querySelector(".site-header .wrap");
+    var brand = wrap && wrap.querySelector(".brand");
+    if (wrap && brand && brand.nextSibling) {
+      wrap.insertBefore(button, brand.nextSibling);
+    } else if (wrap) {
+      wrap.appendChild(button);
+    }
   }
 
   if (document.readyState === "loading") {

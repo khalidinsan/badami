@@ -10,12 +10,51 @@
     />
     <link rel="icon" href="assets/icon.png" />
     <link rel="stylesheet" href="assets/site.css" />
-    <meta property="og:title" content="Badami" />
     <meta
       property="og:description"
       content="Projects, tasks, planning, servers, database work, and a local PHP stack in one desktop app."
     />
-    <meta property="og:image" content="assets/logo.png" />
+    
+    
+    
+    
+    
+    <!-- seo:start -->
+    <link rel="canonical" href="https://khalidinsan.github.io/badami/" />
+    <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/" />
+    <link rel="alternate" hreflang="id" href="https://khalidinsan.github.io/badami/id/" />
+    <link rel="alternate" hreflang="x-default" href="https://khalidinsan.github.io/badami/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Badami" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="id_ID" />
+    <meta property="og:title" content="Badami · local-first productivity for developers" />
+    <meta property="og:description" content="" />
+    <meta property="og:url" content="https://khalidinsan.github.io/badami/" />
+    <meta property="og:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Badami · local-first productivity for developers" />
+    <meta name="twitter:description" content="" />
+    <meta name="twitter:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">
+      {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Badami", "applicationCategory": "DeveloperApplication", "operatingSystem": "macOS, Windows, Linux", "url": "https://khalidinsan.github.io/badami/", "description": "", "license": "https://github.com/khalidinsan/badami/blob/main/LICENSE", "codeRepository": "https://github.com/khalidinsan/badami", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}
+    </script>
+    <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong theme. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var saved = localStorage.getItem("badami-theme");
+          var mode = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <!-- seo:end -->
   </head>
   <body>
     <div class="glow"></div>
@@ -25,7 +64,7 @@
         <a class="brand" href="index.html">
           <img class="logo-dark" src="assets/logo.png" alt="Badami" /><img class="logo-light" src="assets/logo-white.png" alt="Badami" />
         </a>
-        <nav class="site-nav">
+        <nav class="site-nav"><span class="nav-tools"><span class="nav-lang" role="group" aria-label="Language"><a href="index.html" aria-current="true" hreflang="en" lang="en">EN</a><a href="../id/index.html" hreflang="id" lang="id">ID</a></span></span>
           <a href="docs/">Docs</a>
           <a href="https://github.com/khalidinsan/badami">GitHub</a>
           <a
@@ -59,6 +98,33 @@
           <p class="platforms">
             macOS (Apple Silicon) · Windows · Linux &nbsp;·&nbsp; free and open source
           </p>
+        </section>
+
+        <section id="name">
+          <div class="section-head">
+            <h2>The name</h2>
+          </div>
+          <div class="panel">
+            <p style="margin: 0 0 12px">
+              <strong>Badami</strong> is a Sundanese word, a verb. It means to deliberate:
+              to sit with something that matters and talk it through until there is
+              agreement. In Indonesian the usual translation is
+              <em>bermusyawarah</em>.
+            </p>
+            <p style="margin: 0 0 12px">
+              It is a <em>loma</em> word, the register used between peers rather than the
+              formal one kept for elders, and its polite counterpart is
+              <em>badanten</em>. The definition and the register are recorded in the
+              Sundanese Wiktionary entry, which cites <em>Kamus Basa Sunda</em> by
+              R.A. Danadibrata.
+            </p>
+            <p style="margin: 0">
+              That is the claim the app makes about itself. Badami does not decide anything
+              on your behalf and does not tell you what your work is. It keeps the material
+              in one place, the projects, the tasks, the notes from last time, so the
+              thinking stays yours and the same ground does not get covered twice.
+            </p>
+          </div>
         </section>
 
         <section id="modules">
@@ -240,5 +306,6 @@ npm run tauri dev</code></pre>
       </div>
     </footer>
     <script src="assets/search.js" defer></script>
+    <script src="assets/theme.js" defer></script>
   </body>
 </html>

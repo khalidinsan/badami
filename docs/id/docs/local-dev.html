@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local Dev · Badami</title>
+    <meta
+      name="description"
+      content="Jalankan situs *.test lokal dengan nginx, PHP-FPM, MariaDB, Redis, dan dnsmasq milik Badami."
+    />
+    <link rel="icon" href="../../assets/icon.png" />
+    <link rel="stylesheet" href="../../assets/site.css" />
+    
+    
+    
+    
+    
+    <!-- seo:start -->
+    <link rel="canonical" href="https://khalidinsan.github.io/badami/id/docs/local-dev.html" />
+    <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/local-dev.html" />
+    <link rel="alternate" hreflang="id" href="https://khalidinsan.github.io/badami/id/docs/local-dev.html" />
+    <link rel="alternate" hreflang="x-default" href="https://khalidinsan.github.io/badami/docs/local-dev.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Badami" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Local Dev · Badami" />
+    <meta property="og:description" content="" />
+    <meta property="og:url" content="https://khalidinsan.github.io/badami/id/docs/local-dev.html" />
+    <meta property="og:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Local Dev · Badami" />
+    <meta name="twitter:description" content="" />
+    <meta name="twitter:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">
+      {"@context": "https://schema.org", "@type": "TechArticle", "name": "Badami", "applicationCategory": "DeveloperApplication", "operatingSystem": "macOS, Windows, Linux", "url": "https://khalidinsan.github.io/badami/id/docs/local-dev.html", "description": "", "license": "https://github.com/khalidinsan/badami/blob/main/LICENSE", "codeRepository": "https://github.com/khalidinsan/badami", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "headline": "Local Dev · Badami", "inLanguage": "id"}
+    </script>
+    <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong theme. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var saved = localStorage.getItem("badami-theme");
+          var mode = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <!-- seo:end -->
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html"><img class="logo-dark" src="../../assets/logo.png" alt="Badami" /><img class="logo-light" src="../../assets/logo-white.png" alt="Badami" /></a>
+        <nav class="site-nav"><span class="nav-tools"><span class="nav-lang" role="group" aria-label="Language"><a href="../../docs/local-dev.html" hreflang="en" lang="en">EN</a><a href="local-dev.html" aria-current="true" hreflang="id" lang="id">ID</a></span></span>
+          <a href="index.html" aria-current="page">Dokumentasi</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Unduh</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Dokumentasi">
+          <p>Mulai di sini</p>
+          <ul>
+            <li><a href="index.html">Ringkasan</a></li>
+            <li><a href="install.html">Instalasi</a></li>
+          </ul>
+          <p>Modul</p>
+          <ul>
+            <li><a href="projects.html">Proyek dan halaman</a></li>
+            <li><a href="tasks.html">Tugas</a></li>
+            <li><a href="planning.html">Perencanaan dan Hari Ini</a></li>
+            <li><a href="servers.html">Server</a></li>
+            <li><a href="credentials.html">Brankas kredensial</a></li>
+            <li><a href="api.html">Alat REST API</a></li>
+            <li><a href="database.html">Klien database</a></li>
+            <li><a href="ai.html">Asisten AI</a></li>
+            <li><a href="insights.html">Statistik dan pencarian</a></li>
+            <li><a href="sync.html">Sinkronisasi</a></li>
+            <li><a href="local-dev.html" aria-current="page">Local Dev</a></li>
+          </ul>
+          <p>Referensi</p>
+          <ul>
+            <li><a href="settings.html">Pengaturan</a></li>
+            <li><a href="shortcuts.html">Pintasan papan tik</a></li>
+          </ul>
+          <p>Pengembangan</p>
+          <ul>
+            <li><a href="development.html">Pengembangan</a></li>
+            <li><a href="architecture.html">Arsitektur</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Local Dev</h1>
+          <p class="sub">
+            Stack PHP lokal yang lengkap di macOS: nginx, PHP-FPM dalam beberapa versi, MariaDB, Redis, dan dnsmasq, semuanya dari biner yang dipasang dan dikelola Badami. Tidak ada lagi yang perlu ada di mesin.
+          </p>
+
+          <div class="note">
+            <div>
+              <strong>Hanya macOS</strong>
+              <p>
+                Local Dev bergantung pada path macOS, launchd, dan APFS. Modul ini disembunyikan di Windows dan Linux.
+              </p>
+            </div>
+          </div>
+
+          <h2 id="how-it-is-put-together">Cara penyusunannya</h2>
+          <p>
+            Semua yang dihasilkan Badami berada dalam satu folder, sehingga stack mudah diperiksa dan mudah dihapus:
+          </p>
+          <pre><code>~/Library/Application Support/Badami/local-dev/
+├── runtime/          binaries, one folder per role and version
+│   ├── nginx/1.25.4/
+│   ├── php/7.4/      php and php-fpm side by side
+│   ├── mariadb/10.11.6/
+│   ├── redis/7.4.7/
+│   └── dnsmasq/2.89/
+├── data/mariadb/     the database files
+├── config/valet/     tld, parks, per-site certificates
+├── config/php/74/    php.ini per version
+├── nginx/            nginx.conf, sites/*.conf
+├── fpm/              one pool per PHP version
+├── socks/            unix sockets nginx connects to
+├── pids/  logs/      runtime state
+└── valet-server/     the PHP router that maps a host to a site folder</code></pre>
+
+          <h2 id="install-a-runtime">Memasang runtime</h2>
+          <p>
+            Buka <strong>Local Dev → Pengaturan → Runtime</strong>. Kartu ini mencantumkan setiap role dan versi yang terpasang untuknya, serta menandai mana yang sedang dipakai.
+          </p>
+          <ol class="steps">
+            <li>
+              Pilih <strong>Tambahkan versi</strong>. PHP 8.x berasal dari
+              <a href="https://static-php.dev/">static-php-cli</a> dan dnsmasq dari bottle Homebrew; keduanya diverifikasi terhadap checksum yang diterbitkan sebelum apa pun diekstrak.
+            </li>
+            <li>
+              Pilih versi yang Anda inginkan. Versi itu diunduh, diverifikasi, diekstrak, lalu dijalankan pemeriksaan versi terhadap biner baru sebelum dipasang.
+            </li>
+            <li>
+              Gunakan <strong>Gunakan</strong> pada sebuah baris untuk mengganti versi yang dijalankan sebuah role, dan ikon bin untuk menghapus versi yang tidak lagi dibutuhkan.
+            </li>
+          </ol>
+          <div class="note warn">
+            <div>
+              <strong>PHP 7.4 tidak punya build upstream</strong>
+              <p>
+                static-php-cli dimulai dari 8.0, dan tidak ada sumber netral lain yang menerbitkan build macOS arm64 di URL yang stabil. Karena itu Badami melaporkan 7.4 sebagai tidak tersedia untuk diunduh daripada menunjuk ke server orang lain. Jika Anda memerlukan 7.4, build sendiri dan letakkan di bawah
+                <code>runtime/php/7.4/</code>.
+              </p>
+            </div>
+          </div>
+
+          <h2 id="sites">Situs</h2>
+          <p>
+            Sebuah <strong>folder yang diparkir</strong> menyajikan setiap subfolder langsung sebagai situs, seperti cara kerja web root. Sebuah <strong>situs yang ditautkan</strong> menunjuk ke satu folder tertentu.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Aksi</th>
+                  <th>Hasil</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Parkirkan direktori</td>
+                  <td>Setiap subfolder menjadi <code>&lt;folder&gt;.test</code>.</td>
+                </tr>
+                <tr>
+                  <td>Tautkan proyek</td>
+                  <td>Folder proyek disajikan dengan namanya sendiri.</td>
+                </tr>
+                <tr>
+                  <td>Isolasi PHP</td>
+                  <td>Mematok satu situs ke versi PHP tertentu melalui pool-nya sendiri.</td>
+                </tr>
+                <tr>
+                  <td>Amankan</td>
+                  <td>
+                    Menerbitkan sertifikat dari CA lokal dan menyajikan situs melalui HTTPS.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="http-and-https">HTTP dan HTTPS</h2>
+          <p>
+            Secara default nginx mengikat port tanpa hak istimewa, sehingga tidak ada yang berjalan sebagai root:
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Mode</th>
+                  <th>URL</th>
+                  <th>Memerlukan admin</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>HTTP, default</td>
+                  <td><code>http://mysite.test:8080</code></td>
+                  <td>No</td>
+                </tr>
+                <tr>
+                  <td>HTTPS, per situs</td>
+                  <td><code>https://mysite.test:8443</code></td>
+                  <td>No</td>
+                </tr>
+                <tr>
+                  <td>HTTP di port 80</td>
+                  <td><code>http://mysite.test</code></td>
+                  <td>Ya, sekali, untuk memasang LaunchDaemon</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Port 80 bersifat opsional. Memasangnya menulis LaunchDaemon milik Badami di balik satu prompt admin, dan setiap konfigurasi yang dibaca daemon itu dirender ke folder milik root dan diverifikasi dengan hash sebelum daemon dimuat.
+          </p>
+
+          <h3 id="trusting-the-local-ca">Mempercayai CA lokal</h3>
+          <p>
+            HTTPS langsung berfungsi, tetapi browser akan memperingatkan sampai Certificate Authority lokal dipercaya. <strong>Pengaturan → TLS</strong> menampilkan perintah persis yang akan dijalankan sebelum prompt admin muncul, dan sertifikatnya diverifikasi terhadap hash yang dihitung di aplikasi sebelum keychain melihatnya.
+          </p>
+          <p>
+            Menghapus kepercayaan itu dilakukan manual: gunakan Keychain Access, atau jalankan
+            <code>security remove-trusted-cert</code> terhadap berkas CA.
+          </p>
+
+          <h2 id="dns-for-test">DNS untuk <code>*.test</code></h2>
+          <p>
+            Berkas resolver saja bukan DNS yang berfungsi: harus ada yang menjawab di port yang ditunjuknya. Badami memeriksa dengan me-resolve label acak, bukan dengan mencari berkas, dan melaporkan apa yang ditemukannya:
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Mode</th>
+                  <th>Yang terjadi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Adopsi</td>
+                  <td>Listener yang sudah ada sudah menjawab untuk TLD tersebut, jadi tidak ada yang dijalankan.</td>
+                </tr>
+                <tr>
+                  <td>Badami dnsmasq</td>
+                  <td>Memasang LaunchDaemon dnsmasq yang mengikat port 53. Satu prompt admin.</td>
+                </tr>
+                <tr>
+                  <td>Port tinggi</td>
+                  <td>Menulis entri resolver yang menunjuk ke port tanpa hak istimewa, lalu menjalankan dnsmasq tanpa hak istimewa.</td>
+                </tr>
+                <tr>
+                  <td>Terdegradasi</td>
+                  <td>
+                    DNS tidak berfungsi. Stack tetap berjalan dan situs menjawab di
+                    <code>127.0.0.1:8080</code> dengan header Host, dan tab Doctor menjelaskan cara memperbaikinya.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note">
+            <div>
+              <strong>DNS aman di browser</strong>
+              <p>
+                Chrome dan Firefox dapat memakai DNS-over-HTTPS, yang sepenuhnya melewati berkas resolver. Nonaktifkan untuk <code>*.test</code> jika probe sistem berwarna hijau tetapi browser tidak bisa me-resolve situs Anda.
+              </p>
+            </div>
+          </div>
+
+          <h2 id="your-database">Database Anda</h2>
+          <p>
+            MariaDB membaca berkasnya dari <code>data/mariadb</code>. Jika Anda sudah punya datadir di tempat lain, <strong>Pengaturan → Runtime → Database files</strong> bisa memindahkannya ke sini. Di APFS pemindahan itu adalah clone, yang berbagi blok dengan sumbernya alih-alih menyalinnya: datadir 11 GB berpindah dalam sekitar satu detik dan hampir tidak memakai disk tambahan.
+          </p>
+          <p>
+            Pemindahan itu memverifikasi hasilnya dengan melakukan hash pada sampel berkas yang disalin, selalu termasuk <code>ibdata1</code>, dan membandingkan kedua sisi. Folder sumber tidak pernah diubah, jadi tetap tersedia sebagai cadangan sampai Anda menghapusnya sendiri.
+          </p>
+
+          <h2 id="safety-rules">Aturan keamanan</h2>
+          <ul>
+            <li>
+              <strong>Tidak ada yang dihapus secara otomatis.</strong> Memindahkan data membuat clone; menghapus versi runtime atau datadir selalu merupakan tindakan eksplisit yang Anda lakukan.
+            </li>
+            <li>
+              <strong>Sebuah biner hanya dipakai jika hash-nya cocok dengan</strong> manifes yang dicatat saat dipasang. Berkas yang tersalin sebagian atau diubah terbaca sebagai tidak ada, bukan sebagai berfungsi.
+            </li>
+            <li>
+              <strong>Menjalankan MariaDB dua kali pada satu datadir ditolak.</strong> Dua server yang menulis berkas InnoDB yang sama adalah cara database menjadi rusak, jadi pengaman ini adalah kegagalan keras dengan penjelasan.
+            </li>
+            <li>
+              <strong>Konfigurasi berhak istimewa diverifikasi dengan hash.</strong> Konfigurasi nginx dan dnsmasq milik root dirender ulang, ditokenkan, diperiksa terhadap allowlist, distaging, dan diverifikasi hash-nya sebelum launchd memuatnya.
+            </li>
+          </ul>
+
+          <h2 id="uninstall">Menghapus instalasi</h2>
+          <p>
+            <strong>Local Dev → Pengaturan → LaunchDaemon</strong> membalikkan apa yang dipasang Badami: hanya menghapus unit milik Badami dan folder konfigurasi yang distaging. Berkas resolver hanya dihapus saat Anda mengonfirmasi dan hanya jika membawa penanda Badami, jadi berkas resolver yang ditulis oleh hal lain dibiarkan.
+          </p>
+          <p>
+            Untuk menghapus seluruh stack setelahnya, hapus folder yang ditunjukkan di bagian atas halaman ini dan folder milik root
+            <code>/Library/Application Support/Badami/local-dev-root/</code>. Sertifikat yang Anda percayai harus dihapus dari keychain secara manual, seperti dijelaskan di atas.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Berlisensi MIT.</span>
+        <span class="links">
+          <a href="index.html">Ringkasan</a>
+          <a href="tasks.html">Tugas</a>
+          <a href="settings.html">Pengaturan</a>
+          <a href="shortcuts.html">Pintasan</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Pengembangan</a>
+        </span>
+      </div>
+    </footer>
+    <script src="../../assets/search.js" defer></script>
+    <script src="../../assets/theme.js" defer></script>
+  </body>
+</html>

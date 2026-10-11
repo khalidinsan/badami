@@ -17,6 +17,23 @@
 
 ---
 
+## The name
+
+**Badami** is a Sundanese verb. It means to deliberate: to sit with something that
+matters and talk it through until there is agreement. In Indonesian the usual
+translation is *bermusyawarah*.
+
+It is a *loma* word, the register used between peers rather than the formal one kept
+for elders, and its polite counterpart is *badanten*. The definition and the register
+are recorded in the [Sundanese Wiktionary entry](https://su.wiktionary.org/wiki/badami),
+which cites *Kamus Basa Sunda* by R.A. Danadibrata.
+
+That is the claim the app makes about itself: Badami does not decide anything on your
+behalf, and it does not tell you what your work is. It keeps the material in one place
+so the thinking stays yours.
+
+---
+
 ## Install
 
 Download the installer for your platform from

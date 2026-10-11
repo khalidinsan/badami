@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sinkronisasi · Badami</title>
+    <meta name="description" content="Replikasi cloud opsional dengan Turso, dan data mana yang tetap di satu mesin." />
+    <link rel="icon" href="../../assets/icon.png" />
+    <link rel="stylesheet" href="../../assets/site.css" />
+    
+    
+    
+    
+    
+    <!-- seo:start -->
+    <link rel="canonical" href="https://khalidinsan.github.io/badami/id/docs/sync.html" />
+    <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/sync.html" />
+    <link rel="alternate" hreflang="id" href="https://khalidinsan.github.io/badami/id/docs/sync.html" />
+    <link rel="alternate" hreflang="x-default" href="https://khalidinsan.github.io/badami/docs/sync.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Badami" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Sinkronisasi · Badami" />
+    <meta property="og:description" content="Replikasi cloud opsional dengan Turso, dan data mana yang tetap di satu mesin." />
+    <meta property="og:url" content="https://khalidinsan.github.io/badami/id/docs/sync.html" />
+    <meta property="og:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Sinkronisasi · Badami" />
+    <meta name="twitter:description" content="Replikasi cloud opsional dengan Turso, dan data mana yang tetap di satu mesin." />
+    <meta name="twitter:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">
+      {"@context": "https://schema.org", "@type": "TechArticle", "name": "Badami", "applicationCategory": "DeveloperApplication", "operatingSystem": "macOS, Windows, Linux", "url": "https://khalidinsan.github.io/badami/id/docs/sync.html", "description": "Replikasi cloud opsional dengan Turso, dan data mana yang tetap di satu mesin.", "license": "https://github.com/khalidinsan/badami/blob/main/LICENSE", "codeRepository": "https://github.com/khalidinsan/badami", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "headline": "Sinkronisasi · Badami", "inLanguage": "id"}
+    </script>
+    <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong theme. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var saved = localStorage.getItem("badami-theme");
+          var mode = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <!-- seo:end -->
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav"><span class="nav-tools"><span class="nav-lang" role="group" aria-label="Language"><a href="../../docs/sync.html" hreflang="en" lang="en">EN</a><a href="sync.html" aria-current="true" hreflang="id" lang="id">ID</a></span></span>
+          <a href="index.html" aria-current="page">Dokumentasi</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Unduh</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Dokumentasi">
+          <p>Mulai di sini</p>
+          <ul>
+            <li><a href="index.html">Ringkasan</a></li>
+            <li><a href="install.html">Instalasi</a></li>
+          </ul>
+          <p>Modul</p>
+          <ul>
+            <li><a href="projects.html">Proyek dan halaman</a></li>
+            <li><a href="tasks.html">Tugas</a></li>
+            <li><a href="planning.html">Perencanaan dan Hari Ini</a></li>
+            <li><a href="servers.html">Server</a></li>
+            <li><a href="credentials.html">Brankas kredensial</a></li>
+            <li><a href="api.html">Alat REST API</a></li>
+            <li><a href="database.html">Klien database</a></li>
+            <li><a href="ai.html">Asisten AI</a></li>
+            <li><a href="insights.html">Statistik dan pencarian</a></li>
+            <li><a href="sync.html" aria-current="page">Sinkronisasi</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Referensi</p>
+          <ul>
+            <li><a href="settings.html">Pengaturan</a></li>
+            <li><a href="shortcuts.html">Pintasan papan tik</a></li>
+          </ul>
+          <p>Pengembangan</p>
+          <ul>
+            <li><a href="development.html">Pengembangan</a></li>
+            <li><a href="architecture.html">Arsitektur</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Sinkronisasi</h1>
+          <p class="sub">
+            Replikasi opsional database Anda ke instans Turso, sehingga pekerjaan yang sama tersedia di lebih dari satu komputer. Nonaktif kecuali Anda mengaktifkannya.
+          </p>
+
+          <h2 id="how-it-works">Cara kerjanya</h2>
+          <p>
+            Badami menyimpan database lokal di setiap mesin dan replika embedded dari database Turso jarak jauh Anda di sampingnya. Penulisan masuk ke berkas lokal lebih dulu dan direplikasi di latar belakang, itulah sebabnya aplikasi tetap cepat dan terus bekerja tanpa jaringan.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Situasi</th>
+                  <th>Yang dibuka</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Sinkronisasi aktif, replika sudah ada</td>
+                  <td>Replika, seketika. Tanpa menunggu jaringan saat mulai.</td>
+                </tr>
+                <tr>
+                  <td>Sinkronisasi aktif, replika belum ada</td>
+                  <td>
+                    Database lokal selagi replika dibangun di latar belakang, sehingga aplikasi tetap bisa dipakai selama sinkronisasi pertama.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Sinkronisasi nonaktif</td>
+                  <td>Database lokal sebagai berkas SQLite biasa.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="turning-it-on">Mengaktifkannya</h2>
+          <ol class="steps">
+            <li>Buat database di <a href="https://turso.tech/">turso.tech</a>.</li>
+            <li>
+              Buka <strong>Pengaturan → Sinkronisasi Lintas Perangkat</strong>, aktifkan sinkronisasi, lalu tempel URL database.
+            </li>
+            <li>
+              Di komputer kedua, gunakan URL yang sama. Replikanya dibuat dari salinan jarak jauh saat pertama kali dijalankan.
+            </li>
+          </ol>
+
+          <h2 id="what-syncs-and-what-does-not">Apa yang disinkronkan, dan apa yang tidak</h2>
+          <p>
+            Dokumen dan catatan direplikasi: proyek, halaman, tugas, label, kredensial, server, koleksi API, dan koneksi database.
+          </p>
+          <p>Beberapa hal sengaja tetap di mesin yang membuatnya:</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tidak disinkronkan</th>
+                  <th>Alasan</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Rahasia di keychain sistem operasi</td>
+                  <td>
+                    Kata sandi server dan passphrase PEM disimpan oleh keychain sistem dan tidak pernah menjadi bagian dari database, sehingga tidak dapat direplikasi. Tambahkan di setiap mesin.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Kunci penyedia AI Anda</td>
+                  <td>Disimpan lokal agar database yang dibagikan tidak menyerahkan kunci Anda ke mesin lain.</td>
+                </tr>
+                <tr>
+                  <td>Tabel Local Dev</td>
+                  <td>
+                    Path, port, socket, dan baris layanan mendeskripsikan satu mesin. Menyinkronkannya akan mengarahkan komputer kedua ke direktori yang tidak ada di sana.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Kata sandi utama brankas</td>
+                  <td>
+                    Isi brankas direplikasi, tetapi kunci yang mendekripsinya diturunkan dari kata sandi utama yang Anda masukkan, yang tidak pernah disimpan.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="settings">Pengaturan</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setelan</th>
+                  <th>Bawaan</th>
+                  <th>Efek</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Aktifkan sinkronisasi</td><td>Nonaktif</td><td>Mengaktifkan replikasi dan membuat replika saat pertama kali dijalankan.</td></tr>
+                <tr><td>URL database</td><td>Kosong</td><td>Endpoint Turso.</td></tr>
+                <tr><td>Interval sinkronisasi</td><td>5 menit</td><td>Seberapa sering sinkronisasi latar belakang berjalan.</td></tr>
+                <tr><td>Sinkronkan saat dijalankan</td><td>Aktif</td><td>Menyinkronkan saat aplikasi dimulai.</td></tr>
+                <tr><td>Sinkronkan saat ditutup</td><td>Aktif</td><td>Menyinkronkan saat aplikasi ditutup.</td></tr>
+                <tr><td>Tampilkan status sinkronisasi</td><td>Aktif</td><td>Menampilkan indikator sinkronisasi.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="note warn">
+            <div>
+              <strong>Kredensial direplikasi, jadi lindungi database jarak jauh</strong>
+              <p>
+                Entri brankas dienkripsi sebelum disimpan, dan entri itu memang direplikasi. Jika database Turso Anda dapat dibaca orang lain, mereka mendapatkan ciphertext, bukan rahasia Anda, tetapi mereka memang mendapatkan data proyek dan tugas Anda secara terbuka. Perlakukan database jarak jauh seperti Anda memperlakukan salinan catatan Anda.
+              </p>
+            </div>
+          </div>
+
+          <div class="note">
+            <div>
+              <strong>Sinkronisasi bukan cadangan</strong>
+              <p>
+                Ia menjaga dua mesin tetap selaras. Ia tidak menyimpan riwayat, sehingga penghapusan di satu mesin menjadi penghapusan di mesin lain. Untuk salinan yang bisa Anda kembalikan, ekspor atau salin sendiri berkas database lokalnya.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Berlisensi MIT.</span>
+        <span class="links">
+          <a href="index.html">Ringkasan</a>
+          <a href="tasks.html">Tugas</a>
+          <a href="settings.html">Pengaturan</a>
+          <a href="shortcuts.html">Pintasan</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Pengembangan</a>
+        </span>
+      </div>
+    </footer>
+    <script src="../../assets/search.js" defer></script>
+    <script src="../../assets/theme.js" defer></script>
+  </body>
+</html>

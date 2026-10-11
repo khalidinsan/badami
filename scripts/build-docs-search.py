@@ -13,6 +13,7 @@ service behind it.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 from html.parser import HTMLParser
@@ -155,12 +156,24 @@ def build() -> list[dict[str, str]]:
 
 
 def main() -> None:
+    global DOCS, OUT
+    parser = argparse.ArgumentParser(description="Build the docs search index.")
+    parser.add_argument("--root", default=str(DOCS), help="directory holding the pages")
+    parser.add_argument("--out", default=str(OUT), help="index file to write")
+    args = parser.parse_args()
+    DOCS = Path(args.root)
+    OUT = Path(args.out)
+
     entries = build()
     OUT.write_text(
         json.dumps(entries, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
     )
     size = OUT.stat().st_size
-    print(f"wrote {OUT.relative_to(ROOT)} with {len(entries)} sections ({size / 1024:.1f} KB)")
+    try:
+        shown = OUT.relative_to(ROOT)
+    except ValueError:
+        shown = OUT
+    print(f"wrote {shown} with {len(entries)} sections ({size / 1024:.1f} KB)")
 
 
 if __name__ == "__main__":

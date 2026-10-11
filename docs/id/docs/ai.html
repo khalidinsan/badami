@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Asisten AI · Badami</title>
+    <meta name="description" content="Mengobrol dengan model OpenRouter apa pun dari dalam Badami, dengan penggunaan tool dan streaming." />
+    <link rel="icon" href="../../assets/icon.png" />
+    <link rel="stylesheet" href="../../assets/site.css" />
+    
+    
+    
+    
+    
+    <!-- seo:start -->
+    <link rel="canonical" href="https://khalidinsan.github.io/badami/id/docs/ai.html" />
+    <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/ai.html" />
+    <link rel="alternate" hreflang="id" href="https://khalidinsan.github.io/badami/id/docs/ai.html" />
+    <link rel="alternate" hreflang="x-default" href="https://khalidinsan.github.io/badami/docs/ai.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Badami" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Asisten AI · Badami" />
+    <meta property="og:description" content="Mengobrol dengan model OpenRouter apa pun dari dalam Badami, dengan penggunaan tool dan streaming." />
+    <meta property="og:url" content="https://khalidinsan.github.io/badami/id/docs/ai.html" />
+    <meta property="og:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Asisten AI · Badami" />
+    <meta name="twitter:description" content="Mengobrol dengan model OpenRouter apa pun dari dalam Badami, dengan penggunaan tool dan streaming." />
+    <meta name="twitter:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">
+      {"@context": "https://schema.org", "@type": "TechArticle", "name": "Badami", "applicationCategory": "DeveloperApplication", "operatingSystem": "macOS, Windows, Linux", "url": "https://khalidinsan.github.io/badami/id/docs/ai.html", "description": "Mengobrol dengan model OpenRouter apa pun dari dalam Badami, dengan penggunaan tool dan streaming.", "license": "https://github.com/khalidinsan/badami/blob/main/LICENSE", "codeRepository": "https://github.com/khalidinsan/badami", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "headline": "Asisten AI · Badami", "inLanguage": "id"}
+    </script>
+    <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong theme. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var saved = localStorage.getItem("badami-theme");
+          var mode = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <!-- seo:end -->
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav"><span class="nav-tools"><span class="nav-lang" role="group" aria-label="Language"><a href="../../docs/ai.html" hreflang="en" lang="en">EN</a><a href="ai.html" aria-current="true" hreflang="id" lang="id">ID</a></span></span>
+          <a href="index.html" aria-current="page">Dokumentasi</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Unduh</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Dokumentasi">
+          <p>Mulai di sini</p>
+          <ul>
+            <li><a href="index.html">Ringkasan</a></li>
+            <li><a href="install.html">Instalasi</a></li>
+          </ul>
+          <p>Modul</p>
+          <ul>
+            <li><a href="projects.html">Proyek dan halaman</a></li>
+            <li><a href="tasks.html">Tugas</a></li>
+            <li><a href="planning.html">Perencanaan dan Hari Ini</a></li>
+            <li><a href="servers.html">Server</a></li>
+            <li><a href="credentials.html">Brankas kredensial</a></li>
+            <li><a href="api.html">Alat REST API</a></li>
+            <li><a href="database.html">Klien database</a></li>
+            <li><a href="ai.html" aria-current="page">Asisten AI</a></li>
+            <li><a href="insights.html">Statistik dan pencarian</a></li>
+            <li><a href="sync.html">Sinkronisasi</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Referensi</p>
+          <ul>
+            <li><a href="settings.html">Pengaturan</a></li>
+            <li><a href="shortcuts.html">Pintasan papan tik</a></li>
+          </ul>
+          <p>Pengembangan</p>
+          <ul>
+            <li><a href="development.html">Pengembangan</a></li>
+            <li><a href="architecture.html">Arsitektur</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Asisten AI</h1>
+          <p class="sub">
+            Panel chat yang berbicara dengan model apa pun yang ditawarkan OpenRouter, dengan balasan streaming dan penggunaan tool, sehingga bisa menjangkau bagian lain aplikasi, bukan sekadar menjawab pertanyaan.
+          </p>
+
+          <h2 id="setting-it-up">Menyiapkannya</h2>
+          <ol class="steps">
+            <li>
+              Buat kunci API di
+              <a href="https://openrouter.ai/">openrouter.ai</a>. OpenRouter adalah gateway, jadi satu kunci menjangkau model dari banyak penyedia.
+            </li>
+            <li>
+              Buka <strong>Pengaturan → Asisten AI</strong> lalu tempel kuncinya. Ada tombol uji yang memverifikasinya ke penyedia sebelum Anda mengandalkannya.
+            </li>
+            <li>
+              Pilih model default. Daftarnya diambil langsung dari OpenRouter, dan Anda dapat menyimpan daftar pendek model yang benar-benar dipakai agar pemilih model tetap nyaman.
+            </li>
+          </ol>
+          <p>
+            Kunci ini disimpan di database lokal Anda dan tidak pernah disinkronkan, sehingga tidak berpindah ke mesin lain melalui fitur sinkronisasi.
+          </p>
+
+          <h2 id="chatting">Mengobrol</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kemampuan</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Balasan streaming</td>
+                  <td>Teks muncul saat dihasilkan, bukan setelah seluruh jawaban selesai.</td>
+                </tr>
+                <tr>
+                  <td>Berganti model</td>
+                  <td>Ganti model untuk sebuah percakapan tanpa mengubah default.</td>
+                </tr>
+                <tr>
+                  <td>Penggunaan tool</td>
+                  <td>
+                    Model dapat memanggil aplikasi untuk mencari dan bertindak, lalu melanjutkan jawabannya dengan apa yang ditemukannya.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Riwayat percakapan</td>
+                  <td>Percakapan disimpan secara lokal sehingga Anda bisa kembali ke sana.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="where-it-appears">Di mana ia muncul</h2>
+          <p>
+            Asisten ini adalah modul tersendiri di sidebar, dan juga tersedia dari dalam sebuah proyek sehingga percakapan tentang pekerjaan itu tetap berada di sisinya.
+          </p>
+
+          <div class="note">
+            <div>
+              <strong>Biaya dan privasi adalah urusan Anda dan penyedia</strong>
+              <p>
+                Permintaan berjalan dari mesin Anda ke OpenRouter lalu ke penyedia mana pun yang melayani model yang Anda pilih. Badami tidak memproksinya. Penggunaan ditagih oleh OpenRouter melalui kunci Anda, dan kebijakan data penyedia berlaku untuk apa pun yang Anda kirim, jadi anggap chat ini keluar dari mesin Anda.
+              </p>
+            </div>
+          </div>
+
+          <div class="note warn">
+            <div>
+              <strong>Tidak ada mode offline</strong>
+              <p>
+                Setiap balasan memerlukan koneksi yang berfungsi ke OpenRouter. Tanpanya, chat tidak dapat menjawab, dan bagian lain aplikasi tidak terpengaruh.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Berlisensi MIT.</span>
+        <span class="links">
+          <a href="index.html">Ringkasan</a>
+          <a href="tasks.html">Tugas</a>
+          <a href="settings.html">Pengaturan</a>
+          <a href="shortcuts.html">Pintasan</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Pengembangan</a>
+        </span>
+      </div>
+    </footer>
+    <script src="../../assets/search.js" defer></script>
+    <script src="../../assets/theme.js" defer></script>
+  </body>
+</html>

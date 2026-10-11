@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Instalasi · Badami</title>
+    <meta name="description" content="Pasang Badami di macOS, Windows, atau Linux, lalu jaga versinya tetap terbaru." />
+    <link rel="icon" href="../../assets/icon.png" />
+    <link rel="stylesheet" href="../../assets/site.css" />
+    
+    
+    
+    
+    
+    <!-- seo:start -->
+    <link rel="canonical" href="https://khalidinsan.github.io/badami/id/docs/install.html" />
+    <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/install.html" />
+    <link rel="alternate" hreflang="id" href="https://khalidinsan.github.io/badami/id/docs/install.html" />
+    <link rel="alternate" hreflang="x-default" href="https://khalidinsan.github.io/badami/docs/install.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Badami" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Instalasi · Badami" />
+    <meta property="og:description" content="Pasang Badami di macOS, Windows, atau Linux, lalu jaga versinya tetap terbaru." />
+    <meta property="og:url" content="https://khalidinsan.github.io/badami/id/docs/install.html" />
+    <meta property="og:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Instalasi · Badami" />
+    <meta name="twitter:description" content="Pasang Badami di macOS, Windows, atau Linux, lalu jaga versinya tetap terbaru." />
+    <meta name="twitter:image" content="https://khalidinsan.github.io/badami/assets/logo.png" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <script type="application/ld+json">
+      {"@context": "https://schema.org", "@type": "TechArticle", "name": "Badami", "applicationCategory": "DeveloperApplication", "operatingSystem": "macOS, Windows, Linux", "url": "https://khalidinsan.github.io/badami/id/docs/install.html", "description": "Pasang Badami di macOS, Windows, atau Linux, lalu jaga versinya tetap terbaru.", "license": "https://github.com/khalidinsan/badami/blob/main/LICENSE", "codeRepository": "https://github.com/khalidinsan/badami", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "headline": "Instalasi · Badami", "inLanguage": "id"}
+    </script>
+    <script>
+      // Applies the stored theme before first paint, so there is no flash of the
+      // wrong theme. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var saved = localStorage.getItem("badami-theme");
+          var mode = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <!-- seo:end -->
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html"><img class="logo-dark" src="../../assets/logo.png" alt="Badami" /><img class="logo-light" src="../../assets/logo-white.png" alt="Badami" /></a>
+        <nav class="site-nav"><span class="nav-tools"><span class="nav-lang" role="group" aria-label="Language"><a href="../../docs/install.html" hreflang="en" lang="en">EN</a><a href="install.html" aria-current="true" hreflang="id" lang="id">ID</a></span></span>
+          <a href="index.html" aria-current="page">Dokumentasi</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Unduh</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Dokumentasi">
+          <p>Mulai di sini</p>
+          <ul>
+            <li><a href="index.html">Ringkasan</a></li>
+            <li><a href="install.html" aria-current="page">Instalasi</a></li>
+          </ul>
+          <p>Modul</p>
+          <ul>
+            <li><a href="projects.html">Proyek dan halaman</a></li>
+            <li><a href="tasks.html">Tugas</a></li>
+            <li><a href="planning.html">Perencanaan dan Hari Ini</a></li>
+            <li><a href="servers.html">Server</a></li>
+            <li><a href="credentials.html">Brankas kredensial</a></li>
+            <li><a href="api.html">Alat REST API</a></li>
+            <li><a href="database.html">Klien database</a></li>
+            <li><a href="ai.html">Asisten AI</a></li>
+            <li><a href="insights.html">Statistik dan pencarian</a></li>
+            <li><a href="sync.html">Sinkronisasi</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Referensi</p>
+          <ul>
+            <li><a href="settings.html">Pengaturan</a></li>
+            <li><a href="shortcuts.html">Pintasan papan tik</a></li>
+          </ul>
+          <p>Pengembangan</p>
+          <ul>
+            <li><a href="development.html">Pengembangan</a></li>
+            <li><a href="architecture.html">Arsitektur</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Instalasi</h1>
+          <p class="sub">
+            Penginstal siap pakai dilampirkan pada setiap rilis. Pilih berkas untuk platform Anda, lalu biarkan updater dalam aplikasi menjaganya tetap mutakhir.
+          </p>
+
+          <h2 id="1-download">1. Unduh</h2>
+          <p>
+            Buka
+            <a href="https://github.com/khalidinsan/badami/releases/latest">rilis terbaru</a>
+            lalu unduh aset untuk platform Anda.
+          </p>
+
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Platform</th>
+                  <th>Aset</th>
+                  <th>Catatan</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>macOS, Apple Silicon</td>
+                  <td><code>badami_&lt;version&gt;_aarch64.dmg</code></td>
+                  <td>Untuk saat ini hanya Apple Silicon. Build Intel belum diterbitkan.</td>
+                </tr>
+                <tr>
+                  <td>Windows</td>
+                  <td><code>badami_&lt;version&gt;_x64-setup.exe</code></td>
+                  <td>Berkas <code>.msi</code> tersedia jika Anda lebih menyukainya.</td>
+                </tr>
+                <tr>
+                  <td>Linux</td>
+                  <td><code>.AppImage</code>, <code>.deb</code>, or <code>.rpm</code></td>
+                  <td>Pilih mana pun yang cocok dengan distribusi Anda.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="2-install">2. Instalasi</h2>
+
+          <h3 id="macos">macOS</h3>
+          <p>
+            Buka DMG lalu seret Badami ke Applications. Build-nya ditandatangani agar updater dalam aplikasi dapat memverifikasinya, tetapi belum dinotarisasi oleh Apple, sehingga Gatekeeper bisa menolak pembukaan pertama. Bersihkan penanda karantina sekali:
+          </p>
+          <pre><code># After dragging Badami to Applications
+xattr -cr /Applications/badami.app
+open /Applications/badami.app</code></pre>
+          <div class="note">
+            <div>
+              <strong>Mengapa ini diperlukan</strong>
+              <p>
+                Tanda tangan yang penting untuk pembaruan adalah kunci minisign yang tertanam di dalam aplikasi. Notarisasi adalah langkah Apple terpisah yang berbayar dan belum disiapkan. Menghapus atribut karantina tidak menonaktifkan Gatekeeper untuk hal lain di mesin Anda.
+              </p>
+            </div>
+          </div>
+
+          <h3 id="windows">Windows</h3>
+          <p>
+            Jalankan berkas setup lalu ikuti proses instalasinya. SmartScreen mungkin memperingatkan penerbit yang tidak dikenal karena alasan yang sama: build-nya tidak ditandatangani dengan sertifikat code-signing Windows.
+          </p>
+
+          <h3 id="linux">Linux</h3>
+          <p>
+            AppImage: buat dapat dieksekusi lalu jalankan.
+          </p>
+          <pre><code>chmod +x badami_&lt;version&gt;_amd64.AppImage
+./badami_&lt;version&gt;_amd64.AppImage</code></pre>
+          <p>
+            Untuk <code>.deb</code> dan <code>.rpm</code>, instal dengan manajer paket Anda seperti biasa.
+          </p>
+
+          <h2 id="3-updates">3. Pembaruan</h2>
+          <p>
+            Badami memeriksa rilis yang lebih baru saat dijalankan. Anda juga dapat memeriksanya secara manual dari
+            <strong>Tentang → Pembaruan</strong> atau <strong>Pengaturan → Pembaruan</strong>.
+          </p>
+          <p>Updater membaca endpoint ini:</p>
+          <pre><code>https://github.com/khalidinsan/badami/releases/latest/download/latest.json</code></pre>
+          <p>
+            Setiap artefak ditandatangani dengan minisign, dan kunci publiknya tertanam di aplikasi pada <code>src-tauri/tauri.conf.json</code>. Pembaruan yang tidak lolos verifikasi terhadap kunci tersebut akan ditolak.
+          </p>
+
+          <h2 id="uninstalling">Menghapus instalasi</h2>
+          <p>
+            Hapus aplikasi seperti biasa di platform Anda. Jika Anda juga ingin menghapus data, hapus folder pendukung aplikasi (<code>~/Library/Application Support/com.khalid.badami/</code> di macOS). Jika Anda pernah mengaktifkan Local Dev, lihat
+            <a href="local-dev.html#uninstall">Local Dev → Menghapus instalasi</a> untuk komponen dengan hak istimewa yang dapat dipasangnya.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Berlisensi MIT.</span>
+        <span class="links">
+          <a href="index.html">Ringkasan</a>
+          <a href="tasks.html">Tugas</a>
+          <a href="settings.html">Pengaturan</a>
+          <a href="shortcuts.html">Pintasan</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Pengembangan</a>
+        </span>
+      </div>
+    </footer>
+    <script src="../../assets/search.js" defer></script>
+    <script src="../../assets/theme.js" defer></script>
+  </body>
+</html>
