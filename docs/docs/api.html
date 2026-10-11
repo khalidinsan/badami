@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>REST API tool · Badami</title>
+    <meta name="description" content="How the Badami REST API tool works: request builder, collections, environments, auth helpers, response viewer, Postman import, and cURL export." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="projects.html">Projects and pages</a></li>
+            <li><a href="tasks.html">Tasks</a></li>
+            <li><a href="planning.html">Planning and Today</a></li>
+            <li><a href="servers.html">Servers</a></li>
+            <li><a href="credentials.html">Credential vault</a></li>
+            <li><a href="api.html" aria-current="page">REST API tool</a></li>
+            <li><a href="database.html">Database client</a></li>
+            <li><a href="ai.html">AI assistant</a></li>
+            <li><a href="insights.html">Stats and search</a></li>
+            <li><a href="sync.html">Sync</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Reference</p>
+          <ul>
+            <li><a href="settings.html">Settings</a></li>
+            <li><a href="shortcuts.html">Keyboard shortcuts</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>REST API tool</h1>
+          <p class="sub">
+            Build a request, organize it in a collection, switch environments, and read the
+            response without leaving Badami.
+          </p>
+
+          <h2>Building a request</h2>
+          <p>
+            The request view has a method selector and a URL field, then tabs for the rest
+            of the request:
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tab</th>
+                  <th>What it holds</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Params</td>
+                  <td>Query parameters.</td>
+                </tr>
+                <tr>
+                  <td>Headers</td>
+                  <td>Request headers.</td>
+                </tr>
+                <tr>
+                  <td>Body</td>
+                  <td>The request body.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Collections and folders</h2>
+          <p>
+            Requests live in collections, and a collection can hold folders. Each
+            collection has its own variables, so values that belong to one set of endpoints
+            do not leak into another.
+          </p>
+
+          <h2>Environments</h2>
+          <p>
+            An environment is a named set of variables. You keep one per target (local,
+            staging, production) and switch between them with the environment selector in
+            the request view. The variables in the active environment are what the request
+            resolves against.
+          </p>
+
+          <h2>Authentication</h2>
+          <p>Badami has built-in helpers for the common schemes:</p>
+          <ul>
+            <li>Bearer token.</li>
+            <li>Basic username and password.</li>
+            <li>API key.</li>
+          </ul>
+          <p>
+            You can also link a credential from the vault, so a token is never typed into a
+            request. The credential is read at send time and the secret stays in the vault.
+          </p>
+
+          <h2>Sending and reading the response</h2>
+          <p>
+            Requests run through the Rust backend, not the browser, so they are not subject
+            to browser CORS rules. The response viewer shows the status, the headers, and
+            the body, with a code view for the body when you want the raw form.
+          </p>
+
+          <h2>History</h2>
+          <p>
+            A history panel keeps the requests you have sent, so you can go back to one and
+            resend or edit it instead of rebuilding it.
+          </p>
+
+          <h2>Import and export</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Direction</th>
+                  <th>Format</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Import</td>
+                  <td>Postman collections.</td>
+                </tr>
+                <tr>
+                  <td>Export</td>
+                  <td>cURL.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Scoping to a project</h2>
+          <p>
+            Requests can be scoped to a project. A project has its own API panel, so the
+            endpoints for one piece of work sit with the rest of that project instead of in
+            a single global pile.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Overview</a>
+          <a href="tasks.html">Tasks</a>
+          <a href="settings.html">Settings</a>
+          <a href="shortcuts.html">Shortcuts</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

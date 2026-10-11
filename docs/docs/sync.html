@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sync · Badami</title>
+    <meta name="description" content="Optional cloud replication with Turso, and which data stays on one machine." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="projects.html">Projects and pages</a></li>
+            <li><a href="tasks.html">Tasks</a></li>
+            <li><a href="planning.html">Planning and Today</a></li>
+            <li><a href="servers.html">Servers</a></li>
+            <li><a href="credentials.html">Credential vault</a></li>
+            <li><a href="api.html">REST API tool</a></li>
+            <li><a href="database.html">Database client</a></li>
+            <li><a href="ai.html">AI assistant</a></li>
+            <li><a href="insights.html">Stats and search</a></li>
+            <li><a href="sync.html" aria-current="page">Sync</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Reference</p>
+          <ul>
+            <li><a href="settings.html">Settings</a></li>
+            <li><a href="shortcuts.html">Keyboard shortcuts</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Sync</h1>
+          <p class="sub">
+            Optional replication of your database to a Turso instance, so the same work is
+            available on more than one computer. Off unless you turn it on.
+          </p>
+
+          <h2>How it works</h2>
+          <p>
+            Badami keeps a local database on each machine and an embedded replica of your
+            remote Turso database beside it. Writes go to the local file first and replicate
+            in the background, which is why the app stays fast and keeps working with no
+            network.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Situation</th>
+                  <th>What opens</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Sync on, replica already exists</td>
+                  <td>The replica, immediately. No network wait on startup.</td>
+                </tr>
+                <tr>
+                  <td>Sync on, no replica yet</td>
+                  <td>
+                    The local database while the replica is built in the background, so the
+                    app is usable during the first sync.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Sync off</td>
+                  <td>The local database as a plain SQLite file.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Turning it on</h2>
+          <ol class="steps">
+            <li>Create a database at <a href="https://turso.tech/">turso.tech</a>.</li>
+            <li>
+              Open <strong>Settings → Cross-Device Sync</strong>, turn sync on, and paste the
+              database URL.
+            </li>
+            <li>
+              On the second computer, use the same URL. Its replica is created from the
+              remote copy on first run.
+            </li>
+          </ol>
+
+          <h2>What syncs, and what does not</h2>
+          <p>
+            Documents and records replicate: projects, pages, tasks, labels, credentials,
+            servers, API collections, and database connections.
+          </p>
+          <p>Some things deliberately stay on the machine that made them:</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Not synced</th>
+                  <th>Why</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Secrets in the operating system keychain</td>
+                  <td>
+                    Server passwords and PEM passphrases are held by the system keychain and
+                    are never part of the database, so they cannot replicate. Add them on
+                    each machine.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Your AI provider key</td>
+                  <td>Kept local so a shared database does not hand your key to another machine.</td>
+                </tr>
+                <tr>
+                  <td>Local Dev tables</td>
+                  <td>
+                    Paths, ports, sockets, and service rows describe one machine. Syncing them
+                    would point a second computer at directories that do not exist there.
+                  </td>
+                </tr>
+                <tr>
+                  <td>The vault master password</td>
+                  <td>
+                    Vault contents replicate, but the key that decrypts them is derived from
+                    the master password you enter, which is never stored.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Settings</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Default</th>
+                  <th>Effect</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Enable sync</td><td>Off</td><td>Turns replication on and creates the replica on first run.</td></tr>
+                <tr><td>Database URL</td><td>Empty</td><td>The Turso endpoint.</td></tr>
+                <tr><td>Sync interval</td><td>5 minutes</td><td>How often the background sync runs.</td></tr>
+                <tr><td>Sync on launch</td><td>On</td><td>Syncs when the app starts.</td></tr>
+                <tr><td>Sync on close</td><td>On</td><td>Syncs when the app closes.</td></tr>
+                <tr><td>Show sync status</td><td>On</td><td>Shows the sync indicator.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="note warn">
+            <div>
+              <strong>Credentials replicate, so protect the remote database</strong>
+              <p>
+                Vault entries are encrypted before they are stored, and they do replicate. If
+                your Turso database is readable by someone else, they get ciphertext, not
+                your secrets, but they do get your project and task data in the clear.
+                Treat the remote database as you would any copy of your notes.
+              </p>
+            </div>
+          </div>
+
+          <div class="note">
+            <div>
+              <strong>Sync is not a backup</strong>
+              <p>
+                It keeps two machines in step. It does not keep history, so a deletion on one
+                machine becomes a deletion on the other. For a copy you can go back to, export
+                or copy the local database file yourself.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Overview</a>
+          <a href="tasks.html">Tasks</a>
+          <a href="settings.html">Settings</a>
+          <a href="shortcuts.html">Shortcuts</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

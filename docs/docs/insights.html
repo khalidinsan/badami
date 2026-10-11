@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stats and search · Badami</title>
+    <meta name="description" content="The productivity dashboard, and the command palette that searches everything." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="projects.html">Projects and pages</a></li>
+            <li><a href="tasks.html">Tasks</a></li>
+            <li><a href="planning.html">Planning and Today</a></li>
+            <li><a href="servers.html">Servers</a></li>
+            <li><a href="credentials.html">Credential vault</a></li>
+            <li><a href="api.html">REST API tool</a></li>
+            <li><a href="database.html">Database client</a></li>
+            <li><a href="ai.html">AI assistant</a></li>
+            <li><a href="insights.html" aria-current="page">Stats and search</a></li>
+            <li><a href="sync.html">Sync</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Reference</p>
+          <ul>
+            <li><a href="settings.html">Settings</a></li>
+            <li><a href="shortcuts.html">Keyboard shortcuts</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Stats and search</h1>
+          <p class="sub">
+            Two small features that are about everything else: a dashboard of how the last
+            month went, and a palette that finds anything in the app from the keyboard.
+          </p>
+
+          <h2>Statistics</h2>
+          <p>
+            The Statistics page summarises the last 30 days. There is no range selector; the
+            window is fixed.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Card</th>
+                  <th>What it counts</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Total Sessions</strong></td>
+                  <td>Completed Pomodoro sessions.</td>
+                </tr>
+                <tr>
+                  <td><strong>Total Focus</strong></td>
+                  <td>Their combined minutes, shown as hours and minutes.</td>
+                </tr>
+                <tr>
+                  <td><strong>Avg Duration</strong></td>
+                  <td>Average length of a completed session.</td>
+                </tr>
+                <tr>
+                  <td><strong>Day Streak</strong></td>
+                  <td>
+                    Consecutive days ending today with at least one completed session. It
+                    reads zero until today has one, so a streak can look broken in the
+                    morning.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">Two charts cover the same window:</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Chart</th>
+                  <th>Series</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Pomodoro Sessions (30 days)</td>
+                  <td>Sessions per day, and tasks completed per day.</td>
+                </tr>
+                <tr>
+                  <td>Focus Minutes (30 days)</td>
+                  <td>Minutes of focus per day.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note">
+            <div>
+              <strong>Only completed work counts</strong>
+              <p>
+                A Pomodoro session you cancel is excluded from every number, and a task
+                counts only when its status is Done, so a cancelled task is not counted even
+                if it has a completion time.
+              </p>
+            </div>
+          </div>
+
+          <h2>Search and commands</h2>
+          <p>
+            <code>Cmd+K</code> opens the palette over whatever you are doing.
+            <code>Cmd+Shift+K</code> opens the same search in its own small window from
+            anywhere on the system, which is useful when Badami is not in front.
+          </p>
+
+          <h3>What it searches</h3>
+          <p>One query covers every module, with results grouped by type:</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Items</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Projects</td><td>By name.</td></tr>
+                <tr><td>Tasks</td><td>Every task, including subtasks.</td></tr>
+                <tr><td>Pages</td><td>Project pages by title.</td></tr>
+                <tr><td>Servers</td><td>Saved connections.</td></tr>
+                <tr><td>Credentials</td><td>Vault entries by name.</td></tr>
+                <tr><td>API</td><td>Collections and saved requests.</td></tr>
+                <tr><td>Database</td><td>Saved connections.</td></tr>
+                <tr><td>Commands</td><td>Actions rather than documents.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Scoping the query</h3>
+          <p>Type a prefix to search only one kind of thing:</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Prefix</th>
+                  <th>Scope</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>&gt;</code></td><td>Commands</td></tr>
+                <tr><td><code>#</code></td><td>Tasks</td></tr>
+                <tr><td><code>@</code></td><td>Servers</td></tr>
+                <tr><td><code>/</code></td><td>Projects</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            There are also tabs across the top for the same filtering, and clicking one
+            clears whatever you typed.
+          </p>
+
+          <h3>Commands</h3>
+          <p>
+            Beyond opening things, the palette can act. Alongside navigation entries there
+            are commands to create a project or a task, and, on macOS, to open Local Dev,
+            start or stop the local stack, and open the Doctor. Those Local Dev commands
+            disappear when the module is turned off.
+          </p>
+
+          <h3>Recents</h3>
+          <p>
+            With an empty query, the palette lists what you used recently before anything
+            else. That list is kept locally and holds the last ten items.
+          </p>
+
+          <h2>Limits</h2>
+          <ul>
+            <li>Results are capped at 25 rows, both for recents and for a typed query.</li>
+            <li>
+              Matching is fuzzy on titles and subtitles only. It does not read the body of a
+              page or a task's notes.
+            </li>
+            <li>
+              The index is built when the palette opens, so something you created while it
+              was already open appears the next time you open it.
+            </li>
+            <li>
+              Selecting a task opens the Tasks view but does not select that task.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Overview</a>
+          <a href="tasks.html">Tasks</a>
+          <a href="settings.html">Settings</a>
+          <a href="shortcuts.html">Shortcuts</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Keyboard shortcuts · Badami</title>
+    <meta name="description" content="Every keyboard shortcut in Badami, grouped by where it works." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="projects.html">Projects and pages</a></li>
+            <li><a href="tasks.html">Tasks</a></li>
+            <li><a href="planning.html">Planning and Today</a></li>
+            <li><a href="servers.html">Servers</a></li>
+            <li><a href="credentials.html">Credential vault</a></li>
+            <li><a href="api.html">REST API tool</a></li>
+            <li><a href="database.html">Database client</a></li>
+            <li><a href="ai.html">AI assistant</a></li>
+            <li><a href="insights.html">Stats and search</a></li>
+            <li><a href="sync.html">Sync</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Reference</p>
+          <ul>
+            <li><a href="settings.html">Settings</a></li>
+            <li><a href="shortcuts.html" aria-current="page">Keyboard shortcuts</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Keyboard shortcuts</h1>
+          <p class="sub">
+            Shortcuts are scoped: a key does one thing in the Tasks list and something else
+            in the Today window. On Windows and Linux, read <code>Cmd</code> as
+            <code>Ctrl</code>.
+          </p>
+
+          <h2>Anywhere</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Shortcut</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>Cmd+K</code></td>
+                  <td>Open or close the search palette inside the window.</td>
+                </tr>
+                <tr>
+                  <td><code>Cmd+Shift+K</code></td>
+                  <td>
+                    Open search from anywhere, even when Badami is not the frontmost app.
+                    This is a system-wide shortcut.
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>Cmd+1</code> to <code>Cmd+9</code></td>
+                  <td>Switch to the tab in that position.</td>
+                </tr>
+                <tr>
+                  <td><code>Cmd+W</code></td>
+                  <td>Close the active tab, unless it is pinned.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            In the sidebar, a plain click navigates in the current tab. Holding
+            <code>Cmd</code> while clicking, or middle-clicking, opens the destination in a
+            new tab.
+          </p>
+
+          <h2>Search palette</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>↑</code> / <code>↓</code></td><td>Move the highlight.</td></tr>
+                <tr><td><code>Enter</code></td><td>Open the highlighted result.</td></tr>
+                <tr><td><code>Escape</code></td><td>Close the palette.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Type a prefix to narrow the search: <code>&gt;</code> for commands,
+            <code>#</code> for tasks, <code>@</code> for servers, <code>/</code> for
+            projects.
+          </p>
+
+          <h2>Tasks</h2>
+          <p>These apply while the Tasks view is the one on screen, and they are ignored while you are typing.</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>↓</code> / <code>↑</code></td><td>Move the selection between tasks.</td></tr>
+                <tr><td><code>d</code></td><td>Cycle the selected task's status.</td></tr>
+                <tr><td><code>s</code></td><td>Star or unstar the selected task.</td></tr>
+                <tr><td><code>Delete</code></td><td>Delete the selected task.</td></tr>
+                <tr><td><code>n</code></td><td>Focus the add task input.</td></tr>
+                <tr><td>Any letter</td><td>Also focuses the add task input.</td></tr>
+                <tr><td><code>Escape</code></td><td>Close the task detail panel.</td></tr>
+                <tr><td><code>Enter</code></td><td>Submit the add input or a label name.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Today window</h2>
+          <p>Active only in the floating Today window, and only when you are not typing.</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>n</code></td><td>Open quick add.</td></tr>
+                <tr><td><code>↓</code> / <code>↑</code></td><td>Move the selection.</td></tr>
+                <tr><td><code>Space</code></td><td>Toggle the selected task's status.</td></tr>
+                <tr><td><code>e</code></td><td>Expand or collapse the selected task.</td></tr>
+                <tr><td><code>f</code></td><td>Focus the task and start the Pomodoro timer.</td></tr>
+                <tr><td><code>p</code></td><td>Expand the selected task. It does not open the priority menu.</td></tr>
+                <tr><td><code>Delete</code> or <code>Backspace</code></td><td>Delete the selected task and move the selection.</td></tr>
+                <tr><td><code>Escape</code></td><td>Collapse the expanded task, then clear the selection.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            In quick add, <code>@</code> starts a project mention: arrow keys move through
+            the matches, <code>Enter</code> picks one, and <code>Escape</code> clears it.
+          </p>
+
+          <h2>Planning</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>Enter</code></td><td>In the note field, create the note.</td></tr>
+                <tr><td><code>Enter</code> or <code>Space</code></td><td>On an unscheduled task, schedule it on the selected day.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Servers</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>Enter</code></td><td>In terminal search, jump to the next match.</td></tr>
+                <tr><td><code>Shift+Enter</code></td><td>In terminal search, jump to the previous match.</td></tr>
+                <tr><td><code>Escape</code></td><td>Close terminal search.</td></tr>
+                <tr><td><code>Enter</code></td><td>In the file manager breadcrumb, navigate to the typed path.</td></tr>
+                <tr><td><code>Escape</code></td><td>Cancel editing the breadcrumb.</td></tr>
+                <tr><td><code>Cmd+F</code></td><td>Focus the file search box.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Editor and forms</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>/</code></td><td>Open the block menu in a rich text editor.</td></tr>
+                <tr><td><code>Enter</code></td><td>Submit a dialog or an inline field.</td></tr>
+                <tr><td><code>Escape</code></td><td>Cancel a dialog, a rename, or an inline add.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="note">
+            <div>
+              <strong>One system-wide shortcut</strong>
+              <p>
+                <code>Cmd+Shift+K</code> is the only shortcut Badami registers with the
+                operating system, so it is the only one that can conflict with another app.
+                Everything else works while Badami is focused.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Overview</a>
+          <a href="tasks.html">Tasks</a>
+          <a href="settings.html">Settings</a>
+          <a href="shortcuts.html">Shortcuts</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

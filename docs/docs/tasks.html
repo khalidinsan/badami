@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tasks · Badami</title>
+    <meta name="description" content="How the Badami task manager works: smart lists, filters, subtasks, recurrence, reminders, and the board view." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="projects.html">Projects and pages</a></li>
+            <li><a href="tasks.html" aria-current="page">Tasks</a></li>
+            <li><a href="planning.html">Planning and Today</a></li>
+            <li><a href="servers.html">Servers</a></li>
+            <li><a href="credentials.html">Credential vault</a></li>
+            <li><a href="api.html">REST API tool</a></li>
+            <li><a href="database.html">Database client</a></li>
+            <li><a href="ai.html">AI assistant</a></li>
+            <li><a href="insights.html">Stats and search</a></li>
+            <li><a href="sync.html">Sync</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Reference</p>
+          <ul>
+            <li><a href="settings.html">Settings</a></li>
+            <li><a href="shortcuts.html">Keyboard shortcuts</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Tasks</h1>
+          <p class="sub">
+            One list that holds everything: a fast inbox, projects, labels, subtasks,
+            deadlines, repeating work, and reminders.
+          </p>
+
+          <h2>The sidebar</h2>
+          <p>
+            The left column is how you slice the same list. Selecting anything there
+            filters the view; <strong>All Tasks</strong> at the top clears every filter.
+          </p>
+
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Entry</th>
+                  <th>What it selects</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Inbox</strong></td>
+                  <td>Tasks with no project.</td>
+                </tr>
+                <tr>
+                  <td><strong>Starred</strong></td>
+                  <td>Tasks you marked with the star.</td>
+                </tr>
+                <tr>
+                  <td><strong>Today</strong></td>
+                  <td>Due today.</td>
+                </tr>
+                <tr>
+                  <td><strong>Tomorrow</strong></td>
+                  <td>Due tomorrow.</td>
+                </tr>
+                <tr>
+                  <td><strong>Next 7 Days</strong></td>
+                  <td>Due within the coming week.</td>
+                </tr>
+                <tr>
+                  <td><strong>Overdue</strong></td>
+                  <td>Past their due date and not finished.</td>
+                </tr>
+                <tr>
+                  <td><strong>Projects</strong></td>
+                  <td>Collapsible list of active projects. Click one to filter to it.</td>
+                </tr>
+                <tr>
+                  <td><strong>Labels</strong></td>
+                  <td>Collapsible list of labels, with their color. Click to filter.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Each smart list shows a count badge. The badge counts root tasks that are not
+            finished, while the list itself has no status restriction, so a badge can read
+            lower than the number of rows you see once you hide completed work.
+          </p>
+
+          <h2>Working with a task</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>How</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Add a task</td>
+                  <td>Type in the input at the top and press Enter, or press <code>n</code> to jump to it.</td>
+                </tr>
+                <tr>
+                  <td>Change status</td>
+                  <td>
+                    Click the checkbox. It cycles To Do, In Progress, Done, and back. A
+                    cancelled task also returns to To Do when clicked.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Add a subtask</td>
+                  <td>Hover a row and click <strong>+</strong>, or use the row menu. Enter adds, Escape cancels.</td>
+                </tr>
+                <tr>
+                  <td>Open the detail panel</td>
+                  <td>Click the task. Escape closes it.</td>
+                </tr>
+                <tr>
+                  <td>Reorder</td>
+                  <td>Drag a row, but only while the sort is set to <strong>Manual</strong>.</td>
+                </tr>
+                <tr>
+                  <td>Move to another project</td>
+                  <td>Drag the task onto a project in the sidebar or onto a project group header.</td>
+                </tr>
+                <tr>
+                  <td>Right-click a row</td>
+                  <td>Mark done or reopen, star, move to a project, add a subtask, or delete.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>The detail panel</h3>
+          <p>
+            Clicking a task opens a panel on the right with everything about it: an
+            editable title, a notes editor, and a properties section you can show or hide.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Property</th>
+                  <th>Values</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Status</td>
+                  <td>To Do, In Progress, Done, Cancelled</td>
+                </tr>
+                <tr>
+                  <td>Priority</td>
+                  <td>None, Low, Medium, High, Urgent</td>
+                </tr>
+                <tr>
+                  <td>Project</td>
+                  <td>No project, or any project</td>
+                </tr>
+                <tr>
+                  <td>Due date and time</td>
+                  <td>A date, plus an optional time</td>
+                </tr>
+                <tr>
+                  <td>Estimate</td>
+                  <td>
+                    Free text that accepts <code>45m</code>, <code>2h</code>, or
+                    <code>1h 30m</code>. A bare number is read as minutes.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Recurrence</td>
+                  <td>No repeat, every day, every week, weekdays, or every month</td>
+                </tr>
+                <tr>
+                  <td>Labels</td>
+                  <td>Any number of labels</td>
+                </tr>
+                <tr>
+                  <td>Reminders</td>
+                  <td>A list of date and time pairs; each can be removed</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            The bottom of the panel lists subtasks, and it is resizable by dragging its
+            edge.
+          </p>
+
+          <h2>Subtasks</h2>
+          <p>
+            Subtasks nest inside their parent and can be collapsed. Nesting stops at three
+            levels: once a task is two levels deep, the option to add another child is no
+            longer offered.
+          </p>
+          <p>
+            Completing a task marks every task underneath it as done at the same time.
+            Reopening a parent brings back only the parent; the children stay done.
+          </p>
+
+          <h2>Repeating tasks</h2>
+          <p>
+            Give a task a recurrence rule and a due date, and completing it creates the
+            next occurrence on the following date the rule produces. The new task carries
+            over the title, notes, priority, project, due time, estimate, and nesting, and
+            it is linked back to the task it came from.
+          </p>
+          <p>
+            The presets cover daily, weekly, weekdays, and monthly. The rule is stored as
+            a standard calendar string, so it survives a round trip through sync.
+          </p>
+
+          <h2>Reminders</h2>
+          <p>
+            Add one or more date and time pairs to a task. Badami checks for due reminders
+            once a minute and raises an operating system notification, so it works whether
+            or not the window is in front. A reminder is marked as sent once it fires, and
+            the panel shows that next to it.
+          </p>
+          <p>
+            Reminders are separate from due dates. A task can be due on Friday and remind
+            you on Thursday evening.
+          </p>
+
+          <h2>Filtering, sorting, grouping</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Control</th>
+                  <th>Options</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Search</td>
+                  <td>Matches task titles. It does not search notes.</td>
+                </tr>
+                <tr>
+                  <td>Filters</td>
+                  <td>
+                    Status, priority, project, and label chips, plus a due date range.
+                    <strong>Clear all</strong> resets them.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Sort</td>
+                  <td>Manual, Due Date, Priority, Title, Date Created</td>
+                </tr>
+                <tr>
+                  <td>Group by</td>
+                  <td>No grouping, or by project. Groups act as drop targets for dragging.</td>
+                </tr>
+                <tr>
+                  <td>Hide done</td>
+                  <td>Toggles finished tasks in and out of the list.</td>
+                </tr>
+                <tr>
+                  <td>View</td>
+                  <td>List or board.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Filters, sort, grouping, and view choice are not saved. They reset the next
+            time the app starts.
+          </p>
+
+          <h2>Board view</h2>
+          <p>
+            The board has four fixed columns: To Do, In Progress, Done, and Cancelled.
+            Drag a card into another column to change its status. A quick click selects the
+            task instead of dragging it.
+          </p>
+
+          <h2>Labels</h2>
+          <p>
+            <strong>Manage labels</strong> opens a dialog where you can add a label with a
+            name and color, and delete the ones you no longer use. Deleting a label removes
+            it from every task that carried it; the tasks themselves stay.
+          </p>
+
+          <h2>Keyboard</h2>
+          <p>
+            These work while the Tasks view is the one on screen, and they are ignored
+            while you are typing in a field.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>↓</code> / <code>↑</code></td><td>Move the selection between tasks.</td></tr>
+                <tr><td><code>d</code></td><td>Cycle the selected task's status.</td></tr>
+                <tr><td><code>s</code></td><td>Star or unstar the selected task.</td></tr>
+                <tr><td><code>Delete</code></td><td>Delete the selected task.</td></tr>
+                <tr><td><code>n</code></td><td>Focus the add task input.</td></tr>
+                <tr><td>Any letter</td><td>Also focuses the add task input.</td></tr>
+                <tr><td><code>Escape</code></td><td>Close the detail panel.</td></tr>
+                <tr><td><code>Enter</code></td><td>Submit the add input or a label name.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="note">
+            <div>
+              <strong>Multi-select is not exposed</strong>
+              <p>
+                The code contains a bulk action bar with Complete, Move, Priority, and
+                Delete for many tasks at once, but nothing in the interface can select
+                more than one task, so the bar never appears. Treat bulk editing as
+                unavailable.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Overview</a>
+          <a href="tasks.html">Tasks</a>
+          <a href="settings.html">Settings</a>
+          <a href="shortcuts.html">Shortcuts</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

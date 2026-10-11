@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Servers · Badami</title>
+    <meta name="description" content="How the Badami server manager works: SSH terminals, SFTP file manager, saved commands, and connection settings." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="projects.html">Projects and pages</a></li>
+            <li><a href="tasks.html">Tasks</a></li>
+            <li><a href="planning.html">Planning and Today</a></li>
+            <li><a href="servers.html" aria-current="page">Servers</a></li>
+            <li><a href="credentials.html">Credential vault</a></li>
+            <li><a href="api.html">REST API tool</a></li>
+            <li><a href="database.html">Database client</a></li>
+            <li><a href="ai.html">AI assistant</a></li>
+            <li><a href="insights.html">Stats and search</a></li>
+            <li><a href="sync.html">Sync</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Reference</p>
+          <ul>
+            <li><a href="settings.html">Settings</a></li>
+            <li><a href="shortcuts.html">Keyboard shortcuts</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Servers</h1>
+          <p class="sub">
+            Keep your machines in one list, open a terminal or a file manager on any of
+            them, and let the passwords live in the operating system keychain.
+          </p>
+
+          <h2>The server list</h2>
+          <p>
+            The Servers page shows a count of your servers and an <strong>Add Server</strong>
+            button. Each server is a card. Clicking a card opens it in its own app tab.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Control</th>
+                  <th>What it does</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Search</td>
+                  <td>Free-text filter over name, host, and username.</td>
+                </tr>
+                <tr>
+                  <td>Filter</td>
+                  <td>
+                    A popover with Environment, Protocol (<strong>All</strong>,
+                    <strong>SSH</strong>, <strong>FTP</strong>, <strong>FTPS</strong>), and
+                    Project selects.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Clear filters</td>
+                  <td>Appears once any filter is active.</td>
+                </tr>
+                <tr>
+                  <td>Sort</td>
+                  <td>Last connected (default), Name, Created, Updated.</td>
+                </tr>
+                <tr>
+                  <td>Group</td>
+                  <td>No grouping, By project (default), By protocol.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Card actions</h3>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Terminal</td>
+                  <td>SSH only. On FTP or FTPS it shows a toast instead.</td>
+                </tr>
+                <tr>
+                  <td>Editor</td>
+                  <td>SSH only. On FTP or FTPS it shows a toast instead.</td>
+                </tr>
+                <tr>
+                  <td>Files</td>
+                  <td>Always available.</td>
+                </tr>
+                <tr>
+                  <td>Right-click</td>
+                  <td>Edit and Delete.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Delete asks for confirmation. It also removes the stored password and
+            passphrase from the operating system keychain.
+          </p>
+
+          <h2>Adding a server</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Values</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Name</td>
+                  <td>Free text.</td>
+                </tr>
+                <tr>
+                  <td>Project</td>
+                  <td>Shown only on the global Servers page.</td>
+                </tr>
+                <tr>
+                  <td>Environment</td>
+                  <td>Production, Staging, Development, Other.</td>
+                </tr>
+                <tr>
+                  <td>Color</td>
+                  <td>Nine swatches.</td>
+                </tr>
+                <tr>
+                  <td>Protocol</td>
+                  <td>SSH, FTP, FTPS.</td>
+                </tr>
+                <tr>
+                  <td>Host, Port, Username</td>
+                  <td>Connection target.</td>
+                </tr>
+                <tr>
+                  <td>Authentication</td>
+                  <td>
+                    Password, PEM Key File, Saved PEM Key, PEM Key + Passphrase, or From
+                    Credential Manager. The PEM options appear only for SSH.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Initial Directory</td>
+                  <td>Where the file manager and terminal start.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Changing the protocol resets the port to that protocol's default and forces
+            password authentication for non-SSH protocols. Defaults: SSH 22, FTP 21,
+            FTPS 21.
+          </p>
+
+          <div class="note">
+            <div>
+              <strong>Secrets stay out of the database</strong>
+              <p>
+                Passwords and passphrases are written to the operating system keychain,
+                never to the Badami database. Only the reference is stored alongside the
+                server.
+              </p>
+            </div>
+          </div>
+
+          <h3>How authentication is resolved</h3>
+          <p>When a session connects, the credential is resolved in one of these ways:</p>
+          <ul>
+            <li>A password read from the keychain.</li>
+            <li>A PEM file path used directly.</li>
+            <li>A saved PEM key decrypted from storage.</li>
+            <li>A PEM file plus a passphrase read from the keychain.</li>
+            <li>A linked credential whose password field is decrypted from the vault.</li>
+          </ul>
+
+          <h2>Sessions</h2>
+          <p>
+            Sessions open in a full-page view with one tab per session, and each tab shows
+            a status dot. The <strong>+</strong> menu lists every server with
+            <strong>SSH</strong>, <strong>Files</strong>, and <strong>IDE</strong>
+            buttons. Closing the last tab returns you to the list.
+          </p>
+
+          <h3>SSH terminal</h3>
+          <p>
+            The terminal connects on its own. It shows the connection state,
+            <code>user@host:port</code>, and a live elapsed timer. The toolbar has
+            <strong>Open File Manager</strong>, <strong>Saved Commands</strong>, a search
+            toggle, and <strong>Reconnect</strong> when the connection drops.
+          </p>
+          <p>
+            Terminal search: <code>Enter</code> jumps to the next match,
+            <code>Shift+Enter</code> to the previous one, and <code>Escape</code> closes
+            the search bar.
+          </p>
+
+          <div class="note">
+            <div>
+              <strong>Opening a terminal from a breadcrumb</strong>
+              <p>
+                When you start a terminal from a file manager breadcrumb, it runs
+                <code>cd &lt;path&gt;</code> about 300 ms after connecting, so the shell
+                lands in the directory you were browsing.
+              </p>
+            </div>
+          </div>
+
+          <h3>Saved commands</h3>
+          <p>
+            The Saved Commands panel has a search box, an add form, and edit and delete on
+            each entry. A <strong>Run</strong> versus <strong>Insert</strong> toggle
+            decides what happens when you pick a command: Run is the default and appends a
+            newline, Insert only types the text. A <strong>Global</strong> checkbox makes a
+            command server-independent so it shows up everywhere.
+          </p>
+
+          <h2>File manager</h2>
+          <p>The file manager also connects on its own. Its toolbar has:</p>
+          <ul>
+            <li>Up, home, and refresh.</li>
+            <li>
+              An editable breadcrumb: click the path to type, <code>Enter</code> navigates,
+              <code>Escape</code> cancels.
+            </li>
+            <li>Open in Terminal.</li>
+            <li>A "Search files" box.</li>
+            <li>Transfer history.</li>
+            <li>A hidden-files toggle.</li>
+            <li>New folder and Upload file.</li>
+          </ul>
+          <p>
+            You can also drop files onto the window. A confirmation dialog lists the
+            dropped files before the upload starts.
+          </p>
+
+          <h3>Per-file actions</h3>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Preview</td>
+                  <td>Text files up to 1 MB.</td>
+                </tr>
+                <tr>
+                  <td>Download</td>
+                  <td>Saves a copy locally.</td>
+                </tr>
+                <tr>
+                  <td>Edit</td>
+                  <td>Text files up to 5 MB.</td>
+                </tr>
+                <tr>
+                  <td>Open in Code Editor</td>
+                  <td>
+                    Downloads the file to a temp folder, opens it in your editor, then
+                    watches it and uploads changes automatically after a short delay.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Rename</td>
+                  <td>Renames in place.</td>
+                </tr>
+                <tr>
+                  <td>Delete</td>
+                  <td>Removes the remote file.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="note warn">
+            <div>
+              <strong>Protocol limits</strong>
+              <p>
+                Terminal and Editor are SSH-only features. On an FTP or FTPS server they
+                only show a toast, so plan on using Files for those protocols.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Overview</a>
+          <a href="tasks.html">Tasks</a>
+          <a href="settings.html">Settings</a>
+          <a href="shortcuts.html">Shortcuts</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

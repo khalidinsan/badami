@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI assistant · Badami</title>
+    <meta name="description" content="Chat with any OpenRouter model from inside Badami, with tool use and streaming." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="projects.html">Projects and pages</a></li>
+            <li><a href="tasks.html">Tasks</a></li>
+            <li><a href="planning.html">Planning and Today</a></li>
+            <li><a href="servers.html">Servers</a></li>
+            <li><a href="credentials.html">Credential vault</a></li>
+            <li><a href="api.html">REST API tool</a></li>
+            <li><a href="database.html">Database client</a></li>
+            <li><a href="ai.html" aria-current="page">AI assistant</a></li>
+            <li><a href="insights.html">Stats and search</a></li>
+            <li><a href="sync.html">Sync</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Reference</p>
+          <ul>
+            <li><a href="settings.html">Settings</a></li>
+            <li><a href="shortcuts.html">Keyboard shortcuts</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>AI assistant</h1>
+          <p class="sub">
+            A chat panel that talks to any model OpenRouter offers, with streaming replies
+            and tool use, so it can reach the rest of the app rather than only answering
+            questions.
+          </p>
+
+          <h2>Setting it up</h2>
+          <ol class="steps">
+            <li>
+              Create an API key at
+              <a href="https://openrouter.ai/">openrouter.ai</a>. OpenRouter is a gateway,
+              so one key reaches models from many providers.
+            </li>
+            <li>
+              Open <strong>Settings → AI Assistant</strong> and paste the key. There is a
+              test button that verifies it against the provider before you rely on it.
+            </li>
+            <li>
+              Choose a default model. The list is fetched live from OpenRouter, and you can
+              keep a shortlist of the ones you actually use so the picker stays workable.
+            </li>
+          </ol>
+          <p>
+            The key is stored in your local database and is never synced, so it does not
+            travel to another machine through the sync feature.
+          </p>
+
+          <h2>Chatting</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Capability</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Streaming replies</td>
+                  <td>Text appears as it is generated instead of after the whole answer.</td>
+                </tr>
+                <tr>
+                  <td>Model switching</td>
+                  <td>Change model for a conversation without changing the default.</td>
+                </tr>
+                <tr>
+                  <td>Tool use</td>
+                  <td>
+                    The model can call into the app to look things up and act, then continue
+                    the answer with what it found.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Conversation history</td>
+                  <td>Chats are stored locally so you can come back to them.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Where it appears</h2>
+          <p>
+            The assistant is a module of its own in the sidebar, and it is also available
+            from inside a project so a conversation about that work stays next to it.
+          </p>
+
+          <div class="note">
+            <div>
+              <strong>Cost and privacy are between you and the provider</strong>
+              <p>
+                Requests go from your machine to OpenRouter and on to whichever provider
+                serves the model you picked. Badami does not proxy them. Usage is billed by
+                OpenRouter on your key, and the provider's data policy applies to whatever
+                you send, so treat the chat as leaving your machine.
+              </p>
+            </div>
+          </div>
+
+          <div class="note warn">
+            <div>
+              <strong>No offline mode</strong>
+              <p>
+                Every reply needs a working connection to OpenRouter. Without one, the chat
+                cannot answer, and the rest of the app is unaffected.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Overview</a>
+          <a href="tasks.html">Tasks</a>
+          <a href="settings.html">Settings</a>
+          <a href="shortcuts.html">Shortcuts</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

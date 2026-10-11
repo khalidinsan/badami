@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Projects and pages · Badami</title>
+    <meta name="description" content="How projects and pages work in Badami: the project list, filters, icons and colors, page categories, and the project tab strip." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="projects.html" aria-current="page">Projects and pages</a></li>
+            <li><a href="tasks.html">Tasks</a></li>
+            <li><a href="planning.html">Planning and Today</a></li>
+            <li><a href="servers.html">Servers</a></li>
+            <li><a href="credentials.html">Credential vault</a></li>
+            <li><a href="api.html">REST API tool</a></li>
+            <li><a href="database.html">Database client</a></li>
+            <li><a href="ai.html">AI assistant</a></li>
+            <li><a href="insights.html">Stats and search</a></li>
+            <li><a href="sync.html">Sync</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Reference</p>
+          <ul>
+            <li><a href="settings.html">Settings</a></li>
+            <li><a href="shortcuts.html">Keyboard shortcuts</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Projects and pages</h1>
+          <p class="sub">
+            A project gathers the work that belongs together: pages for notes, tasks,
+            servers, credentials, API requests, and database connections, all behind one
+            header.
+          </p>
+
+          <h2>The project list</h2>
+          <p>
+            <code>/projects</code> lists every project you have. The toolbar holds a
+            <strong>New Project</strong> button, a <code>Search projects...</code> box that
+            matches on project name, a status filter, and a category filter. Once any
+            filter is active, a <strong>Clear</strong> button appears next to them.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Control</th>
+                  <th>Options</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Status</td>
+                  <td>All, Active, On Hold, Completed, Archived. The default is <strong>Active</strong>.</td>
+                </tr>
+                <tr>
+                  <td>Category</td>
+                  <td>Any category you have created.</td>
+                </tr>
+                <tr>
+                  <td>Search</td>
+                  <td>Filters by project name as you type.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            Clicking a card opens the project in its own tab inside the app window, so you
+            can keep several projects open at once.
+          </p>
+
+          <h2>Project card actions</h2>
+          <p>Right-click a project card for its menu.</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>What happens</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Edit</td>
+                  <td>Opens the project dialog with the current values.</td>
+                </tr>
+                <tr>
+                  <td>Archive</td>
+                  <td>Moves the project to Archived immediately. There is no confirmation step.</td>
+                </tr>
+                <tr>
+                  <td>Delete</td>
+                  <td>Asks for confirmation first, warning that the project and all of its pages are removed permanently.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Empty states</h2>
+          <p>
+            When filters are active and nothing matches, the list shows
+            <strong>No projects match your filters</strong> with a Clear filters link. With
+            no filters set and no projects at all, it shows <strong>No projects yet</strong>
+            with a <strong>Create your first project</strong> action.
+          </p>
+
+          <h2>Creating and editing a project</h2>
+          <p>The project dialog holds the identity of the project.</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Values</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Name</td>
+                  <td>Required.</td>
+                </tr>
+                <tr>
+                  <td>Description</td>
+                  <td>Optional free text.</td>
+                </tr>
+                <tr>
+                  <td>Icon</td>
+                  <td>A picker with 12 icons.</td>
+                </tr>
+                <tr>
+                  <td>Color</td>
+                  <td>A picker with 8 colors.</td>
+                </tr>
+                <tr>
+                  <td>Category</td>
+                  <td>
+                    A select of existing categories, with inline creation. Type a new name
+                    and press Enter to add it, Escape to cancel. Each category in the list
+                    has its own delete control.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Inside a project</h2>
+          <p>
+            A project opens with <strong>All Projects</strong> to go back, a
+            <code>...</code> menu holding the same Edit, Archive, and Delete actions as the
+            card menu, and a <code>Search pages...</code> box that filters the page
+            sidebar.
+          </p>
+          <p>
+            Next to the <strong>Pages</strong> heading is a <strong>+</strong> button. It
+            creates a page called <code>Untitled Page</code> with the category set to
+            notes, and opens it.
+          </p>
+
+          <h3>The header tab strip</h3>
+          <p>
+            The top of a project switches between the module views that belong to it.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tab</th>
+                  <th>Shows</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Content</td><td>The pages of the project.</td></tr>
+                <tr><td>Tasks</td><td>The project's tasks, with a badge counting active tasks.</td></tr>
+                <tr><td>Servers</td><td>SSH hosts attached to the project.</td></tr>
+                <tr><td>Credentials</td><td>Vault entries attached to the project.</td></tr>
+                <tr><td>API</td><td>REST request collections attached to the project.</td></tr>
+                <tr><td>Database</td><td>Database connections attached to the project.</td></tr>
+                <tr><td>Local sites</td><td>Local development sites. macOS only.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Tasks tab</h3>
+          <p>
+            The Tasks tab carries an inline input labelled
+            <code>Add a task... press Enter</code>, plus view switching between list,
+            board, and calendar. The calendar view opens a side panel listing the tasks due
+            on the day you click.
+          </p>
+
+          <h2>Pages</h2>
+          <p>
+            The <strong>Overview</strong> entry at the top of the page sidebar renders the
+            project's own rich text body. Pages you create sit underneath it.
+          </p>
+          <p>Right-click a page in the sidebar for two actions:</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>What happens</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Rename</td>
+                  <td>Opens a dialog; Enter submits the new name.</td>
+                </tr>
+                <tr>
+                  <td>Delete</td>
+                  <td>Asks for confirmation first.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin-top: 14px">
+            The page sidebar is resizable. Drag its edge to set the width; it stops at
+            224px on the narrow end and 480px on the wide end.
+          </p>
+
+          <h3>A page</h3>
+          <p>
+            A page is a title, a category, and a full-width block editor. The title is
+            editable in place and saved 500ms after you stop typing. The category select
+            offers <strong>Brief</strong>, <strong>Feature</strong>,
+            <strong>Screenshot</strong>, <strong>Notes</strong>, and
+            <strong>Custom</strong>. Deleting a page asks for confirmation.
+          </p>
+
+          <h2>Data and cascades</h2>
+          <p>
+            Projects, pages, and project categories live in three tables:
+            <code>projects</code>, <code>pages</code>, and <code>project_categories</code>.
+            Deleting a project removes its pages with it, and clears the project from its
+            tasks. The tasks themselves survive.
+          </p>
+
+          <h2>Limits</h2>
+          <div class="note warn">
+            <div>
+              <strong>Know what the interface does not remember</strong>
+              <p>
+                The project list opens on the <strong>Active</strong> status filter, so
+                archived and on-hold projects stay hidden until you change the filter. The
+                active header tab is not remembered between visits; you return to the
+                first tab each time.
+              </p>
+            </div>
+          </div>
+          <ul>
+            <li>
+              Page categories are free text in the database, but the interface only offers
+              the five fixed values listed above.
+            </li>
+            <li>
+              Page title edits are debounced, so closing the page immediately after typing
+              can lose the last edit.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Overview</a>
+          <a href="tasks.html">Tasks</a>
+          <a href="settings.html">Settings</a>
+          <a href="shortcuts.html">Shortcuts</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

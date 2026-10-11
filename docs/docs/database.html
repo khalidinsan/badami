@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Database client · Badami</title>
+    <meta name="description" content="Connect to MySQL, PostgreSQL, and SQLite, browse tables, edit schema, and run queries in tabs." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="projects.html">Projects and pages</a></li>
+            <li><a href="tasks.html">Tasks</a></li>
+            <li><a href="planning.html">Planning and Today</a></li>
+            <li><a href="servers.html">Servers</a></li>
+            <li><a href="credentials.html">Credential vault</a></li>
+            <li><a href="api.html">REST API tool</a></li>
+            <li><a href="database.html" aria-current="page">Database client</a></li>
+            <li><a href="ai.html">AI assistant</a></li>
+            <li><a href="insights.html">Stats and search</a></li>
+            <li><a href="sync.html">Sync</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Reference</p>
+          <ul>
+            <li><a href="settings.html">Settings</a></li>
+            <li><a href="shortcuts.html">Keyboard shortcuts</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Database client</h1>
+          <p class="sub">
+            Connect to MySQL, PostgreSQL, and SQLite from inside the app, browse what is
+            there, change the schema, and run queries in tabs.
+          </p>
+
+          <h2>Connections</h2>
+          <p>
+            The sidebar lists your saved connections. Each one holds the engine, host,
+            port, database, username, and how to authenticate.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Engine</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>MySQL and MariaDB</td>
+                  <td>Connects over TCP. Works with a local server or a remote host.</td>
+                </tr>
+                <tr>
+                  <td>PostgreSQL</td>
+                  <td>Connects over TCP, with an optional schema to open first.</td>
+                </tr>
+                <tr>
+                  <td>SQLite</td>
+                  <td>Opens a file on disk. No server, no credentials.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>SSL and SSH tunnels</h3>
+          <p>
+            A connection can require TLS, and can be routed through an SSH server when the
+            database is only reachable from inside a network. The SSH side reuses the same
+            credentials and PEM keys as the Servers module, so a host you already added
+            there can be selected instead of retyping it.
+          </p>
+
+          <h3>Passwords</h3>
+          <p>
+            Database passwords go to the operating system keychain, not into the app
+            database. The connection row records everything except the secret.
+          </p>
+
+          <div class="note">
+            <div>
+              <strong>Registering the local stack</strong>
+              <p>
+                If you use Local Dev, the MariaDB it manages can be registered as a
+                connection with one click from the Local Dev panel, so the local database
+                appears here without typing host and port by hand.
+              </p>
+            </div>
+          </div>
+
+          <h2>Browsing objects</h2>
+          <p>
+            Once connected, the object browser lists schemas, tables, views, and columns.
+            Selecting a table shows its structure and lets you page through its rows.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>What you can do</th>
+                  <th>Where</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Inspect columns, types, keys, and defaults</td>
+                  <td>The table structure view.</td>
+                </tr>
+                <tr>
+                  <td>Read rows with paging</td>
+                  <td>The table data view.</td>
+                </tr>
+                <tr>
+                  <td>Filter and sort without writing SQL</td>
+                  <td>The column headers and the filter row.</td>
+                </tr>
+                <tr>
+                  <td>Edit a cell in place</td>
+                  <td>Double-click a cell in the data view.</td>
+                </tr>
+                <tr>
+                  <td>Insert or delete a row</td>
+                  <td>The row controls in the data view.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Query editor</h2>
+          <p>
+            Each query opens in its own tab, so you can keep several statements side by side
+            and switch between them. Results appear below the editor, and the last run stays
+            until you run something else.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>How</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Run the statement</td>
+                  <td>The run button, or the usual keyboard shortcut for your platform.</td>
+                </tr>
+                <tr>
+                  <td>New query tab</td>
+                  <td><code>Cmd+T</code>.</td>
+                </tr>
+                <tr>
+                  <td>Close the tab</td>
+                  <td><code>Cmd+W</code>.</td>
+                </tr>
+                <tr>
+                  <td>See what you ran before</td>
+                  <td>The query history panel.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Schema changes</h2>
+          <p>
+            Tables and columns can be created, altered, and dropped from the interface. The
+            statement the app is about to run is shown before it executes, so a change is
+            never applied silently.
+          </p>
+
+          <h2>Export and import</h2>
+          <p>
+            Query results and whole tables can be written out, and data can be read back in.
+            The format is chosen when you start the export.
+          </p>
+
+          <h2>Project scoping</h2>
+          <p>
+            A connection can be attached to a project, which adds a Database tab inside that
+            project so the relevant database is one click away while you work on it.
+          </p>
+
+          <div class="note warn">
+            <div>
+              <strong>Destructive statements are not sandboxed</strong>
+              <p>
+                The editor sends what you write. A <code>DROP</code> or a
+                <code>DELETE</code> without a <code>WHERE</code> runs immediately, against
+                whatever connection is selected. Check the connection name before running
+                anything that destroys data.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Overview</a>
+          <a href="tasks.html">Tasks</a>
+          <a href="settings.html">Settings</a>
+          <a href="shortcuts.html">Shortcuts</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings · Badami</title>
+    <meta name="description" content="Every setting in Badami, with its default value and what changing it does." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="projects.html">Projects and pages</a></li>
+            <li><a href="tasks.html">Tasks</a></li>
+            <li><a href="planning.html">Planning and Today</a></li>
+            <li><a href="servers.html">Servers</a></li>
+            <li><a href="credentials.html">Credential vault</a></li>
+            <li><a href="api.html">REST API tool</a></li>
+            <li><a href="database.html">Database client</a></li>
+            <li><a href="ai.html">AI assistant</a></li>
+            <li><a href="insights.html">Stats and search</a></li>
+            <li><a href="sync.html">Sync</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Reference</p>
+          <ul>
+            <li><a href="settings.html" aria-current="page">Settings</a></li>
+            <li><a href="shortcuts.html">Keyboard shortcuts</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Settings</h1>
+          <p class="sub">
+            Every option in the app, grouped the way the Settings page groups it, with the
+            value it starts at and what changing it does.
+          </p>
+
+          <h2>Appearance</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Default</th>
+                  <th>Effect</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Theme</td>
+                  <td>Dark</td>
+                  <td>Light, Dark, or follow the system. Applies immediately, everywhere.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Pomodoro Timer</h2>
+          <p>
+            These set the length of each phase. The value in force when you start a
+            session is saved with that session, so changing the length later does not
+            rewrite history.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Default</th>
+                  <th>Range</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Work duration</td>
+                  <td>25 minutes</td>
+                  <td>1 to 120</td>
+                </tr>
+                <tr>
+                  <td>Break duration</td>
+                  <td>5 minutes</td>
+                  <td>1 to 60</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Today Window</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Default</th>
+                  <th>Effect</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Always on top by default</td>
+                  <td>On</td>
+                  <td>
+                    Intended to control whether the floating Today window stays above other
+                    windows. See the note below.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note warn">
+            <div>
+              <strong>This toggle does not currently do anything</strong>
+              <p>
+                The Today window is created always on top regardless of this setting, and
+                its own pin button changes only the live window without saving the change.
+                Treat the window as always on top for now.
+              </p>
+            </div>
+          </div>
+
+          <h2>System</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Default</th>
+                  <th>Effect</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Launch at login</td>
+                  <td>Off</td>
+                  <td>Registers Badami as a login item so it is running when you log in.</td>
+                </tr>
+                <tr>
+                  <td>Close to system tray</td>
+                  <td>On</td>
+                  <td>
+                    Closing the window keeps Badami running in the background, so reminders
+                    and sync keep working. Turn it off to quit on close.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Show app in Dock</td>
+                  <td>On</td>
+                  <td>Whether Badami appears in the macOS Dock.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Updates</h2>
+          <p>
+            Shows the current version and checks GitHub Releases for a signed build. When
+            one is available, download and install, then the app restarts. The update is
+            verified against a signing key embedded in the app, so a build that does not
+            match is refused.
+          </p>
+
+          <h2>Cross-Device Sync</h2>
+          <p>
+            Optional cloud replication through a Turso database. Off by default. See
+            <a href="sync.html">Sync</a> for the full picture, including what is and is not
+            replicated.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Default</th>
+                  <th>Effect</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Enable sync</td>
+                  <td>Off</td>
+                  <td>Turns replication on and creates the local replica on first run.</td>
+                </tr>
+                <tr>
+                  <td>Database URL</td>
+                  <td>Empty</td>
+                  <td>The Turso endpoint to replicate against.</td>
+                </tr>
+                <tr>
+                  <td>Sync interval</td>
+                  <td>5 minutes</td>
+                  <td>How often the app pushes and pulls in the background.</td>
+                </tr>
+                <tr>
+                  <td>Sync on launch</td>
+                  <td>On</td>
+                  <td>Runs a sync when the app starts.</td>
+                </tr>
+                <tr>
+                  <td>Sync on close</td>
+                  <td>On</td>
+                  <td>Runs a sync when the app closes, so the last changes are not left behind.</td>
+                </tr>
+                <tr>
+                  <td>Show sync status</td>
+                  <td>On</td>
+                  <td>Displays the sync indicator in the interface.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>SSH Terminal</h2>
+          <p>Applies to the terminal used in the Servers module.</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Default</th>
+                  <th>Effect</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Font size</td>
+                  <td>13</td>
+                  <td>Terminal text size.</td>
+                </tr>
+                <tr>
+                  <td>Font family</td>
+                  <td>JetBrains Mono</td>
+                  <td>Terminal typeface.</td>
+                </tr>
+                <tr>
+                  <td>Theme</td>
+                  <td>Dark</td>
+                  <td>Terminal color scheme.</td>
+                </tr>
+                <tr>
+                  <td>Auto reconnect</td>
+                  <td>On</td>
+                  <td>Reconnects by itself when the connection drops.</td>
+                </tr>
+                <tr>
+                  <td>Max reconnect attempts</td>
+                  <td>5</td>
+                  <td>How many times it retries before giving up and telling you.</td>
+                </tr>
+                <tr>
+                  <td>Keepalive interval</td>
+                  <td>30 seconds</td>
+                  <td>
+                    How often a keepalive is sent. Shortening it helps on networks that
+                    drop idle connections.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>File Manager</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Default</th>
+                  <th>Effect</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Show hidden files</td>
+                  <td>Off</td>
+                  <td>Shows dotfiles when browsing a server.</td>
+                </tr>
+                <tr>
+                  <td>Default local path</td>
+                  <td><code>~/Downloads</code></td>
+                  <td>Where downloaded files land and where the local pane starts.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>AI Assistant</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Default</th>
+                  <th>Effect</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>OpenRouter API key</td>
+                  <td>Empty</td>
+                  <td>
+                    Your key, stored locally. A test button verifies it against the
+                    provider.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Default model</td>
+                  <td><code>deepseek/deepseek-v4-flash</code></td>
+                  <td>Used for new conversations unless you switch model in the chat.</td>
+                </tr>
+                <tr>
+                  <td>Active models</td>
+                  <td>Empty</td>
+                  <td>
+                    The subset of the model list you keep available, so the picker is not
+                    hundreds of entries long.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Credential Vault</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Default</th>
+                  <th>Effect</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Auto-lock timeout</td>
+                  <td>15 minutes</td>
+                  <td>Locks the vault after this much inactivity, so a walk away does not leave it open.</td>
+                </tr>
+                <tr>
+                  <td>Password hint</td>
+                  <td>Empty</td>
+                  <td>
+                    A reminder shown on the unlock screen. Stored in plain text, so do not
+                    put the password itself there.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>PEM Keys</h2>
+          <p>
+            Manage the private keys used for SSH authentication: import a key, give it a
+            name, and optionally store a passphrase. Imported keys are encrypted at rest.
+            A saved key can then be chosen as the authentication method on a server.
+          </p>
+
+          <h2>Local Dev</h2>
+          <p>
+            Settings, Doctor, and the runtime controls for the local PHP stack live in the
+            Local Dev tab. They are covered in full on the
+            <a href="local-dev.html">Local Dev</a> page:
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Default</th>
+                  <th>Effect</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>HTTP port</td>
+                  <td>8080</td>
+                  <td>
+                    The port nginx binds. Saving a new value regenerates config and
+                    restarts nginx.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Default PHP version</td>
+                  <td>8.4</td>
+                  <td>Used by sites that are not pinned to a version of their own.</td>
+                </tr>
+                <tr>
+                  <td>TLD</td>
+                  <td><code>test</code></td>
+                  <td>The domain suffix for every local site.</td>
+                </tr>
+                <tr>
+                  <td>Loopback address</td>
+                  <td><code>127.0.0.1</code></td>
+                  <td>The address sites and DNS resolve to.</td>
+                </tr>
+                <tr>
+                  <td>Enable Local Dev</td>
+                  <td>On</td>
+                  <td>
+                    Hides the module from the sidebar and the command palette when turned
+                    off. macOS only.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Where settings are stored</h2>
+          <p>
+            Everything on this page is a row in the <code>settings</code> table inside your
+            local database, except the values that belong to the operating system: login
+            item registration, and server passwords and PEM passphrases, which live in the
+            keychain. Settings that describe this machine, such as the Local Dev paths and
+            ports, are excluded from cloud sync so a second computer does not inherit
+            paths that do not exist on it.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Overview</a>
+          <a href="tasks.html">Tasks</a>
+          <a href="settings.html">Settings</a>
+          <a href="shortcuts.html">Shortcuts</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Planning and Today · Badami</title>
+    <meta name="description" content="How planning works in Badami: the calendar and agenda, the daily plan panel, and the always-on-top Today window with its pomodoro timer." />
+    <link rel="icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="../index.html">
+          <img class="logo-dark" src="../assets/logo.png" alt="Badami" />
+          <img class="logo-light" src="../assets/logo-white.png" alt="Badami" />
+        </a>
+        <nav class="site-nav">
+          <a href="index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/khalidinsan/badami">GitHub</a>
+          <a class="nav-cta" href="https://github.com/khalidinsan/badami/releases/latest">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="docs">
+        <nav class="docs-nav" aria-label="Docs">
+          <p>Start here</p>
+          <ul>
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="install.html">Install</a></li>
+          </ul>
+          <p>Modules</p>
+          <ul>
+            <li><a href="projects.html">Projects and pages</a></li>
+            <li><a href="tasks.html">Tasks</a></li>
+            <li><a href="planning.html" aria-current="page">Planning and Today</a></li>
+            <li><a href="servers.html">Servers</a></li>
+            <li><a href="credentials.html">Credential vault</a></li>
+            <li><a href="api.html">REST API tool</a></li>
+            <li><a href="database.html">Database client</a></li>
+            <li><a href="ai.html">AI assistant</a></li>
+            <li><a href="insights.html">Stats and search</a></li>
+            <li><a href="sync.html">Sync</a></li>
+            <li><a href="local-dev.html">Local Dev</a></li>
+          </ul>
+          <p>Reference</p>
+          <ul>
+            <li><a href="settings.html">Settings</a></li>
+            <li><a href="shortcuts.html">Keyboard shortcuts</a></li>
+          </ul>
+          <p>Building</p>
+          <ul>
+            <li><a href="development.html">Development</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </nav>
+
+        <div class="docs-body">
+          <h1>Planning and Today</h1>
+          <p class="sub">
+            Two views of the same due dates. The Planning page is where you place work on
+            days. The Today window is a small floating list of what is left.
+          </p>
+
+          <h2>Daily Planning</h2>
+          <p>
+            <code>/planning</code> opens on a Calendar view with a Calendar / Agenda toggle
+            above it. The calendar has previous, next, and today controls, a title, and a
+            month / week switcher. Month is the default.
+          </p>
+          <p>
+            Clicking a day opens the daily plan panel for that date. Dragging an event onto
+            another day reschedules it: the drop rewrites the due date of the underlying
+            task. Completed events render greyed out with a line through them.
+          </p>
+
+          <h3>Agenda view</h3>
+          <p>
+            The agenda lists the next 30 days grouped by date. Each day header opens the
+            daily plan panel for that date, and each task in the list carries the same
+            three-state checkbox used elsewhere.
+          </p>
+
+          <h3>The daily plan panel</h3>
+          <p>
+            The panel slides in at a fixed 320px width. Its header holds the date, an
+            <strong>Import from project</strong> dropdown, and a close button. Below that is
+            a summary reading <code>N/M completed</code> with a progress bar, then the list
+            of rows, each with a drag handle.
+          </p>
+          <ol class="steps">
+            <li>Click a day in the calendar, or a day header in the agenda, to open the panel.</li>
+            <li>Add a plan with the <code>Add a note...</code> input; Enter creates it for the selected date.</li>
+            <li>Schedule unscheduled work by clicking a task in the pool, or dragging it into the list.</li>
+            <li>Reorder or move rows with their drag handles, and right-click a row for its menu.</li>
+          </ol>
+
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>How</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Mark done or reopen</td>
+                  <td>From the row context menu.</td>
+                </tr>
+                <tr>
+                  <td>Remove from today</td>
+                  <td>From the row context menu. This clears the task's due date.</td>
+                </tr>
+                <tr>
+                  <td>Reschedule</td>
+                  <td>Drag the event to another day in the calendar.</td>
+                </tr>
+                <tr>
+                  <td>Import a project</td>
+                  <td>Pick the project from the <strong>Import from project</strong> dropdown.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>What "Import from project" does</h3>
+          <p>
+            Choosing a project sets the due date to the selected day on every unfinished
+            root task of that project whose due date is empty or different. It moves those
+            tasks; it does not copy them. Subtasks and finished work are skipped.
+          </p>
+
+          <h3>The Unscheduled pool</h3>
+          <p>
+            The pool lists unfinished root tasks that have no due date. Click one to
+            schedule it on the selected day, or press Enter or Space on the highlighted
+            row. Tasks can also be dragged from the pool into the daily list.
+          </p>
+          <p>
+            An empty list reads <strong>No plans for this day</strong> and accepts a drop
+            with the hint <strong>Drop to add</strong>.
+          </p>
+
+          <h2>The Today window</h2>
+          <p>
+            The <strong>Today</strong> button in the sidebar opens a separate small window,
+            300x480 by default and 260x360 at minimum. It has no title bar, it stays above
+            other windows, and it remembers its position and size between launches.
+          </p>
+          <p>
+            The header shows <strong>Today</strong> with a completed over total counter and
+            a progress strip. While a task is focused, a <strong>Focusing</strong> badge
+            appears next to it.
+          </p>
+
+          <h3>Window controls</h3>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Control</th>
+                  <th>What it does</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Font size</td>
+                  <td>Steps through three sizes. The whole window scales with it, because the sizes are relative.</td>
+                </tr>
+                <tr>
+                  <td>Change color</td>
+                  <td>Six palettes: Default, Yellow, Green, Pink, Purple, Slate.</td>
+                </tr>
+                <tr>
+                  <td>Filter by project</td>
+                  <td>All Tasks, Inbox, and each project that has tasks, with counts.</td>
+                </tr>
+                <tr>
+                  <td>Pin</td>
+                  <td>Pins or unpins the window on top.</td>
+                </tr>
+                <tr>
+                  <td>Refresh</td>
+                  <td>Reloads the list.</td>
+                </tr>
+                <tr>
+                  <td>Close</td>
+                  <td>Closes the window.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>The list</h3>
+          <p>
+            The list splits into an <strong>Overdue</strong> section and a
+            <strong>Today</strong> section. Hovering a row reveals its actions: set priority
+            (Urgent, High, Medium, Low, or None), assign a project, Focus, and Delete.
+          </p>
+          <p>
+            Clicking a row title expands it. The expanded row contains a notes editor,
+            subtasks (Enter adds one, Escape cancels), a due date picker, a due time input,
+            and an <strong>Open in Tasks</strong> button.
+          </p>
+          <p>
+            <strong>Add note</strong> reveals a quick-add input that supports an
+            <code>@</code> mention. Typing <code>@</code> lists up to five matching
+            projects; the arrow keys move the highlight, Enter selects, and Escape clears
+            the mention.
+          </p>
+
+          <h3>Pomodoro</h3>
+          <p>
+            A Pomodoro toggle sits in the footer. While the timer runs, a compact mm:ss
+            chip shows in the window. The timer itself offers Reset, Play/Pause, and Skip,
+            a progress ring, a label that reads Ready, Focus, Break, or Paused, an
+            <code>N sessions today</code> count, and a back button.
+          </p>
+          <p>
+            Focusing a task starts the pomodoro automatically when it is idle. When the
+            session ends, a bar appears with <strong>Mark Done</strong> and
+            <strong>Keep Going</strong>.
+          </p>
+
+          <h3>Keyboard</h3>
+          <p>
+            These work only while the Today window has focus, and they are ignored while
+            you are typing in a field.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><code>n</code></td><td>Open quick add.</td></tr>
+                <tr><td><code>Escape</code></td><td>Collapse the expanded row, then clear the selection.</td></tr>
+                <tr><td><code>↑</code> / <code>↓</code></td><td>Move the selection.</td></tr>
+                <tr><td><code>Space</code></td><td>Toggle the selected task's status.</td></tr>
+                <tr><td><code>e</code></td><td>Expand or collapse the selected row.</td></tr>
+                <tr><td><code>f</code></td><td>Focus the selected task, and start the pomodoro.</td></tr>
+                <tr><td><code>p</code></td><td>Expand the selected row.</td></tr>
+                <tr><td><code>Delete</code> / <code>Backspace</code></td><td>Delete the selected task.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Limits</h2>
+          <div class="note warn">
+            <div>
+              <strong>The Today window ignores some of its own settings</strong>
+              <p>
+                The window is always created on top regardless of the Settings toggle, so
+                that setting currently has no effect. The pin button changes the live
+                window, but the choice is not remembered. <strong>Open in Tasks</strong>
+                shows and focuses the main window, but it does not select the task there.
+              </p>
+            </div>
+          </div>
+          <div class="note warn">
+            <div>
+              <strong>A "note" is a task</strong>
+              <p>
+                There is no separate notes table. A plan you add in the daily panel is
+                stored as a task whose title is the note text, so it also appears in Tasks
+                and in the Today window.
+              </p>
+            </div>
+          </div>
+          <ul>
+            <li>
+              Reordering inside the daily list is not saved. The order you set is lost on
+              reload.
+            </li>
+            <li>
+              The calendar has no event resize and no drag range selection.
+            </li>
+            <li>
+              The daily plan panel is a fixed width with no resize control.
+            </li>
+            <li>
+              The agenda fetches once when it mounts, so it does not pick up changes made
+              elsewhere while it is open.
+            </li>
+            <li>
+              Overdue tasks do not appear in the daily plan panel.
+            </li>
+            <li>
+              The window loads all of today's and overdue tasks with no pagination.
+            </li>
+            <li>
+              The pomodoro timer in the Today window is independent of the one in the main
+              window. Running both means two separate timers.
+            </li>
+            <li>
+              Note edits in the window are debounced 600ms, so closing it immediately after
+              typing can lose the last edit.
+            </li>
+            <li>
+              The priority popover cannot be opened from the keyboard.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>MIT licensed.</span>
+        <span class="links">
+          <a href="index.html">Overview</a>
+          <a href="tasks.html">Tasks</a>
+          <a href="settings.html">Settings</a>
+          <a href="shortcuts.html">Shortcuts</a>
+          <a href="local-dev.html">Local Dev</a>
+          <a href="development.html">Development</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>
