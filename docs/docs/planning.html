@@ -64,7 +64,7 @@
             days. The Today window is a small floating list of what is left.
           </p>
 
-          <h2>Daily Planning</h2>
+          <h2 id="daily-planning">Daily Planning</h2>
           <p>
             <code>/planning</code> opens on a Calendar view with a Calendar / Agenda toggle
             above it. The calendar has previous, next, and today controls, a title, and a
@@ -76,14 +76,14 @@
             task. Completed events render greyed out with a line through them.
           </p>
 
-          <h3>Agenda view</h3>
+          <h3 id="agenda-view">Agenda view</h3>
           <p>
             The agenda lists the next 30 days grouped by date. Each day header opens the
             daily plan panel for that date, and each task in the list carries the same
             three-state checkbox used elsewhere.
           </p>
 
-          <h3>The daily plan panel</h3>
+          <h3 id="the-daily-plan-panel">The daily plan panel</h3>
           <p>
             The panel slides in at a fixed 320px width. Its header holds the date, an
             <strong>Import from project</strong> dropdown, and a close button. Below that is
@@ -126,14 +126,14 @@
             </table>
           </div>
 
-          <h3>What "Import from project" does</h3>
+          <h3 id="what-import-from-project-does">What "Import from project" does</h3>
           <p>
             Choosing a project sets the due date to the selected day on every unfinished
             root task of that project whose due date is empty or different. It moves those
             tasks; it does not copy them. Subtasks and finished work are skipped.
           </p>
 
-          <h3>The Unscheduled pool</h3>
+          <h3 id="the-unscheduled-pool">The Unscheduled pool</h3>
           <p>
             The pool lists unfinished root tasks that have no due date. Click one to
             schedule it on the selected day, or press Enter or Space on the highlighted
@@ -144,7 +144,7 @@
             with the hint <strong>Drop to add</strong>.
           </p>
 
-          <h2>The Today window</h2>
+          <h2 id="the-today-window">The Today window</h2>
           <p>
             The <strong>Today</strong> button in the sidebar opens a separate small window,
             300x480 by default and 260x360 at minimum. It has no title bar, it stays above
@@ -156,7 +156,7 @@
             appears next to it.
           </p>
 
-          <h3>Window controls</h3>
+          <h3 id="window-controls">Window controls</h3>
           <div class="table-scroll">
             <table>
               <thead>
@@ -194,7 +194,7 @@
             </table>
           </div>
 
-          <h3>The list</h3>
+          <h3 id="the-list">The list</h3>
           <p>
             The list splits into an <strong>Overdue</strong> section and a
             <strong>Today</strong> section. Hovering a row reveals its actions: set priority
@@ -212,7 +212,7 @@
             the mention.
           </p>
 
-          <h3>Pomodoro</h3>
+          <h3 id="pomodoro">Pomodoro</h3>
           <p>
             A Pomodoro toggle sits in the footer. While the timer runs, a compact mm:ss
             chip shows in the window. The timer itself offers Reset, Play/Pause, and Skip,
@@ -225,7 +225,7 @@
             <strong>Keep Going</strong>.
           </p>
 
-          <h3>Keyboard</h3>
+          <h3 id="keyboard">Keyboard</h3>
           <p>
             These work only while the Today window has focus, and they are ignored while
             you are typing in a field.
@@ -251,7 +251,7 @@
             </table>
           </div>
 
-          <h2>Limits</h2>
+          <h2 id="limits">Limits</h2>
           <div class="note warn">
             <div>
               <strong>The Today window ignores some of its own settings</strong>
@@ -323,5 +323,6 @@
         </span>
       </div>
     </footer>
+    <script src="../assets/search.js" defer></script>
   </body>
 </html>

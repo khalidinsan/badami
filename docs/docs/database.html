@@ -64,7 +64,7 @@
             there, change the schema, and run queries in tabs.
           </p>
 
-          <h2>Connections</h2>
+          <h2 id="connections">Connections</h2>
           <p>
             The sidebar lists your saved connections. Each one holds the engine, host,
             port, database, username, and how to authenticate.
@@ -94,7 +94,7 @@
             </table>
           </div>
 
-          <h3>SSL and SSH tunnels</h3>
+          <h3 id="ssl-and-ssh-tunnels">SSL and SSH tunnels</h3>
           <p>
             A connection can require TLS, and can be routed through an SSH server when the
             database is only reachable from inside a network. The SSH side reuses the same
@@ -102,7 +102,7 @@
             there can be selected instead of retyping it.
           </p>
 
-          <h3>Passwords</h3>
+          <h3 id="passwords">Passwords</h3>
           <p>
             Database passwords go to the operating system keychain, not into the app
             database. The connection row records everything except the secret.
@@ -119,7 +119,7 @@
             </div>
           </div>
 
-          <h2>Browsing objects</h2>
+          <h2 id="browsing-objects">Browsing objects</h2>
           <p>
             Once connected, the object browser lists schemas, tables, views, and columns.
             Selecting a table shows its structure and lets you page through its rows.
@@ -157,7 +157,7 @@
             </table>
           </div>
 
-          <h2>Query editor</h2>
+          <h2 id="query-editor">Query editor</h2>
           <p>
             Each query opens in its own tab, so you can keep several statements side by side
             and switch between them. Results appear below the editor, and the last run stays
@@ -192,20 +192,20 @@
             </table>
           </div>
 
-          <h2>Schema changes</h2>
+          <h2 id="schema-changes">Schema changes</h2>
           <p>
             Tables and columns can be created, altered, and dropped from the interface. The
             statement the app is about to run is shown before it executes, so a change is
             never applied silently.
           </p>
 
-          <h2>Export and import</h2>
+          <h2 id="export-and-import">Export and import</h2>
           <p>
             Query results and whole tables can be written out, and data can be read back in.
             The format is chosen when you start the export.
           </p>
 
-          <h2>Project scoping</h2>
+          <h2 id="project-scoping">Project scoping</h2>
           <p>
             A connection can be attached to a project, which adds a Database tab inside that
             project so the relevant database is one click away while you work on it.
@@ -239,5 +239,6 @@
         </span>
       </div>
     </footer>
+    <script src="../assets/search.js" defer></script>
   </body>
 </html>

@@ -60,7 +60,7 @@
             Where things live in the repository, and which library handles each concern.
           </p>
 
-          <h2>Repository layout</h2>
+          <h2 id="repository-layout">Repository layout</h2>
           <pre><code>badami/
 ├── src/                          frontend
 │   ├── routes/                   TanStack Router pages, file based
@@ -88,7 +88,7 @@
 ├── docs/                         this site
 └── plan-local-dev.md             Local Dev design document</code></pre>
 
-          <h2>Tech stack</h2>
+          <h2 id="tech-stack">Tech stack</h2>
           <div class="table-scroll">
             <table>
               <thead>
@@ -118,7 +118,7 @@
             </table>
           </div>
 
-          <h2>How data flows</h2>
+          <h2 id="how-data-flows">How data flows</h2>
           <p>
             The frontend never opens the database file directly. It calls Tauri commands,
             which the Rust side serves from the open libsql connection:
@@ -144,7 +144,7 @@
             health checks.
           </p>
 
-          <h2>Which database file is opened</h2>
+          <h2 id="which-database-file-is-opened">Which database file is opened</h2>
           <p>
             On startup the backend picks a connection strategy so the app works offline:
           </p>
@@ -173,7 +173,7 @@
             </table>
           </div>
 
-          <h2>Local Dev internals</h2>
+          <h2 id="local-dev-internals">Local Dev internals</h2>
           <p>
             The module is split so each file has one job:
           </p>
@@ -238,7 +238,7 @@
             </table>
           </div>
 
-          <h2>Sync and machine-specific data</h2>
+          <h2 id="sync-and-machine-specific-data">Sync and machine-specific data</h2>
           <p>
             Cloud sync replicates the database, but some rows describe this machine only:
             binary paths, sockets, and Local Dev settings. Those tables are excluded from
@@ -261,5 +261,6 @@
         </span>
       </div>
     </footer>
+    <script src="../assets/search.js" defer></script>
   </body>
 </html>

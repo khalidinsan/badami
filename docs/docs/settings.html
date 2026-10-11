@@ -64,7 +64,7 @@
             value it starts at and what changing it does.
           </p>
 
-          <h2>Appearance</h2>
+          <h2 id="appearance">Appearance</h2>
           <div class="table-scroll">
             <table>
               <thead>
@@ -84,7 +84,7 @@
             </table>
           </div>
 
-          <h2>Pomodoro Timer</h2>
+          <h2 id="pomodoro-timer">Pomodoro Timer</h2>
           <p>
             These set the length of each phase. The value in force when you start a
             session is saved with that session, so changing the length later does not
@@ -114,7 +114,7 @@
             </table>
           </div>
 
-          <h2>Today Window</h2>
+          <h2 id="today-window">Today Window</h2>
           <div class="table-scroll">
             <table>
               <thead>
@@ -147,7 +147,7 @@
             </div>
           </div>
 
-          <h2>System</h2>
+          <h2 id="system">System</h2>
           <div class="table-scroll">
             <table>
               <thead>
@@ -180,7 +180,7 @@
             </table>
           </div>
 
-          <h2>Updates</h2>
+          <h2 id="updates">Updates</h2>
           <p>
             Shows the current version and checks GitHub Releases for a signed build. When
             one is available, download and install, then the app restarts. The update is
@@ -188,7 +188,7 @@
             match is refused.
           </p>
 
-          <h2>Cross-Device Sync</h2>
+          <h2 id="cross-device-sync">Cross-Device Sync</h2>
           <p>
             Optional cloud replication through a Turso database. Off by default. See
             <a href="sync.html">Sync</a> for the full picture, including what is and is not
@@ -238,7 +238,7 @@
             </table>
           </div>
 
-          <h2>SSH Terminal</h2>
+          <h2 id="ssh-terminal">SSH Terminal</h2>
           <p>Applies to the terminal used in the Servers module.</p>
           <div class="table-scroll">
             <table>
@@ -287,7 +287,7 @@
             </table>
           </div>
 
-          <h2>File Manager</h2>
+          <h2 id="file-manager">File Manager</h2>
           <div class="table-scroll">
             <table>
               <thead>
@@ -312,7 +312,7 @@
             </table>
           </div>
 
-          <h2>AI Assistant</h2>
+          <h2 id="ai-assistant">AI Assistant</h2>
           <div class="table-scroll">
             <table>
               <thead>
@@ -348,7 +348,7 @@
             </table>
           </div>
 
-          <h2>Credential Vault</h2>
+          <h2 id="credential-vault">Credential Vault</h2>
           <div class="table-scroll">
             <table>
               <thead>
@@ -376,14 +376,14 @@
             </table>
           </div>
 
-          <h2>PEM Keys</h2>
+          <h2 id="pem-keys">PEM Keys</h2>
           <p>
             Manage the private keys used for SSH authentication: import a key, give it a
             name, and optionally store a passphrase. Imported keys are encrypted at rest.
             A saved key can then be chosen as the authentication method on a server.
           </p>
 
-          <h2>Local Dev</h2>
+          <h2 id="local-dev">Local Dev</h2>
           <p>
             Settings, Doctor, and the runtime controls for the local PHP stack live in the
             Local Dev tab. They are covered in full on the
@@ -434,7 +434,7 @@
             </table>
           </div>
 
-          <h2>Where settings are stored</h2>
+          <h2 id="where-settings-are-stored">Where settings are stored</h2>
           <p>
             Everything on this page is a row in the <code>settings</code> table inside your
             local database, except the values that belong to the operating system: login
@@ -460,5 +460,6 @@
         </span>
       </div>
     </footer>
+    <script src="../assets/search.js" defer></script>
   </body>
 </html>

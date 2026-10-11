@@ -75,7 +75,7 @@
             </div>
           </div>
 
-          <h2>How it is put together</h2>
+          <h2 id="how-it-is-put-together">How it is put together</h2>
           <p>
             Everything Badami generates lives in one folder, so the stack is easy to
             inspect and easy to remove:
@@ -96,7 +96,7 @@
 ├── pids/  logs/      runtime state
 └── valet-server/     the PHP router that maps a host to a site folder</code></pre>
 
-          <h2>Install a runtime</h2>
+          <h2 id="install-a-runtime">Install a runtime</h2>
           <p>
             Open <strong>Local Dev → Settings → Runtime</strong>. The card lists every role
             and the versions installed for it, and marks which one is in use.
@@ -130,7 +130,7 @@
             </div>
           </div>
 
-          <h2>Sites</h2>
+          <h2 id="sites">Sites</h2>
           <p>
             A <strong>parked</strong> folder serves every direct subfolder as a site, the
             way a web root works. A <strong>linked</strong> site points at one specific
@@ -167,7 +167,7 @@
             </table>
           </div>
 
-          <h2>HTTP and HTTPS</h2>
+          <h2 id="http-and-https">HTTP and HTTPS</h2>
           <p>
             By default nginx binds an unprivileged port, so nothing runs as root:
           </p>
@@ -205,7 +205,7 @@
             root-owned folder and verified by hash before the daemon is loaded.
           </p>
 
-          <h3>Trusting the local CA</h3>
+          <h3 id="trusting-the-local-ca">Trusting the local CA</h3>
           <p>
             HTTPS works immediately, but browsers will warn until the local Certificate
             Authority is trusted. <strong>Settings → TLS</strong> shows the exact command
@@ -217,7 +217,7 @@
             <code>security remove-trusted-cert</code> against the CA file.
           </p>
 
-          <h2>DNS for <code>*.test</code></h2>
+          <h2 id="dns-for-test">DNS for <code>*.test</code></h2>
           <p>
             A resolver file alone is not working DNS: something has to answer on the port
             it points at. Badami checks by resolving a random label, not by looking for a
@@ -266,7 +266,7 @@
             </div>
           </div>
 
-          <h2>Your database</h2>
+          <h2 id="your-database">Your database</h2>
           <p>
             MariaDB reads its files from <code>data/mariadb</code>. If you already have a
             datadir elsewhere, <strong>Settings → Runtime → Database files</strong> can
@@ -281,7 +281,7 @@
             yourself.
           </p>
 
-          <h2>Safety rules</h2>
+          <h2 id="safety-rules">Safety rules</h2>
           <ul>
             <li>
               <strong>Nothing is deleted automatically.</strong> Moving data clones it;
@@ -335,5 +335,6 @@
         </span>
       </div>
     </footer>
+    <script src="../assets/search.js" defer></script>
   </body>
 </html>

@@ -61,7 +61,7 @@
             SQLite for storage.
           </p>
 
-          <h2>Requirements</h2>
+          <h2 id="requirements">Requirements</h2>
           <div class="table-scroll">
             <table>
               <thead>
@@ -87,7 +87,7 @@
             </table>
           </div>
 
-          <h3>Install Rust</h3>
+          <h3 id="install-rust">Install Rust</h3>
           <p>macOS and Linux:</p>
           <pre><code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
@@ -99,7 +99,7 @@ rustup update stable</code></pre>
             workload.
           </p>
 
-          <h3>Platform packages</h3>
+          <h3 id="platform-packages">Platform packages</h3>
           <p>macOS:</p>
           <pre><code>xcode-select --install</code></pre>
           <p>Ubuntu or Debian:</p>
@@ -109,7 +109,7 @@ sudo apt install -y \
   libayatana-appindicator3-dev librsvg2-dev \
   patchelf pkg-config</code></pre>
 
-          <h2>Run from source</h2>
+          <h2 id="run-from-source">Run from source</h2>
           <pre><code>git clone https://github.com/khalidinsan/badami.git
 cd badami
 npm install
@@ -121,7 +121,7 @@ npm run tauri dev</code></pre>
             commands available.
           </p>
 
-          <h2>Tests</h2>
+          <h2 id="tests">Tests</h2>
           <pre><code># Rust
 cd src-tauri && cargo test --lib
 
@@ -137,7 +137,7 @@ npx tsc --noEmit</code></pre>
           </p>
           <pre><code>cd src-tauri && cargo test --lib -- --ignored</code></pre>
 
-          <h2>Build release bundles</h2>
+          <h2 id="build-release-bundles">Build release bundles</h2>
           <pre><code># Only needed to produce signed updater artifacts
 # export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/badami.key)"
 # export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
@@ -169,7 +169,7 @@ npm run tauri build</code></pre>
             </table>
           </div>
 
-          <h2>Publishing a release</h2>
+          <h2 id="publishing-a-release">Publishing a release</h2>
           <p>
             Version numbers live in three files and must stay in sync. A new feature phase
             bumps the minor version, a fix bumps the patch version.
@@ -214,7 +214,7 @@ git push origin v1.16.0</code></pre>
             updater artifacts cannot be produced.
           </p>
 
-          <h2>Conventions</h2>
+          <h2 id="conventions">Conventions</h2>
           <ul>
             <li>TypeScript runs in strict mode; the build fails on type errors.</li>
             <li>Database access goes through Kysely, not raw SQL, outside migrations.</li>
@@ -239,5 +239,6 @@ git push origin v1.16.0</code></pre>
         </span>
       </div>
     </footer>
+    <script src="../assets/search.js" defer></script>
   </body>
 </html>

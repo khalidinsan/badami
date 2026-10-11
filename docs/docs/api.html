@@ -64,7 +64,7 @@
             response without leaving Badami.
           </p>
 
-          <h2>Building a request</h2>
+          <h2 id="building-a-request">Building a request</h2>
           <p>
             The request view has a method selector and a URL field, then tabs for the rest
             of the request:
@@ -94,14 +94,14 @@
             </table>
           </div>
 
-          <h2>Collections and folders</h2>
+          <h2 id="collections-and-folders">Collections and folders</h2>
           <p>
             Requests live in collections, and a collection can hold folders. Each
             collection has its own variables, so values that belong to one set of endpoints
             do not leak into another.
           </p>
 
-          <h2>Environments</h2>
+          <h2 id="environments">Environments</h2>
           <p>
             An environment is a named set of variables. You keep one per target (local,
             staging, production) and switch between them with the environment selector in
@@ -109,7 +109,7 @@
             resolves against.
           </p>
 
-          <h2>Authentication</h2>
+          <h2 id="authentication">Authentication</h2>
           <p>Badami has built-in helpers for the common schemes:</p>
           <ul>
             <li>Bearer token.</li>
@@ -121,20 +121,20 @@
             request. The credential is read at send time and the secret stays in the vault.
           </p>
 
-          <h2>Sending and reading the response</h2>
+          <h2 id="sending-and-reading-the-response">Sending and reading the response</h2>
           <p>
             Requests run through the Rust backend, not the browser, so they are not subject
             to browser CORS rules. The response viewer shows the status, the headers, and
             the body, with a code view for the body when you want the raw form.
           </p>
 
-          <h2>History</h2>
+          <h2 id="history">History</h2>
           <p>
             A history panel keeps the requests you have sent, so you can go back to one and
             resend or edit it instead of rebuilding it.
           </p>
 
-          <h2>Import and export</h2>
+          <h2 id="import-and-export">Import and export</h2>
           <div class="table-scroll">
             <table>
               <thead>
@@ -156,7 +156,7 @@
             </table>
           </div>
 
-          <h2>Scoping to a project</h2>
+          <h2 id="scoping-to-a-project">Scoping to a project</h2>
           <p>
             Requests can be scoped to a project. A project has its own API panel, so the
             endpoints for one piece of work sit with the rest of that project instead of in
@@ -179,5 +179,6 @@
         </span>
       </div>
     </footer>
+    <script src="../assets/search.js" defer></script>
   </body>
 </html>
