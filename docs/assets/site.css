@@ -552,9 +552,15 @@ pre code {
 
 .name-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 364px);
   gap: 32px;
   align-items: start;
+}
+
+/* The card starts level with the heading, not with the prose below it, so the
+   two columns read as one section rather than a text block and an aside. */
+.name-main .section-head {
+  margin-bottom: 18px;
 }
 
 .name-prose p {
@@ -574,49 +580,65 @@ pre code {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  padding: 22px;
+  padding: 20px;
+}
+
+.name-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
 }
 
 .name-word {
   font-family: "Badami Sundanese", "Noto Sans Sundanese", sans-serif;
-  font-size: 40px;
-  line-height: 1.3;
+  font-size: 34px;
+  line-height: 1.2;
   color: var(--fg);
-  margin-bottom: 14px;
+  flex: none;
+}
+
+.name-head-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .name-gloss {
-  margin: 0 0 4px;
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 
 .name-gloss-sub {
-  margin: 0 0 18px;
   color: var(--fg-muted);
-  font-size: 14px;
+  font-size: 13.5px;
 }
 
 .name-card dl {
   margin: 0;
-  padding-top: 16px;
+  padding-top: 14px;
   border-top: 1px solid var(--border);
   display: grid;
-  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px 12px;
+  align-items: baseline;
 }
 
+/* Label and value share a row, so four facts stay short instead of stacking
+   into a column twice the height of the prose beside it. */
 .name-card dt {
   color: var(--fg-muted);
   font-size: 12px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  margin-bottom: 2px;
+  white-space: nowrap;
 }
 
 .name-card dd {
   margin: 0;
-  font-size: 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
 }
 
 @media (max-width: 720px) {
