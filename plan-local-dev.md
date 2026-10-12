@@ -1433,6 +1433,7 @@ MVP: Rust + UI gate. Stub message only.
 | Mode A default | nginx binds **`:8080`** unprivileged; Mode B `:80` is opt-in bootstrap only |
 | Double MariaDB open | Hard-fail second start on same datadir |
 | Bootstrap uninstall | **`ld_bootstrap_uninstall` implemented in v1.15.0** — removes only Badami-written LaunchDaemon units + staged plist; resolver file removal opt-in (`confirm_resolver: true`) and gated on `# managed-by: badami` marker |
+| MariaDB socket guard (v1.16.1) | **`build_mariadb_spec` ignores a wrapper `socket` outside the Badami `socks/` dir** — a stale path made the Unix-socket health check probe an address that never accepts, so a running MariaDB reported Stopped. The spec falls back to `socks/mariadb.sock` |
 
 ### Rollback
 

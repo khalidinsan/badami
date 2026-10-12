@@ -385,6 +385,7 @@ fn build_mariadb_spec(paths: &RuntimePaths, report: &DiscoveryReport) -> Service
 
     let port = parse_port_from_mycnf(&wrapper).unwrap_or(3306);
     let socket = parse_socket_from_mycnf(&wrapper)
+        .filter(|s| !stale_socket_path(s, paths))
         .unwrap_or_else(|| PathBuf::from(&paths.socks).join("mariadb.sock"));
 
     let health = HealthCheck::Composite {
@@ -458,6 +459,20 @@ fn parse_socket_from_mycnf(path: &Path) -> Option<PathBuf> {
     let s = std::fs::read_to_string(path).ok()?;
     let map = super::config_gen::parse_mycnf_values(&s);
     map.get("socket").map(PathBuf::from)
+}
+
+/// Socket paths that must never be adopted from a wrapper.
+///
+/// A wrapper can be written by hand or by an older tool, so a socket that does
+/// not live where Badami keeps its sockets is ignored in favour of the runtime
+/// location. Without this, a wrapper pointing at a stale path makes the Unix
+/// socket health check fail forever, and a server that is up reads as stopped.
+fn stale_socket_path(socket: &Path, paths: &RuntimePaths) -> bool {
+    if socket.as_os_str().is_empty() {
+        return true;
+    }
+    // Only the Badami socket directory is trusted to describe this install.
+    socket.parent() != Some(Path::new(&paths.socks))
 }
 
 /// Resolve mariadb-admin / mysqladmin from the same basedir as mariadbd.
@@ -777,5 +792,59 @@ mod tests {
             "conf path must be attached to the flag, got {:?}",
             dns.args
         );
+    }
+
+    #[test]
+    fn mariadb_spec_ignores_stale_socket_from_wrapper() {
+        // A wrapper can name a socket outside the Badami socket dir, either
+        // because it was hand-edited or written by an older tool. The Unix
+        // socket health check then probes a path that never accepts, so a
+        // MariaDB that is up and serving reads as Stopped forever.
+        let dir = std::env::temp_dir().join(format!("badami-mycnf-sock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mariadb_dir = dir.join("mariadb");
+        std::fs::create_dir_all(&mariadb_dir).unwrap();
+        std::fs::write(
+            mariadb_dir.join("my.cnf"),
+            "[mysqld]\ndatadir = \"/tmp/x\"\nsocket = \"/tmp/not-a-badami-socket.sock\"\nport = 3306\n",
+        )
+        .unwrap();
+
+        let paths = RuntimePaths {
+            local_dev_root: dir.to_string_lossy().into_owned(),
+            config_valet: dir.join("config/valet").to_string_lossy().into_owned(),
+            nginx: dir.join("nginx").to_string_lossy().into_owned(),
+            fpm: dir.join("fpm").to_string_lossy().into_owned(),
+            socks: dir.join("socks").to_string_lossy().into_owned(),
+            mariadb: mariadb_dir.to_string_lossy().into_owned(),
+            valet_server: dir.join("valet-server").to_string_lossy().into_owned(),
+            pids: dir.join("pids").to_string_lossy().into_owned(),
+            logs: dir.join("logs").to_string_lossy().into_owned(),
+            import: dir.join("import").to_string_lossy().into_owned(),
+            runtime: dir.join("runtime").to_string_lossy().into_owned(),
+            data: dir.join("data").to_string_lossy().into_owned(),
+            php_config: dir.join("config/php").to_string_lossy().into_owned(),
+        };
+
+        let spec = build_mariadb_spec(&paths, &crate::commands::local_dev::discovery::discover().expect("discover"));
+        // The spec must fall back to the Badami socket dir, not the wrapper value.
+        let expected = PathBuf::from(&paths.socks).join("mariadb.sock");
+        match &spec.health {
+            HealthCheck::Composite { checks } => {
+                let has_runtime_socket = checks.iter().any(|c| matches!(
+                    c,
+                    HealthCheck::UnixSocket { path } if path == &expected
+                ));
+                let has_stale = checks.iter().any(|c| matches!(
+                    c,
+                    HealthCheck::UnixSocket { path }
+                        if path.ends_with("not-a-badami-socket.sock")
+                ));
+                assert!(!has_stale, "stale wrapper socket leaked into health: {checks:?}");
+                assert!(has_runtime_socket, "health must use the runtime socket");
+            }
+            other => panic!("expected a composite health check, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
