@@ -1372,3 +1372,21 @@ export interface LogSubscribeResult {
   topic: string;
   log_file: string;
 }
+
+/** Shell integration: the runtime launchers on the user's PATH. */
+export interface ShellIntegrationStatus {
+  installed: boolean;
+  profile: string;
+  bin_dir: string;
+  commands: string[];
+  /** Block present but the runtime is gone, so PATH holds a dead directory. */
+  stale: boolean;
+}
+
+export interface ShellIntegrationResult {
+  installed: boolean;
+  profile: string;
+  bin_dir: string;
+  commands: string[];
+  notes: string[];
+}

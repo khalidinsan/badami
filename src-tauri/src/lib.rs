@@ -237,6 +237,10 @@ pub fn run() {
             commands::local_dev::ld_bootstrap_status,
             commands::local_dev::ld_bootstrap_install,
             commands::local_dev::ld_bootstrap_uninstall,
+            // Local Dev (shell integration: runtime launchers on PATH)
+            commands::local_dev::ld_shell_integration_status,
+            commands::local_dev::ld_shell_integration_install,
+            commands::local_dev::ld_shell_integration_uninstall,
             // Local Dev (standalone runtime: Badami-owned binaries + datadir move)
             commands::local_dev::provision::ld_provision_status,
             commands::local_dev::provision::ld_provision_select,

@@ -37,6 +37,7 @@
     
     
     
+    
     <!-- seo:start -->
     <link rel="canonical" href="https://khalidinsan.github.io/badami/id/docs/local-dev.html" />
     <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/local-dev.html" />
@@ -329,7 +330,50 @@
             </li>
           </ul>
 
-          <h2 id="uninstall">Menghapus instalasi</h2>
+          <h2 id="command-line">Baris perintah</h2>
+          <p>
+            Badami menyimpan binernya di dalam folder aplikasi, jadi tidak ada yang ditambahkan ke sistem Anda dan tidak ada yang bentrok dengan Homebrew atau alat lain. Artinya juga
+            <code>php</code> dan <code>mysql</code> tidak ditemukan di terminal sampai Anda memintanya.
+          </p>
+          <p>
+            <strong>Settings → Runtime → Command line</strong> menulis launcher kecil untuk tiap perintah dan menambahkan satu blok bertanda ke profil shell Anda. Buka terminal baru setelahnya, atau jalankan <code>source ~/.zshrc</code>.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Perintah</th>
+                  <th>Menjalankan</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>php</code></td>
+                  <td>Versi PHP yang ditetapkan sebagai default di Pengaturan.</td>
+                </tr>
+                <tr>
+                  <td><code>php84</code>, <code>php74</code></td>
+                  <td>Satu launcher per versi terpasang, supaya versi tertentu selalu bisa dipanggil.</td>
+                </tr>
+                <tr>
+                  <td><code>mysql</code>, <code>mariadb</code></td>
+                  <td>Klien MariaDB. Kedua nama itu berfungsi.</td>
+                </tr>
+                <tr>
+                  <td><code>redis-cli</code></td>
+                  <td>Klien Redis.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Launcher-nya memaku berkas ini PHP melalui <code>PHPRC</code>. PHP mengabaikan
+            <code>PHP_INI_SCAN_DIR</code> untuk CLI, jadi entri PATH biasa akan menjalankan PHP tanpa ini sama sekali dan tidak ada pengaturan Badami yang berlaku.
+          </p>
+          <p>
+            Blok di profil Anda dibatasi oleh penanda. <strong>Hapus dari PATH</strong> menghapus tepat blok itu beserta launcher-nya, dan tidak menyentuh apa pun yang Anda tulis di sana. Menghapus versi runtime nanti akan menyisakan launcher-nya sampai Anda menekan <strong>Perbarui launcher</strong>.
+          </p>
+        <h2 id="uninstall">Menghapus instalasi</h2>
           <p>
             <strong>Local Dev → Pengaturan → LaunchDaemon</strong> membalikkan apa yang dipasang Badami: hanya menghapus unit milik Badami dan folder konfigurasi yang distaging. Berkas resolver hanya dihapus saat Anda mengonfirmasi dan hanya jika membawa penanda Badami, jadi berkas resolver yang ditulis oleh hal lain dibiarkan.
           </p>

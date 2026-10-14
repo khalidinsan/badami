@@ -55,4 +55,17 @@ describe("RuntimeCard", () => {
     const text = host.textContent ?? "";
     expect(text).toContain("Checking where the database lives");
   });
+
+  it("offers the PATH action when nothing is installed", () => {
+    // The panel must exist even with no store data, or the control disappears
+    // for the one case that needs it: a fresh install with nothing on PATH.
+    const host = renderCard();
+    const text = host.textContent ?? "";
+    expect(text).toContain("Command line");
+    const buttons = Array.from(host.querySelectorAll("button"));
+    const add = buttons.find((b) => (b.textContent ?? "").includes("Add to PATH"));
+    expect(add).toBeDefined();
+    // Nothing is installed yet, so the action cannot be usable.
+    expect(add?.hasAttribute("disabled")).toBe(true);
+  });
 });

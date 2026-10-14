@@ -44,6 +44,8 @@ import type {
   ProvisionItem,
   ProvisionReport,
   ProvisionStatus,
+  ShellIntegrationResult,
+  ShellIntegrationStatus,
   MigrationPreflight,
   MigrationResult,
   RuntimeManifest,
@@ -244,6 +246,8 @@ interface LocalDevState {
 
   // Standalone runtime (Badami-owned binaries + MariaDB datadir)
   provisionStatus: ProvisionStatus | null;
+  shellIntegration: ShellIntegrationStatus | null;
+  shellIntegrationBusy: boolean;
   provisionPlan: ProvisionItem[];
   provisionBusy: boolean;
   /** Role currently being provisioned, for per-row spinners. */
@@ -254,6 +258,9 @@ interface LocalDevState {
   updateSources: UpdateSource[];
 
   loadProvisionStatus: () => Promise<void>;
+  loadShellIntegration: () => Promise<void>;
+  installShellIntegration: () => Promise<void>;
+  uninstallShellIntegration: () => Promise<void>;
   loadProvisionPlan: () => Promise<void>;
   provisionRuntime: (roles?: string[]) => Promise<ProvisionReport | null>;
   selectRuntimeVersion: (role: string, version: string) => Promise<void>;
@@ -341,6 +348,8 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
   dnsProbe: null,
   tlsStatus: null,
   provisionStatus: null,
+  shellIntegration: null,
+  shellIntegrationBusy: false,
   provisionPlan: [],
   provisionBusy: false,
   provisionActiveRole: null,
@@ -1285,6 +1294,49 @@ export const useLocalDevStore = create<LocalDevState>((set, get) => ({
       set({ provisionBusy: false, provisionActiveRole: null });
       toast.error("Provisioning failed", { description: errMessage(err) });
       return null;
+    }
+  },
+
+  loadShellIntegration: async () => {
+    try {
+      const status = await invoke<ShellIntegrationStatus>("ld_shell_integration_status");
+      set({ shellIntegration: status });
+    } catch (err) {
+      // macOS-only feature; other platforms report nothing rather than an error.
+      console.error("ld_shell_integration_status failed", err);
+      set({ shellIntegration: null });
+    }
+  },
+
+  installShellIntegration: async () => {
+    if (get().shellIntegrationBusy) return;
+    set({ shellIntegrationBusy: true });
+    try {
+      const result = await invoke<ShellIntegrationResult>("ld_shell_integration_install");
+      await get().loadShellIntegration();
+      toast.success(`${result.commands.length} command(s) added to PATH`, {
+        description: result.notes[result.notes.length - 1] ?? undefined,
+      });
+    } catch (err) {
+      toast.error("Could not add to PATH", { description: errMessage(err) });
+    } finally {
+      set({ shellIntegrationBusy: false });
+    }
+  },
+
+  uninstallShellIntegration: async () => {
+    if (get().shellIntegrationBusy) return;
+    set({ shellIntegrationBusy: true });
+    try {
+      await invoke<ShellIntegrationResult>("ld_shell_integration_uninstall");
+      await get().loadShellIntegration();
+      toast.success("Removed from PATH", {
+        description: "The shell profile block and launchers are gone.",
+      });
+    } catch (err) {
+      toast.error("Could not remove from PATH", { description: errMessage(err) });
+    } finally {
+      set({ shellIntegrationBusy: false });
     }
   },
 

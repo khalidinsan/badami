@@ -14,6 +14,7 @@ pub mod resources;
 pub mod runtime_manifest;
 pub mod runtime_updater;
 pub mod service_specs;
+pub mod shell_integration;
 pub mod sites;
 pub mod supervisor;
 pub mod tls;
@@ -34,6 +35,7 @@ use mariadb_guard::{
     MariadbPreflightReport, MariadbPreflightRequest,
 };
 use resources::{install_runtime_resources, InstallResourcesResult};
+use shell_integration::{ShellIntegrationResult, ShellIntegrationStatus};
 
 /// Discover PHP versions, MariaDB datadir candidates, ports, etc.
 ///
@@ -271,6 +273,30 @@ pub async fn ld_bootstrap_uninstall(
     tokio::task::spawn_blocking(move || bootstrap_uninstall(req))
         .await
         .map_err(|e| format!("ld_bootstrap_uninstall task failed: {e}"))?
+}
+
+/// Report whether the runtime is on `PATH`, read from the profile on disk.
+#[tauri::command]
+pub async fn ld_shell_integration_status() -> Result<ShellIntegrationStatus, String> {
+    tokio::task::spawn_blocking(shell_integration::status)
+        .await
+        .map_err(|e| format!("ld_shell_integration_status task failed: {e}"))?
+}
+
+/// Write the launchers and append the marked block to the shell profile.
+#[tauri::command]
+pub async fn ld_shell_integration_install() -> Result<ShellIntegrationResult, String> {
+    tokio::task::spawn_blocking(shell_integration::install)
+        .await
+        .map_err(|e| format!("ld_shell_integration_install task failed: {e}"))?
+}
+
+/// Remove the marked block and the launchers. Touches nothing else.
+#[tauri::command]
+pub async fn ld_shell_integration_uninstall() -> Result<ShellIntegrationResult, String> {
+    tokio::task::spawn_blocking(shell_integration::uninstall)
+        .await
+        .map_err(|e| format!("ld_shell_integration_uninstall task failed: {e}"))?
 }
 
 /// Test helpers shared across `local_dev` modules.

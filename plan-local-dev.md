@@ -1434,6 +1434,7 @@ MVP: Rust + UI gate. Stub message only.
 | Double MariaDB open | Hard-fail second start on same datadir |
 | Bootstrap uninstall | **`ld_bootstrap_uninstall` implemented in v1.15.0** — removes only Badami-written LaunchDaemon units + staged plist; resolver file removal opt-in (`confirm_resolver: true`) and gated on `# managed-by: badami` marker |
 | MariaDB socket guard (v1.16.1) | **`build_mariadb_spec` ignores a wrapper `socket` outside the Badami `socks/` dir** — a stale path made the Unix-socket health check probe an address that never accepts, so a running MariaDB reported Stopped. The spec falls back to `socks/mariadb.sock` |
+| Shell integration (v1.17.0) | **`ld_shell_integration_{status,install,uninstall}`** put the runtime on `PATH` through generated launchers plus one marker-delimited block in `~/.zshrc`. Launchers pin PHP's ini via `PHPRC` (PHP ignores `PHP_INI_SCAN_DIR` for the CLI). Removal is exact: the markers bound what may be deleted |
 
 ### Rollback
 

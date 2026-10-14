@@ -37,6 +37,7 @@
     
     
     
+    
     <!-- seo:start -->
     <link rel="canonical" href="https://khalidinsan.github.io/badami/docs/local-dev.html" />
     <link rel="alternate" hreflang="en" href="https://khalidinsan.github.io/badami/docs/local-dev.html" />
@@ -368,7 +369,58 @@
             </li>
           </ul>
 
-          <h2 id="uninstall">Uninstall</h2>
+          <h2 id="command-line">Command line</h2>
+          <p>
+            Badami keeps its binaries inside the app's own folder, so nothing is added to
+            your system and nothing collides with Homebrew or another tool. That also means
+            <code>php</code> and <code>mysql</code> are not found in a terminal until you ask
+            for them.
+          </p>
+          <p>
+            <strong>Settings → Runtime → Command line</strong> writes a small launcher for
+            each command and adds one marked block to your shell profile. Open a new
+            terminal afterwards, or run <code>source ~/.zshrc</code>.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Command</th>
+                  <th>Runs</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>php</code></td>
+                  <td>The PHP version set as the default in Settings.</td>
+                </tr>
+                <tr>
+                  <td><code>php84</code>, <code>php74</code></td>
+                  <td>One launcher per installed version, so a specific one is always reachable.</td>
+                </tr>
+                <tr>
+                  <td><code>mysql</code>, <code>mariadb</code></td>
+                  <td>The MariaDB client. Both names work.</td>
+                </tr>
+                <tr>
+                  <td><code>redis-cli</code></td>
+                  <td>The Redis client.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            The launchers pin PHP's ini file through <code>PHPRC</code>. PHP ignores
+            <code>PHP_INI_SCAN_DIR</code> for the CLI, so a bare path entry would run PHP
+            with no ini at all and none of the Badami settings would apply.
+          </p>
+          <p>
+            The block in your profile is delimited by markers. <strong>Remove from
+            PATH</strong> deletes exactly that block and the launchers, and touches nothing
+            else you have written there. Removing a runtime version later leaves the
+            launchers in place until you press <strong>Update launchers</strong>.
+          </p>
+        <h2 id="uninstall">Uninstall</h2>
           <p>
             <strong>Local Dev → Settings → LaunchDaemon</strong> reverses what Badami
             installed: it removes only Badami-owned units and the staged config folder.

@@ -5,6 +5,7 @@ import {
   Database,
   Download,
   Loader2,
+  Terminal,
   RefreshCw,
   Trash2,
   XCircle,
@@ -72,6 +73,11 @@ export function RuntimeCard() {
   const selectRuntimeVersion = useLocalDevStore((s) => s.selectRuntimeVersion);
   const uninstallRuntimeVersion = useLocalDevStore((s) => s.uninstallRuntimeVersion);
   const installRuntimeFromUpstream = useLocalDevStore((s) => s.installRuntimeFromUpstream);
+  const shellIntegration = useLocalDevStore((s) => s.shellIntegration);
+  const shellBusy = useLocalDevStore((s) => s.shellIntegrationBusy);
+  const loadShellIntegration = useLocalDevStore((s) => s.loadShellIntegration);
+  const installShellIntegration = useLocalDevStore((s) => s.installShellIntegration);
+  const uninstallShellIntegration = useLocalDevStore((s) => s.uninstallShellIntegration);
 
   const [addOpen, setAddOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<{ role: string; version: string } | null>(
@@ -82,7 +88,8 @@ export function RuntimeCard() {
     void loadProvisionStatus();
     void loadUpdateSources();
     void loadDatadirPreflight();
-  }, [loadProvisionStatus, loadUpdateSources, loadDatadirPreflight]);
+    void loadShellIntegration();
+  }, [loadProvisionStatus, loadUpdateSources, loadDatadirPreflight, loadShellIntegration]);
 
   const roles = provisionStatus?.roles ?? [];
   const ownedCount = roles.reduce((sum, r) => sum + r.installed.length, 0);
@@ -225,6 +232,95 @@ export function RuntimeCard() {
             ))}
           </div>
         )}
+
+        <div className="border-t border-border/40 pt-3">
+          <div className="mb-2 flex items-center gap-2">
+            <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium">Command line</span>
+            {shellIntegration?.installed && (
+              <Badge variant="secondary" className="text-[9px]">
+                on PATH
+              </Badge>
+            )}
+          </div>
+
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            {shellIntegration?.installed
+              ? "The runtime is on your PATH. Open a new terminal to use it."
+              : "Put this runtime on your PATH so php, mysql, and redis-cli work in any terminal."}
+          </p>
+
+          {shellIntegration?.installed && shellIntegration.commands.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1">
+              {shellIntegration.commands.map((c) => (
+                <code
+                  key={c}
+                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]"
+                >
+                  {c}
+                </code>
+              ))}
+            </div>
+          )}
+
+          {shellIntegration?.stale && (
+            <div className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-900 dark:text-amber-100">
+              The PATH block points at a directory that no longer exists. Remove it,
+              then add it again once the runtime is installed.
+            </div>
+          )}
+
+          {shellIntegration && (
+            <p className="mb-2 truncate font-mono text-[10px] text-muted-foreground">
+              {shellIntegration.profile}
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            {shellIntegration?.installed ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-[11px]"
+                  disabled={shellBusy}
+                  onClick={() => void installShellIntegration()}
+                >
+                  {shellBusy ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3 w-3" />
+                  )}
+                  Update launchers
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 gap-1.5 text-[11px]"
+                  disabled={shellBusy}
+                  onClick={() => void uninstallShellIntegration()}
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Remove from PATH
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                className="h-7 gap-1.5 text-[11px]"
+                disabled={shellBusy || ownedCount === 0}
+                onClick={() => void installShellIntegration()}
+              >
+                {shellBusy ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Terminal className="h-3 w-3" />
+                )}
+                Add to PATH
+              </Button>
+            )}
+          </div>
+        </div>
 
         <div className="border-t border-border/40 pt-3">
           <div className="mb-2 flex items-center gap-2">

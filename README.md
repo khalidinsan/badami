@@ -87,6 +87,11 @@ binaries that it installs and manages itself, so nothing else has to be on the m
 Binaries live under `runtime/<role>/<version>/` with a SHA-256 manifest, and the
 database under `data/mariadb`.
 
+Nothing is added to your system paths by default, so `php` and `mysql` are not in a
+terminal until you ask for them. Settings → Runtime → **Add to PATH** generates a
+launcher for each command and adds one marker-delimited block to your shell profile;
+**Remove from PATH** deletes exactly that block and nothing else you have written there.
+
 See [Local Dev](https://khalidinsan.github.io/badami/docs/local-dev.html) for the full
 picture, including how a datadir is moved and how privileged pieces are installed and
 removed.
