@@ -72,3 +72,6 @@ crash.txt
 *.local
 .tanstack/
 # package-lock.json is committed for reproducible npm ci in release CI.
+
+# Redis snapshot written when a dev server runs from src-tauri.
+dump.rdb
