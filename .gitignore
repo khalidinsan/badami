@@ -61,8 +61,8 @@ logs/
 
 # ─── Project planning / internal docs ──────────────────────
 plan-*.md
-# Ship Local Dev design with the feature (v1.13.0 / PR 11)
-!plan-local-dev.md
+AUDIT-*.md
+anti-slop/
 CHECKLIST.md
 CHECKLIST-2.md
 overview.md
