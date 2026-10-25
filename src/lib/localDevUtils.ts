@@ -8,7 +8,7 @@
 /**
  * Build the browser URL for a site.
  *
- * Mirrors the Local Dev site URL rules: port `80` is elided so a
+ * Mirrors `plan-local-dev.md § "Site URL builder"`: port `80` is elided so a
  * privileged (Mode B) install shows `http://foo.test`, everything else keeps
  * the `:{port}` suffix (Mode A default is `:8080`).
  *

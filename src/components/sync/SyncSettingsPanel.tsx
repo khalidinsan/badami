@@ -193,7 +193,8 @@ export function SyncSettingsPanel() {
 
       {/* macOS Local Dev settings are intentionally excluded from the sync
           replica. Device-specific paths (nginx binary, PHP-FPM socket, MariaDB
-          datadir) would create cross-device conflicts. Say so here so users
+          datadir) would create cross-device conflicts; the plan calls out the
+          full-copy filter in `plan-local-dev.md § sync`. Say so here so users
           don't expect to find Local Dev state on a second machine. */}
       {isMacOS() && (
         <div className="flex items-start gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-xs text-sky-900 dark:text-sky-200">
